@@ -4,6 +4,7 @@ import {
   FileText,
   LayoutDashboard,
   PackageSearch,
+  Route,
   Sprout,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
@@ -13,6 +14,7 @@ const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/stock', label: 'Stock', icon: Boxes },
   { to: '/lots', label: 'Lotes', icon: PackageSearch },
+  { to: '/movements/new', label: 'Mover stock', icon: Route },
   { to: '/exports/new', label: 'Exportaciones', icon: ClipboardList },
   { to: '/documents', label: 'Documentos', icon: FileText },
 ];
