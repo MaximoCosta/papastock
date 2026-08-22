@@ -15,7 +15,7 @@ import { PageHeader } from '../components/common/PageHeader';
 import { formatKg } from '../lib/formatters';
 import { confirmMovement, interpretMovement, previewMovement } from '../services/movementService';
 import { useAppData } from '../state/AppDataContext';
-import type { Movement, MovementInterpretation, StockTransferPreview } from '../types/domain';
+import type { MovementInterpretation, StockTransferPreview } from '../types/domain';
 
 const example = 'Mové 500 kg del lote A-310 del Frigorífico Central al Galpón Principal.';
 
@@ -28,7 +28,7 @@ export function NewMovementPage() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [error, setError] = useState<string>();
-  const [savedMovement, setSavedMovement] = useState<Movement>();
+  const [savedMovement, setSavedMovement] = useState<{ reference: string }>();
 
   function resetResult(nextText = text) {
     setText(nextText);

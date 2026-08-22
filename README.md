@@ -4,7 +4,7 @@ Aplicación full-stack de Papasud para movimientos de stock asistidos, trazabili
 
 ## Arquitectura
 
-Un único servicio Node/TypeScript expone la API y sirve la SPA React/Vite. El navegador nunca recibe `DATABASE_URL` ni `GROQ_API_KEY`.
+Un único servicio Node/TypeScript expone la API local (planilla, carga de stock) y sirve la SPA React/Vite. El frontend puede apuntar al backend Spring Boot con `VITE_API_BASE_URL`. El navegador nunca recibe `DATABASE_URL` ni `GROQ_API_KEY`.
 
 ```text
 Navegador React
@@ -29,7 +29,7 @@ npm run db:seed
 npm run dev
 ```
 
-`npm run dev` levanta Express y Vite en `http://localhost:3000`. Sin `DATABASE_URL`, la API de datos devuelve indisponibilidad y la UI usa el fallback mock. Para forzarlo, usar `VITE_DATA_SOURCE=mock`. El script de desarrollo carga `.env` si existe.
+`npm run dev` levanta Express y Vite en `http://localhost:3000`. Copiá `.env.example` a `.env`. Con `VITE_DATA_SOURCE=api` y `VITE_API_BASE_URL=https://papasudbackend.onrender.com` el snapshot, N01, N02 y la trazabilidad van al backend Spring Boot. La importación de planilla y **Cargar stock** siguen en Express local. Para forzar el mock del frontend: `VITE_DATA_SOURCE=mock`. El script de desarrollo carga `.env` si existe.
 
 En **Stock → Movimientos** está el botón para importar la planilla operativa de Papasud (`.xls`/`.xlsx`). El backend parsea, muestra un preview y recién escribe en PostgreSQL cuando el operador confirma. No modifica los lotes de demo A-204 / A-310 / C-102 / F-301.
 

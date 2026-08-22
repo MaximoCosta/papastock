@@ -4,6 +4,7 @@ import type {
   ExportValidationResult,
   ParsedTraceabilityEvent,
 } from '../types/export';
+import { apiUrl, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
 
 export interface AIService {
   analyzeDiscrepancy(
@@ -97,7 +98,7 @@ function mockSheetCorrections(scopeRecords: StockView[]): StockControlCorrection
 
 const httpAIService: AIService = {
   async analyzeDiscrepancy(stock, lotMovements, traceability) {
-    const response = await fetch('/api/ai/discrepancy', {
+    const response = await fetch(apiUrl('/api/ai/discrepancy'), {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({
@@ -115,11 +116,11 @@ const httpAIService: AIService = {
         traceability,
       }),
     });
-    const payload = await response.json().catch(() => ({})) as { data?: DiscrepancyAnalysis; error?: string };
-    if (!response.ok || !payload.data || !['llm', 'heuristic'].includes(payload.data.engine)) {
-      throw new Error(payload.error ?? `El análisis no está disponible (HTTP ${response.status}).`);
+    const payload = normalizeDiscrepancyAnalysis(await readApiData(response, 'El análisis no está disponible.'));
+    if (!['llm', 'heuristic'].includes(payload.engine)) {
+      throw new Error('El análisis no está disponible.');
     }
-    return payload.data;
+    return payload;
   },
 
   async analyzeRequirements(validation) {

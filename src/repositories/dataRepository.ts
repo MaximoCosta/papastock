@@ -6,6 +6,7 @@ import { shelves as mockShelves } from '../data/shelves';
 import { shelfUnits as mockShelfUnits } from '../data/shelfUnits';
 import { stockRecords as mockStockRecords } from '../data/stock';
 import { transporters as mockTransporters } from '../data/transporters';
+import { apiUrl, normalizeSnapshot, readApiData, traceabilityBody } from '../services/apiClient';
 import type { Location, Lot, Movement, Shelf, ShelfUnit, StockRecord, TraceabilityEvent, Transporter } from '../types/domain';
 
 export type DataSource = 'database' | 'mock';
@@ -65,24 +66,19 @@ export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
   }
 
   try {
-    const response = await fetch('/api/snapshot', { headers: { accept: 'application/json' } });
+    const response = await fetch(apiUrl('/api/snapshot'), { headers: { accept: 'application/json' } });
     if (!response.ok) throw new Error(`API HTTP ${response.status}`);
     const payload = await response.json() as { data?: unknown };
     if (!isSnapshot(payload.data) || !payload.data.locations.length || !payload.data.lots.length || !payload.data.stockRecords.length) {
       throw new Error('snapshot remoto inválido o sin seed');
     }
+    const snapshot = normalizeSnapshot(payload.data);
     return {
       data: {
-        ...payload.data,
-        shelves: Array.isArray(payload.data.shelves) && payload.data.shelves.length
-          ? payload.data.shelves
-          : mockShelves.map((item) => ({ ...item })),
-        shelfUnits: Array.isArray(payload.data.shelfUnits) && payload.data.shelfUnits.length
-          ? payload.data.shelfUnits
-          : mockShelfUnits.map((item) => ({ ...item })),
-        transporters: Array.isArray(payload.data.transporters) && payload.data.transporters.length
-          ? payload.data.transporters
-          : mockTransporters.map((item) => ({ ...item })),
+        ...snapshot,
+        shelves: snapshot.shelves.length ? snapshot.shelves : mockShelves.map((item) => ({ ...item })),
+        shelfUnits: snapshot.shelfUnits.length ? snapshot.shelfUnits : mockShelfUnits.map((item) => ({ ...item })),
+        transporters: snapshot.transporters.length ? snapshot.transporters : mockTransporters.map((item) => ({ ...item })),
       },
       source: 'database',
     };
@@ -96,12 +92,10 @@ export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
 }
 
 export async function insertTraceabilityEvent(event: TraceabilityEvent): Promise<TraceabilityEvent> {
-  const response = await fetch('/api/traceability', {
+  const response = await fetch(apiUrl('/api/traceability'), {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(event),
+    body: JSON.stringify(traceabilityBody(event)),
   });
-  const payload = await response.json().catch(() => ({})) as { data?: TraceabilityEvent; error?: string };
-  if (!response.ok || !payload.data) throw new Error(payload.error ?? `No se pudo guardar la trazabilidad (HTTP ${response.status}).`);
-  return payload.data;
+  return readApiData<TraceabilityEvent>(response, 'No se pudo guardar la trazabilidad.');
 }

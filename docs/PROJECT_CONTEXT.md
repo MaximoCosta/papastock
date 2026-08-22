@@ -271,6 +271,12 @@ BFF adicional, no hay Supabase, no hay funciones serverless.
 - En desarrollo: monta Vite en `middlewareMode` sobre el mismo Express, por lo
   que `npm run dev` levanta todo en `http://localhost:3000`.
 - El navegador nunca recibe `DATABASE_URL` ni `GROQ_API_KEY`.
+- En desarrollo, el frontend puede apuntar a un backend Spring Boot externo
+  (`VITE_DATA_SOURCE=api`, `VITE_API_BASE_URL=https://papasudbackend.onrender.com`
+  o `http://localhost:8080`). Vite proxifica `/api` hacia esa URL. Snapshot,
+  N01, N02 y `POST /api/traceability` usan esa base; importar planilla y cargar
+  stock siguen en Express. Si `VITE_API_BASE_URL` está vacío, `/api` queda en
+  Express como hasta ahora.
 
 ### Rutas de la SPA (`src/App.tsx`)
 
@@ -513,8 +519,9 @@ de la demo.
 `src/repositories/dataRepository.ts` → `loadPapaStockSnapshot`:
 
 1. si `VITE_DATA_SOURCE=mock`, devuelve el mock con `source: 'mock'` y warning;
-2. si no, hace `GET /api/snapshot` y valida la forma del payload y que haya
-   locations, lots y stockRecords;
+2. si no, hace `GET {VITE_API_BASE_URL}/api/snapshot` (o `/api/snapshot` si la
+   base está vacía), valida la forma del payload y que haya locations, lots y
+   stockRecords, y normaliza nulos/`confirmed` del contrato Spring Boot;
 3. ante cualquier fallo, devuelve el mock **completo** con `source: 'mock'` y un
    warning que explica el error.
 
@@ -717,8 +724,9 @@ Verificado contra el schema actual: no existen tablas `dispatches`,
 - **Todas** las queries son parametrizadas. No hay concatenación de SQL en el
   repositorio; los únicos valores dinámicos van por `$n`.
 - **Ningún secreto en variables `VITE_*`**: todo lo que empieza con `VITE_` se
-  inlinea en el bundle del navegador. La única `VITE_*` que existe es
-  `VITE_DATA_SOURCE`, que sólo elige mock vs base.
+  inlinea en el bundle del navegador. Las únicas `VITE_*` son `VITE_DATA_SOURCE`
+  (mock vs API) y `VITE_API_BASE_URL` (origen público del backend Spring Boot,
+  no un secreto).
 - `.env` está cubierto por `.gitignore` (`*.local` y ausencia de `.env`
   versionado); el repositorio sólo tiene `.env.example` con placeholders.
 - `ipAllowList: []` en la base: sin acceso público, administración por Render
