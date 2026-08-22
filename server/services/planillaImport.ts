@@ -1,14 +1,22 @@
 import { createHash } from 'node:crypto';
 import * as XLSX from 'xlsx';
 import type { PapaStockSnapshot } from '../../src/repositories/dataRepository';
+import { locations as seedLocations } from '../../src/data/locations';
+import { lots as seedLots } from '../../src/data/lots';
+import { movements as seedMovements } from '../../src/data/movements';
+import { stockRecords as seedStockRecords } from '../../src/data/stock';
 import type {
   Location,
   LocationType,
   Lot,
+  Movement,
   PlanillaImportIssue,
   PlanillaImportPreview,
+  PlanillaImportResult,
   PlanillaImportRow,
   PlanillaMovementKind,
+  StockIntakeInput,
+  StockRecord,
 } from '../../src/types/domain';
 
 export const PROTECTED_DEMO_LOT_CODES = new Set(['A-204', 'A-310', 'C-102', 'F-301']);
@@ -16,7 +24,7 @@ export const PROTECTED_DEMO_LOT_CODES = new Set(['A-204', 'A-310', 'C-102', 'F-3
 const SAMPLE_SIZE = 25;
 const MAX_ISSUES = 80;
 
-type SheetKind = 'campo-frio' | 'tolvas' | 'env-frio' | 'ret-frio' | 'pchica' | 'trevelin' | 'entregas';
+type SheetKind = 'campo-frio' | 'tolvas' | 'env-frio' | 'ret-frio' | 'pchica' | 'trevelin' | 'entregas' | 'generic';
 
 interface LocationSpec {
   name: string;
@@ -267,6 +275,7 @@ function defaultDestination(kind: SheetKind): string {
   if (kind === 'tolvas') return 'Planta Santa Ana';
   if (kind === 'trevelin') return 'Trevelin';
   if (kind === 'ret-frio') return 'Planta Santa Ana';
+  if (kind === 'generic') return 'Galpón Principal';
   return '';
 }
 
@@ -317,6 +326,9 @@ function movementData(row: PlanillaImportRow): Record<string, unknown> {
   if (row.dtv) data.dtv = row.dtv;
   if (row.client) data.client = row.client;
   if (row.variety) data.variety = row.variety;
+  if (row.bagColor) data.bagColor = row.bagColor;
+  if (row.threadColor) data.threadColor = row.threadColor;
+  if (row.averageKg != null) data.averageKg = row.averageKg;
   return data;
 }
 
@@ -329,19 +341,18 @@ interface RawParse {
 }
 
 function parseWorkbook(buffer: Buffer, fileName: string): RawParse {
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: true });
+  const isCsv = /\.csv$/i.test(fileName);
+  const workbook = isCsv
+    ? XLSX.read(buffer.toString('utf8').replace(/^\uFEFF/, ''), { type: 'string', raw: true, cellDates: true })
+    : XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: true });
   const issues: PlanillaImportIssue[] = [];
   const rows: PlanillaImportRow[] = [];
   const sheets: PlanillaImportPreview['sheets'] = [];
   const skippedSheets: string[] = [];
 
   for (const sheetName of workbook.SheetNames) {
-    const kind = identifySheet(sheetName);
-    if (!kind) {
-      skippedSheets.push(sheetName);
-      continue;
-    }
-    if (kind === 'skip') {
+    const identified = identifySheet(sheetName);
+    if (identified === 'skip') {
       skippedSheets.push(sheetName);
       continue;
     }
@@ -354,6 +365,11 @@ function parseWorkbook(buffer: Buffer, fileName: string): RawParse {
       blankrows: false,
     });
     const headerRow = findHeaderRow(matrix);
+    const kind: SheetKind | undefined = identified ?? (headerRow >= 0 ? 'generic' : undefined);
+    if (!kind) {
+      skippedSheets.push(sheetName);
+      continue;
+    }
     if (headerRow < 0) {
       issues.push({
         sheet: sheetName,
@@ -508,8 +524,8 @@ export function parsePlanillaBuffer(buffer: Buffer, fileName: string): RawParse 
   if (!buffer.length) {
     throw Object.assign(new Error('El archivo está vacío.'), { status: 400 });
   }
-  if (!/\.(xlsx|xls)$/i.test(fileName)) {
-    throw Object.assign(new Error('La planilla debe ser .xls o .xlsx.'), { status: 400 });
+  if (!/\.(xlsx|xls|csv)$/i.test(fileName)) {
+    throw Object.assign(new Error('El archivo debe ser .csv, .xls o .xlsx.'), { status: 400 });
   }
   try {
     return parseWorkbook(buffer, fileName);
@@ -611,4 +627,227 @@ export function buildPlanillaImportFromFile(
   snapshot: PapaStockSnapshot,
 ): PlanillaImportPlan {
   return buildPlanillaImportPlan(parsePlanillaBuffer(buffer, fileName), snapshot);
+}
+
+export function demoSnapshot(): PapaStockSnapshot {
+  return {
+    locations: seedLocations.map((item) => ({ ...item })),
+    shelfUnits: [],
+    shelves: [],
+    lots: seedLots.map((item) => ({ ...item })),
+    stockRecords: seedStockRecords.map((item) => ({ ...item })),
+    movements: seedMovements.map((item) => ({ ...item })),
+    transporters: [],
+    traceabilityEvents: [],
+  };
+}
+
+export function materializePlanillaImport(
+  plan: PlanillaImportPlan,
+  snapshot: PapaStockSnapshot,
+): { result: PlanillaImportResult; applied: PapaStockSnapshot } {
+  const locations = snapshot.locations.map((item) => ({ ...item }));
+  let createdLocations = 0;
+  for (const location of plan.locationsToCreate) {
+    if (locations.some((item) => fold(item.name) === fold(location.name))) continue;
+    locations.push({ id: location.id, name: location.name, type: location.type });
+    createdLocations += 1;
+  }
+
+  const lots = snapshot.lots.map((item) => ({ ...item }));
+  let createdLots = 0;
+  for (const lot of plan.lotsToCreate) {
+    if (PROTECTED_DEMO_LOT_CODES.has(lot.code)) continue;
+    if (lots.some((item) => fold(item.code) === fold(lot.code))) continue;
+    lots.push({
+      id: lot.id,
+      code: lot.code,
+      variety: lot.variety,
+      campaign: lot.campaign,
+      producer: lot.producer,
+      origin: lot.origin,
+      harvestDate: lot.harvestDate,
+    });
+    createdLots += 1;
+  }
+
+  const locationIdByName = new Map(locations.map((item) => [fold(item.name), item.id]));
+  const lotByCode = new Map(lots.map((item) => [item.code.toLowerCase(), item]));
+  const movements = snapshot.movements.map((item) => ({ ...item }));
+  const existingRefs = new Set(movements.map((item) => item.reference));
+  let createdMovements = 0;
+  let skippedMovements = 0;
+
+  for (const movement of plan.movementsToInsert) {
+    const lot = lotByCode.get(movement.lotCode.toLowerCase());
+    const originId = locationIdByName.get(fold(movement.originName));
+    const destinationId = locationIdByName.get(fold(movement.destinationName));
+    if (!lot || PROTECTED_DEMO_LOT_CODES.has(lot.code) || !originId || !destinationId || originId === destinationId) {
+      skippedMovements += 1;
+      continue;
+    }
+    if (existingRefs.has(movement.reference)) {
+      skippedMovements += 1;
+      continue;
+    }
+    const next: Movement = {
+      id: movement.id,
+      reference: movement.reference,
+      lotId: lot.id,
+      originLocationId: originId,
+      destinationLocationId: destinationId,
+      quantity: movement.quantityKg,
+      date: movement.date,
+      status: 'completed',
+      data: movement.data,
+    };
+    movements.unshift(next);
+    existingRefs.add(movement.reference);
+    createdMovements += 1;
+  }
+
+  const importedLotIds = new Set<string>();
+  for (const code of plan.stockLotCodes) {
+    const lot = lotByCode.get(code.toLowerCase());
+    if (lot && !PROTECTED_DEMO_LOT_CODES.has(lot.code)) importedLotIds.add(lot.id);
+  }
+
+  const stockRecords = snapshot.stockRecords
+    .filter((record) => !importedLotIds.has(record.lotId))
+    .map((item) => ({ ...item }));
+  let upsertedStockRecords = 0;
+  const now = new Date().toISOString();
+
+  for (const lotId of importedLotIds) {
+    const net = new Map<string, number>();
+    for (const movement of movements) {
+      if (movement.lotId !== lotId || movement.status === 'cancelled') continue;
+      if (movement.originLocationId) {
+        net.set(movement.originLocationId, (net.get(movement.originLocationId) ?? 0) - movement.quantity);
+      }
+      if (movement.destinationLocationId) {
+        net.set(movement.destinationLocationId, (net.get(movement.destinationLocationId) ?? 0) + movement.quantity);
+      }
+    }
+    for (const [locationId, raw] of net) {
+      const quantity = Math.max(0, Math.round(raw * 1000) / 1000);
+      if (quantity <= 0) continue;
+      stockRecords.push({
+        id: stableId('stock-imp', `${lotId}|${locationId}`),
+        lotId,
+        locationId,
+        declaredQuantity: quantity,
+        verifiedQuantity: quantity,
+        verificationPending: false,
+        updatedAt: now,
+      } satisfies StockRecord);
+      upsertedStockRecords += 1;
+    }
+  }
+
+  return {
+    result: {
+      createdLocations,
+      createdLots,
+      createdMovements,
+      skippedMovements,
+      upsertedStockRecords,
+      persisted: false,
+    },
+    applied: {
+      ...snapshot,
+      locations,
+      lots,
+      stockRecords,
+      movements,
+    },
+  };
+}
+
+export function buildStockIntakePlan(input: StockIntakeInput, snapshot: PapaStockSnapshot): PlanillaImportPlan {
+  const lotCode = input.lotCode.trim().toUpperCase();
+  const variety = input.variety.trim();
+  const destinationRaw = input.destination.trim();
+  const originRaw = input.origin?.trim() || 'Campo';
+
+  const issues: PlanillaImportIssue[] = [];
+  if (!lotCode) issues.push({ sheet: 'Carga de stock', rowNumber: 1, code: 'MISSING_LOT', message: 'Falta el lote.' });
+  if (!variety) issues.push({ sheet: 'Carga de stock', rowNumber: 1, code: 'MISSING_VARIETY', message: 'Falta la variedad.' });
+  if (!Number.isFinite(input.quantityKg) || input.quantityKg <= 0) {
+    issues.push({ sheet: 'Carga de stock', rowNumber: 1, code: 'MISSING_QUANTITY', message: 'Los kilos deben ser mayores a cero.' });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
+    issues.push({ sheet: 'Carga de stock', rowNumber: 1, code: 'MISSING_DATE', message: 'La fecha debe ser AAAA-MM-DD.' });
+  }
+  if (!destinationRaw) issues.push({ sheet: 'Carga de stock', rowNumber: 1, code: 'MISSING_LOCATION', message: 'Falta el destino.' });
+  if (PROTECTED_DEMO_LOT_CODES.has(lotCode)) {
+    issues.push({
+      sheet: 'Carga de stock',
+      rowNumber: 1,
+      code: 'PROTECTED_DEMO_LOT',
+      message: `El lote ${lotCode} es de demo (N02/N03) y no se puede cargar por este formulario.`,
+    });
+  }
+
+  const originName = resolveLocationSpec(originRaw)?.name;
+  const destinationName = resolveLocationSpec(destinationRaw)?.name;
+  if (originName && destinationName && fold(originName) === fold(destinationName)) {
+    issues.push({
+      sheet: 'Carga de stock',
+      rowNumber: 1,
+      code: 'SAME_LOCATION',
+      message: 'El origen y el destino deben ser distintos.',
+    });
+  }
+
+  if (issues.length > 0 || !originName || !destinationName) {
+    return buildPlanillaImportPlan({
+      fileName: 'carga-stock',
+      rows: [],
+      issues,
+      sheets: [{ name: 'Carga de stock', imported: 0, skipped: 1 }],
+      skippedSheets: [],
+    }, snapshot);
+  }
+
+  const remito = input.remito?.trim().toUpperCase();
+  const row: PlanillaImportRow = {
+    sheet: 'Carga de stock',
+    rowNumber: 1,
+    remito: remito || undefined,
+    date: input.date,
+    lotCode,
+    variety,
+    quantityKg: input.quantityKg,
+    originName,
+    destinationName,
+    transporter: input.transporter?.trim() || undefined,
+    bags: input.bags,
+    caliber: input.caliber?.trim() || undefined,
+    category: input.category?.trim() || undefined,
+    notes: input.notes?.trim() || undefined,
+    dtv: input.dtv?.trim() || undefined,
+    client: input.client?.trim() || undefined,
+    bagColor: input.bagColor?.trim() || undefined,
+    threadColor: input.threadColor?.trim() || undefined,
+    averageKg: input.averageKg,
+    kind: 'inbound',
+    reference: `IMP-${createHash('sha256').update(['intake', input.date, remito ?? 'sremito', lotCode, input.quantityKg, originName, destinationName].join('|')).digest('hex').slice(0, 16).toUpperCase()}`,
+  };
+
+  const plan = buildPlanillaImportPlan({
+    fileName: 'carga-stock',
+    rows: [row],
+    issues: [],
+    sheets: [{ name: 'Carga de stock', imported: 1, skipped: 0 }],
+    skippedSheets: [],
+  }, snapshot);
+
+  const campaign = input.campaign?.trim() || '2026';
+  const producer = input.producer?.trim() || 'Papasud';
+  for (const lot of plan.lotsToCreate) {
+    lot.campaign = campaign;
+    lot.producer = producer;
+  }
+  return plan;
 }

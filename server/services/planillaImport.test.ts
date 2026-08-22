@@ -8,6 +8,7 @@ import { movements } from '../../src/data/movements';
 import { stockRecords } from '../../src/data/stock';
 import {
   buildPlanillaImportFromFile,
+  buildStockIntakePlan,
   fold,
   PROTECTED_DEMO_LOT_CODES,
   resolveLocationSpec,
@@ -98,6 +99,53 @@ describe('planillaImport', () => {
 
     const again = buildPlanillaImportFromFile(buffer, 'tolvas.xlsx', snapshot());
     expect(again.preview.sample.map((row) => row.reference)).toEqual(plan.preview.sample.map((row) => row.reference));
+  });
+
+  it('importa un CSV genérico con lote, kilos y destino', () => {
+    const csv = Buffer.from('Remito,Fecha,Variedad,Lote,Kgs,Origen,Destino\n1001,2026-03-09,spunta,310,10200,campo,galpon\n');
+    const plan = buildPlanillaImportFromFile(csv, 'movimientos.csv', snapshot());
+    expect(plan.preview.valid).toBe(true);
+    expect(plan.preview.movementCount).toBe(1);
+    expect(plan.preview.sample[0]).toMatchObject({
+      lotCode: '310',
+      originName: 'Campo',
+      destinationName: 'Galpón Principal',
+      quantityKg: 10200,
+    });
+  });
+
+  it('carga stock por formulario con los campos de la planilla y bloquea A-204', () => {
+    const accepted = buildStockIntakePlan({
+      lotCode: '241',
+      variety: 'Agata',
+      quantityKg: 35160,
+      date: '2026-03-09',
+      destination: 'dospanca',
+      origin: 'Campo',
+      remito: '1001',
+      bags: 705,
+      caliber: 'exportacion',
+      transporter: 'serantes-vera',
+      dtv: '13354667-7',
+    }, snapshot());
+    expect(accepted.preview.valid).toBe(true);
+    expect(accepted.preview.sample[0]).toMatchObject({
+      lotCode: '241',
+      originName: 'Campo',
+      destinationName: 'Dos Panca',
+      remito: '1001',
+      bags: 705,
+    });
+
+    const blocked = buildStockIntakePlan({
+      lotCode: 'A-204',
+      variety: 'Innovator',
+      quantityKg: 1000,
+      date: '2026-03-09',
+      destination: 'Dos Panca',
+    }, snapshot());
+    expect(blocked.preview.valid).toBe(false);
+    expect(blocked.preview.issues.some((issue) => issue.code === 'PROTECTED_DEMO_LOT')).toBe(true);
   });
 
   const operationalFile = 'C:/Users/Usser/Downloads/Planilla de movimientos 2026.xls';

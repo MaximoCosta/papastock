@@ -84,8 +84,33 @@ export interface PlanillaImportRow {
   notes?: string;
   dtv?: string;
   client?: string;
+  bagColor?: string;
+  threadColor?: string;
+  averageKg?: number;
   kind: PlanillaMovementKind;
   reference: string;
+}
+
+export interface StockIntakeInput {
+  lotCode: string;
+  variety: string;
+  quantityKg: number;
+  date: string;
+  destination: string;
+  origin?: string;
+  remito?: string;
+  bags?: number;
+  averageKg?: number;
+  caliber?: string;
+  category?: string;
+  bagColor?: string;
+  threadColor?: string;
+  transporter?: string;
+  client?: string;
+  dtv?: string;
+  notes?: string;
+  campaign?: string;
+  producer?: string;
 }
 
 export interface PlanillaImportIssue {
@@ -122,6 +147,17 @@ export interface PlanillaImportResult {
   createdMovements: number;
   skippedMovements: number;
   upsertedStockRecords: number;
+  persisted?: boolean;
+}
+
+export interface PlanillaImportConfirmation extends PlanillaImportResult {
+  persisted: boolean;
+  applied: {
+    locations: Location[];
+    lots: Lot[];
+    stockRecords: StockRecord[];
+    movements: Movement[];
+  };
 }
 
 export interface Transporter {

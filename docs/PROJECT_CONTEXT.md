@@ -296,6 +296,8 @@ existen hoy.
 | POST | `/api/movements` | N01 | **escribe** | Revalida con filas bloqueadas y ejecuta la transferencia en una transacción. 201 o 409 con los errores de validación. |
 | POST | `/api/imports/planilla/preview` | migración | ninguno | Recibe el Excel (`.xls`/`.xlsx`, body binario ≤ 4 MB). Parser determinístico en `server/services/planillaImport.ts`. Devuelve conteos, lotes/ubicaciones a crear, sample y filas omitidas. **Nunca escribe.** |
 | POST | `/api/imports/planilla` | migración | **escribe** | Reparsea el mismo archivo, pide confirmación humana en la UI y persiste lotes, ubicaciones, movimientos y stock de esos lotes en una transacción. No toca A-204 / A-310 / C-102 / F-301. Idempotente por `movements.reference`. |
+| POST | `/api/stock/intake/preview` | operación | ninguno | Formulario de ingreso (lote, variedad, kilos, destino, remito, bolsas, calibre, DTV, etc.). Valida sin escribir. |
+| POST | `/api/stock/intake` | operación | **escribe** | Confirma la carga: crea lote/ubicación si hace falta, acredita stock y registra el movimiento. No toca A-204 / A-310 / C-102 / F-301. |
 | * | `/api/*` (catch-all) | — | ninguno | 404 `{ error: 'Endpoint no encontrado.' }` |
 
 ### Convenciones transversales

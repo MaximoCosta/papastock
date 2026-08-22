@@ -1,4 +1,4 @@
-import type { PlanillaImportPreview, PlanillaImportResult } from '../types/domain';
+import type { PlanillaImportConfirmation, PlanillaImportPreview } from '../types/domain';
 
 async function readResponse<T>(response: Response, fallback: string): Promise<T> {
   const payload = await response.json().catch(() => ({})) as { data?: T; error?: string };
@@ -23,7 +23,7 @@ export async function previewPlanillaImport(file: File): Promise<PlanillaImportP
   return readResponse(response, 'No se pudo leer la planilla.');
 }
 
-export async function confirmPlanillaImport(file: File): Promise<PlanillaImportResult> {
+export async function confirmPlanillaImport(file: File): Promise<PlanillaImportConfirmation> {
   const response = await fetch('/api/imports/planilla', {
     method: 'POST',
     headers: uploadHeaders(file),

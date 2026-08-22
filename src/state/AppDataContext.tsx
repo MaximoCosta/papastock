@@ -53,6 +53,12 @@ interface AppDataContextValue {
   updateTransporter: (id: string, input: TransporterInput) => void;
   clearActionError: () => void;
   refreshData: () => Promise<void>;
+  applyImportedSnapshot: (applied: {
+    locations: Location[];
+    lots: Lot[];
+    stockRecords: StockRecord[];
+    movements: Movement[];
+  }) => void;
 }
 
 const AppDataContext = createContext<AppDataContextValue | undefined>(undefined);
@@ -234,6 +240,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     },
     updateTransporter: (id, input) => {
       setTransporters((current) => current.map((item) => (item.id === id ? { ...input, id } : item)));
+    },
+    applyImportedSnapshot: (applied) => {
+      setLocations(applied.locations);
+      setLots(applied.lots);
+      setStockRecords(applied.stockRecords);
+      setMovements(applied.movements);
     },
     clearActionError: () => setActionError(undefined),
     refreshData,

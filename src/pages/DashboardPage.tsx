@@ -1,4 +1,4 @@
-import { Boxes, ClipboardClock, PackageCheck, TriangleAlert } from 'lucide-react';
+import { Boxes, ClipboardClock, PackageCheck, TriangleAlert, Upload } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/common/Button';
 import { PageHeader } from '../components/common/PageHeader';
@@ -19,7 +19,12 @@ export function DashboardPage() {
         eyebrow="Centro de control"
         title="Resumen operativo"
         description="Estado consolidado de stock y operaciones que requieren intervención."
-        actions={<Link to="/exports/new"><Button>Nueva exportación</Button></Link>}
+        actions={(
+          <div className="flex items-center gap-2">
+            <Link to="/stock"><Button variant="secondary"><Upload size={14} /> Subir archivo</Button></Link>
+            <Link to="/exports/new"><Button>Nueva exportación</Button></Link>
+          </div>
+        )}
       />
 
       <section className="grid grid-cols-4 gap-3 max-[1100px]:grid-cols-2" aria-label="Métricas operativas">

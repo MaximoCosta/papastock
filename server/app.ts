@@ -5,7 +5,7 @@ import { pool } from './db/pool';
 import { PapaStockRepository } from './repositories/papaStockRepository';
 import { createDiscrepancyAnalyzer } from './services/groqDiscrepancy';
 import { createMovementIntentParser } from './services/groqMovementIntent';
-import { buildPlanillaImportFromFile } from './services/planillaImport';
+import { buildPlanillaImportFromFile, buildStockIntakePlan, demoSnapshot, materializePlanillaImport } from './services/planillaImport';
 
 const identifier = z.string().min(1).max(120);
 const discrepancyInputSchema = z.object({
@@ -61,6 +61,33 @@ const movementIntentSchema = z.object({
   quantityKg: z.number().positive().max(1_000_000),
   origin: identifier,
   destination: identifier,
+});
+
+const optionalText = (max: number) => z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().max(max).optional(),
+);
+
+const stockIntakeSchema = z.object({
+  lotCode: z.string().trim().min(1).max(40),
+  variety: z.string().trim().min(1).max(80),
+  quantityKg: z.number().positive().max(1_000_000),
+  date: z.iso.date(),
+  destination: z.string().trim().min(1).max(120),
+  origin: optionalText(120),
+  remito: optionalText(40),
+  bags: z.number().positive().max(100_000).optional(),
+  averageKg: z.number().positive().max(200).optional(),
+  caliber: optionalText(80),
+  category: optionalText(80),
+  bagColor: optionalText(40),
+  threadColor: optionalText(40),
+  transporter: optionalText(120),
+  client: optionalText(120),
+  dtv: optionalText(80),
+  notes: optionalText(500),
+  campaign: optionalText(20),
+  producer: optionalText(120),
 });
 
 export interface AppDependencies {
@@ -150,7 +177,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   function readWorkbookUpload(request: Request): { buffer: Buffer; fileName: string } {
     const body = request.body;
     if (!Buffer.isBuffer(body) || body.length === 0) {
-      throw Object.assign(new Error('Adjuntá un archivo .xls o .xlsx.'), { status: 400 });
+      throw Object.assign(new Error('Adjuntá un archivo .csv, .xls o .xlsx.'), { status: 400 });
     }
     const headerName = request.header('x-filename');
     const fileName = headerName ? decodeURIComponent(headerName) : 'planilla.xls';
@@ -159,9 +186,8 @@ export function createApp(dependencies: AppDependencies = {}) {
 
   app.post('/api/imports/planilla/preview', excelBody, async (request, response, next) => {
     try {
-      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const { buffer, fileName } = readWorkbookUpload(request);
-      const snapshot = await repository.loadSnapshot();
+      const snapshot = repository ? await repository.loadSnapshot() : demoSnapshot();
       const plan = buildPlanillaImportFromFile(buffer, fileName, snapshot);
       response.json({ data: plan.preview });
     } catch (error) { next(error); }
@@ -169,11 +195,64 @@ export function createApp(dependencies: AppDependencies = {}) {
 
   app.post('/api/imports/planilla', excelBody, async (request, response, next) => {
     try {
-      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const { buffer, fileName } = readWorkbookUpload(request);
-      const snapshot = await repository.loadSnapshot();
+      const snapshot = repository ? await repository.loadSnapshot() : demoSnapshot();
       const plan = buildPlanillaImportFromFile(buffer, fileName, snapshot);
-      response.status(201).json({ data: await repository.executePlanillaImport(plan) });
+      const materialized = materializePlanillaImport(plan, snapshot);
+      const persisted = repository
+        ? await repository.executePlanillaImport(plan)
+        : materialized.result;
+      response.status(201).json({
+        data: {
+          ...persisted,
+          persisted: Boolean(repository),
+          applied: {
+            locations: materialized.applied.locations,
+            lots: materialized.applied.lots,
+            stockRecords: materialized.applied.stockRecords,
+            movements: materialized.applied.movements,
+          },
+        },
+      });
+    } catch (error) { next(error); }
+  });
+
+  async function snapshotForImport() {
+    return repository ? repository.loadSnapshot() : demoSnapshot();
+  }
+
+  app.post('/api/stock/intake/preview', async (request, response, next) => {
+    try {
+      const input = stockIntakeSchema.parse(request.body);
+      const plan = buildStockIntakePlan(input, await snapshotForImport());
+      response.json({ data: plan.preview });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/stock/intake', async (request, response, next) => {
+    try {
+      const input = stockIntakeSchema.parse(request.body);
+      const snapshot = await snapshotForImport();
+      const plan = buildStockIntakePlan(input, snapshot);
+      if (!plan.preview.valid) {
+        throw Object.assign(new Error(plan.preview.issues[0]?.message ?? 'La carga de stock no es válida.'), { status: 400, details: plan.preview.issues });
+      }
+      const materialized = materializePlanillaImport(plan, snapshot);
+      const persisted = repository
+        ? await repository.executePlanillaImport(plan)
+        : materialized.result;
+      response.status(201).json({
+        data: {
+          ...persisted,
+          persisted: Boolean(repository),
+          applied: {
+            locations: materialized.applied.locations,
+            lots: materialized.applied.lots,
+            stockRecords: materialized.applied.stockRecords,
+            movements: materialized.applied.movements,
+          },
+        },
+      });
     } catch (error) { next(error); }
   });
 

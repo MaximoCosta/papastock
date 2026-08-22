@@ -85,7 +85,44 @@ describe('API PapaStock', () => {
       .send(buffer)
       .expect(201);
 
-    expect(confirmed.body.data).toMatchObject({ createdMovements: 1 });
+    expect(confirmed.body.data).toMatchObject({ createdMovements: 1, persisted: true });
+    expect(confirmed.body.data.applied.movements.length).toBeGreaterThan(0);
+    expect(repository.executePlanillaImport).toHaveBeenCalledOnce();
+  });
+
+  it('lee un CSV sin base de datos y carga el preview', async () => {
+    const csvApp = createApp({ analyze, parseMovementIntent });
+    const csv = 'Remito,Fecha,Variedad,Lote,Kgs,Destino\n1001,2026-03-09,agata,241,35160,dospanca\n';
+    const previewed = await request(csvApp)
+      .post('/api/imports/planilla/preview')
+      .set('x-filename', encodeURIComponent('movimientos.csv'))
+      .set('content-type', 'text/csv')
+      .send(Buffer.from(csv))
+      .expect(200);
+    expect(previewed.body.data).toMatchObject({ valid: true, movementCount: 1 });
+
+    const confirmed = await request(csvApp)
+      .post('/api/imports/planilla')
+      .set('x-filename', encodeURIComponent('movimientos.csv'))
+      .set('content-type', 'text/csv')
+      .send(Buffer.from(csv))
+      .expect(201);
+    expect(confirmed.body.data.persisted).toBe(false);
+    expect(confirmed.body.data.applied.lots.some((lot: { code: string }) => lot.code === '241')).toBe(true);
+  });
+
+  it('valida una carga de stock por formulario sin escribir y después la confirma', async () => {
+    repository.executePlanillaImport.mockClear();
+    const body = {
+      lotCode: '241', variety: 'Agata', quantityKg: 35160, date: '2026-03-09',
+      destination: 'Dos Panca', origin: 'Campo', remito: '1001', bags: 705,
+    };
+    const previewed = await request(app).post('/api/stock/intake/preview').send(body).expect(200);
+    expect(previewed.body.data).toMatchObject({ valid: true, movementCount: 1 });
+    expect(repository.executePlanillaImport).not.toHaveBeenCalled();
+
+    const confirmed = await request(app).post('/api/stock/intake').send(body).expect(201);
+    expect(confirmed.body.data).toMatchObject({ createdMovements: 1, persisted: true });
     expect(repository.executePlanillaImport).toHaveBeenCalledOnce();
   });
 });

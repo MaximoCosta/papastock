@@ -1,23 +1,24 @@
 import { FileSpreadsheet, ShieldCheck, Upload } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { formatKg, formatNumber } from '../../lib/formatters';
 import { confirmPlanillaImport, previewPlanillaImport } from '../../services/importService';
-import type { PlanillaImportPreview, PlanillaImportResult } from '../../types/domain';
+import type { PlanillaImportConfirmation, PlanillaImportPreview } from '../../types/domain';
 import { Button } from '../common/Button';
 import { LoadingLabel } from '../common/LoadingLabel';
 import { StatusBadge } from '../common/StatusBadge';
 
 export function PlanillaImportPanel({
-  canWrite,
+  fileInputRef,
   onImported,
 }: {
-  canWrite: boolean;
-  onImported: () => Promise<void>;
+  fileInputRef?: RefObject<HTMLInputElement | null>;
+  onImported: (confirmation: PlanillaImportConfirmation) => Promise<void>;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const localInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = fileInputRef ?? localInputRef;
   const [file, setFile] = useState<File>();
   const [preview, setPreview] = useState<PlanillaImportPreview>();
-  const [result, setResult] = useState<PlanillaImportResult>();
+  const [result, setResult] = useState<PlanillaImportConfirmation>();
   const [error, setError] = useState<string>();
   const [isReading, setIsReading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -32,7 +33,7 @@ export function PlanillaImportPanel({
     try {
       setPreview(await previewPlanillaImport(next));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'No se pudo leer la planilla.');
+      setError(cause instanceof Error ? cause.message : 'No se pudo leer el archivo.');
     } finally {
       setIsReading(false);
     }
@@ -45,9 +46,9 @@ export function PlanillaImportPanel({
     try {
       const saved = await confirmPlanillaImport(file);
       setResult(saved);
-      await onImported();
+      await onImported(saved);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'No se pudo importar la planilla.');
+      setError(cause instanceof Error ? cause.message : 'No se pudo cargar el archivo.');
     } finally {
       setIsConfirming(false);
     }
@@ -55,40 +56,32 @@ export function PlanillaImportPanel({
 
   return (
     <section className="border border-[#d8dad3] bg-white p-4">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="sr-only"
+        onChange={(event) => void onFile(event.target.files?.[0])}
+      />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6e746b]">Migración operativa</p>
-          <h2 className="mt-1 text-[15px] font-semibold text-[#20231f]">Importar planilla de movimientos</h2>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6e746b]">Carga de datos</p>
+          <h2 className="mt-1 text-[15px] font-semibold text-[#20231f]">Subir CSV o Excel</h2>
           <p className="mt-1 max-w-2xl text-[12px] leading-5 text-[#6b7068]">
-            Cargá el Excel de Papasud. El sistema lee remitos, lotes, kilos y destinos, muestra un preview y recién escribe en PostgreSQL cuando confirmás.
+            Elegí un .csv, .xls o .xlsx. El sistema arma el preview y, al confirmar, completa lotes, ubicaciones, stock y movimientos en la pantalla.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="sr-only"
-            onChange={(event) => void onFile(event.target.files?.[0])}
-          />
-          <Button variant="secondary" onClick={() => inputRef.current?.click()} disabled={!canWrite || isReading || isConfirming}>
-            <Upload size={14} /> {file ? 'Elegir otro archivo' : 'Seleccionar planilla'}
-          </Button>
-        </div>
+        <Button variant="secondary" onClick={() => inputRef.current?.click()} disabled={isReading || isConfirming}>
+          <Upload size={14} /> {file ? 'Elegir otro archivo' : 'Subir archivo'}
+        </Button>
       </div>
-
-      {!canWrite && (
-        <p className="mt-3 border border-[#ead49c] bg-[#fff7e3] px-3 py-2 text-[12px] text-[#865b14]">
-          La importación requiere PostgreSQL. En fallback mock no se escribe stock.
-        </p>
-      )}
 
       {error && (
         <p className="mt-3 border border-[#e4b9b4] bg-[#fdf0ee] px-3 py-2 text-[12px] text-[#943a34]">{error}</p>
       )}
 
       {isReading && (
-        <p className="mt-3 text-[12px] text-[#6b7068]"><LoadingLabel>Leyendo planilla…</LoadingLabel></p>
+        <p className="mt-3 text-[12px] text-[#6b7068]"><LoadingLabel>Leyendo archivo…</LoadingLabel></p>
       )}
 
       {file && !isReading && (
@@ -156,11 +149,11 @@ export function PlanillaImportPanel({
 
           <div className="flex items-center justify-end gap-2 border-t border-[#e7e8e3] pt-3">
             <p className="mr-auto max-w-xl text-[11px] text-[#747970]">
-              A-204 / A-310 / C-102 / F-301 no se tocan. El stock de los lotes importados se reconstruye a partir de la planilla.
+              Los datos se ven en Stock, Lotes y Movimientos. A-204 / A-310 / C-102 / F-301 no se modifican.
             </p>
             <Button onClick={() => void confirm()} disabled={!preview.valid || isConfirming || Boolean(result)}>
               <ShieldCheck size={14} />
-              {isConfirming ? 'Importando…' : result ? 'Importación confirmada' : 'Confirmar e importar'}
+              {isConfirming ? 'Cargando…' : result ? 'Datos cargados' : 'Cargar en la página'}
             </Button>
           </div>
         </div>
@@ -168,7 +161,9 @@ export function PlanillaImportPanel({
 
       {result && (
         <p className="mt-3 border border-[#bdd1c3] bg-[#edf4ee] px-3 py-2 text-[12px] text-[#28543b]">
-          Listo: {formatNumber(result.createdMovements)} movimientos, {formatNumber(result.createdLots)} lotes y {formatNumber(result.createdLocations)} ubicaciones. {result.skippedMovements > 0 ? `${result.skippedMovements} ya estaban importados.` : ''}
+          Listo: {formatNumber(result.createdMovements)} movimientos, {formatNumber(result.createdLots)} lotes y {formatNumber(result.createdLocations)} ubicaciones
+          {result.persisted ? ' guardados en PostgreSQL.' : ' cargados en esta sesión.'}
+          {result.skippedMovements > 0 ? ` ${result.skippedMovements} ya existían.` : ''}
         </p>
       )}
     </section>

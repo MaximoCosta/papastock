@@ -1,11 +1,12 @@
-import { ClipboardList, Filter, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ClipboardList, Filter, PackagePlus, Search, Upload } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/common/Button';
 import { PageHeader } from '../components/common/PageHeader';
 import { LocationsPanel } from '../components/stock/LocationsPanel';
 import { MovementsPanel } from '../components/stock/MovementsPanel';
 import { PlanillaImportPanel } from '../components/stock/PlanillaImportPanel';
+import { StockIntakeForm } from '../components/stock/StockIntakeForm';
 import { StockControlWizard } from '../components/stock/StockControlWizard';
 import { parseStockHubTab, StockHubTabs, type StockHubTab } from '../components/stock/StockHubTabs';
 import { StockTable } from '../components/stock/StockTable';
@@ -32,7 +33,10 @@ export function StockPage() {
     removeShelfUnit,
     assignStockToShelf,
     refreshData,
+    applyImportedSnapshot,
   } = useAppData();
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [intakeOpen, setIntakeOpen] = useState(false);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
@@ -71,15 +75,29 @@ export function StockPage() {
     }
   }
 
-  const headerActions = activeTab === 'consolidado' ? (
-    <Button variant="secondary" onClick={generatePlanilla} disabled={records.length === 0}>
-      <ClipboardList size={14} /> Generar planilla
+  const uploadButton = (
+    <Button variant="secondary" onClick={() => importInputRef.current?.click()}>
+      <Upload size={14} /> Subir archivo
     </Button>
-  ) : activeTab === 'control' ? (
-    <Button variant="secondary" onClick={() => setTab('consolidado')}>Ver consolidado</Button>
-  ) : activeTab === 'modelo' ? (
-    <Button variant="secondary" onClick={() => setTab('ubicaciones')}>Vista lista</Button>
-  ) : undefined;
+  );
+
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <Button variant="secondary" onClick={() => setIntakeOpen((value) => !value)}>
+        <PackagePlus size={14} /> Cargar stock
+      </Button>
+      {uploadButton}
+      {activeTab === 'consolidado' ? (
+        <Button variant="secondary" onClick={generatePlanilla} disabled={records.length === 0}>
+          <ClipboardList size={14} /> Generar planilla
+        </Button>
+      ) : activeTab === 'control' ? (
+        <Button variant="secondary" onClick={() => setTab('consolidado')}>Ver consolidado</Button>
+      ) : activeTab === 'modelo' ? (
+        <Button variant="secondary" onClick={() => setTab('ubicaciones')}>Vista lista</Button>
+      ) : null}
+    </div>
+  );
 
   return (
     <>
@@ -89,6 +107,30 @@ export function StockPage() {
         description="Consolidado, ubicaciones, modelo de depósito, movimientos y control físico con planilla + foto IA."
         actions={headerActions}
       />
+
+      {intakeOpen && (
+        <StockIntakeForm
+          locations={locations}
+          onClose={() => setIntakeOpen(false)}
+          onLoaded={async (confirmation) => {
+            applyImportedSnapshot(confirmation.applied);
+            if (dataSource === 'database') await refreshData();
+            setIntakeOpen(false);
+            setTab('consolidado');
+          }}
+        />
+      )}
+
+      <div className="mb-4">
+        <PlanillaImportPanel
+          fileInputRef={importInputRef}
+          onImported={async (confirmation) => {
+            applyImportedSnapshot(confirmation.applied);
+            if (dataSource === 'database') await refreshData();
+            setTab('consolidado');
+          }}
+        />
+      </div>
 
       <StockHubTabs active={activeTab} onChange={setTab} />
 
@@ -148,16 +190,13 @@ export function StockPage() {
       )}
 
       {activeTab === 'movimientos' && (
-        <div className="space-y-4">
-          <PlanillaImportPanel canWrite={dataSource === 'database'} onImported={refreshData} />
-          <MovementsPanel
-            movements={movements}
-            locations={locations}
-            lots={lots}
-            transporters={transporters}
-            onAdd={addMovement}
-          />
-        </div>
+        <MovementsPanel
+          movements={movements}
+          locations={locations}
+          lots={lots}
+          transporters={transporters}
+          onAdd={addMovement}
+        />
       )}
 
       {activeTab === 'control' && (
