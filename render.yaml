@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: papastock
+    runtime: node
+    plan: starter
+    region: virginia
+    buildCommand: npm ci && npm run build
+    preDeployCommand: npm run db:migrate
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: papastock-db
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: openai/gpt-oss-20b
+
+databases:
+  - name: papastock-db
+    plan: basic-256mb
+    region: virginia
+    postgresMajorVersion: "18"
+    databaseName: papastock
+    user: papastock
+    ipAllowList: []
