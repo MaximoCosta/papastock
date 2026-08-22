@@ -1,40 +1,52 @@
-import { ArrowRight, CheckCircle2, FileOutput, Receipt, Truck } from 'lucide-react';
-import { useState } from 'react';
-import { formatKg } from '../../lib/formatters';
-import type { Transporter } from '../../types/domain';
+import { ArrowRight, CheckCircle2, FileOutput, Files, Package, Receipt, Truck } from 'lucide-react';
+import { formatKg, formatMoney } from '../../lib/formatters';
+import type { DerivedPacking } from '../../lib/documentPacking';
+import type { Lot, Transporter } from '../../types/domain';
 import type { ExportDocumentItem } from '../../types/export';
 import { Button } from '../common/Button';
 import { TransporterProfileCard } from '../transporters/TransporterProfileCard';
 
 export function ExportSummary({
+  lots,
   items,
-  totalQuantity,
   destination,
+  quantity,
   buyerName,
   incoterm,
   departurePort,
   arrivalPort,
   departureDate,
+  packing,
+  unitPrice,
+  currency,
   transporter,
+  onGeneratePack,
   onGenerateProforma,
   onGenerateFactura,
   onGenerateRemito,
+  onGenerateListaEmpaque,
 }: {
+  lots: Lot[];
   items: ExportDocumentItem[];
-  totalQuantity: number;
   destination: string;
+  quantity: number;
   buyerName: string;
   incoterm: string;
   departurePort: string;
   arrivalPort: string;
   departureDate: string;
+  packing: DerivedPacking;
+  unitPrice: number;
+  currency: string;
   transporter?: Transporter;
+  onGeneratePack: () => void;
   onGenerateProforma: () => void;
-  onGenerateFactura: (unitPrice: number, currency: string) => void;
+  onGenerateFactura: () => void;
   onGenerateRemito: () => void;
+  onGenerateListaEmpaque: () => void;
 }) {
-  const [unitPrice, setUnitPrice] = useState(0.35);
-  const currency = 'USD';
+  const lotLabel = lots.map((lot) => lot.code).join(' · ') || '—';
+  const total = quantity * unitPrice;
 
   return (
     <section className="space-y-3">
@@ -47,14 +59,14 @@ export function ExportSummary({
             <p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#53715c]">Documentación lista</p>
             <h2 className="mt-1 text-[15px] font-semibold text-[#25412f]">Todos los requisitos fueron encontrados</h2>
             <p className="mt-1 text-[11px] leading-5 text-[#617267]">
-              La trazabilidad de cada lote y el perfil del transportista respaldan la emisión documental.
+              La trazabilidad de {lots.length === 1 ? 'el lote' : 'los lotes'} y el perfil del transportista respaldan la emisión del paquete documental.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[#405247]">
-              <span>{items.length === 1 ? items[0].lotCode : `${items.length} lotes`}</span>
+              <span>{lotLabel}</span>
               <ArrowRight size={13} />
               <span>{destination}</span>
               <span className="mx-1 text-[#b1bcb4]">·</span>
-              <span>{formatKg(totalQuantity)}</span>
+              <span>{formatKg(quantity)}</span>
               <span className="mx-1 text-[#b1bcb4]">·</span>
               <span>{incoterm}</span>
             </div>
@@ -75,7 +87,7 @@ export function ExportSummary({
           {items.length > 1 && (
             <div className="grid grid-cols-[1fr_1.2fr_auto] gap-4 border-t border-[#c7dacc] px-5 py-2.5 text-[11px] font-bold text-[#25412f]">
               <span className="col-span-2">Total</span>
-              <span className="tabular text-right">{formatKg(totalQuantity)}</span>
+              <span className="tabular text-right">{formatKg(quantity)}</span>
             </div>
           )}
         </div>
@@ -85,28 +97,28 @@ export function ExportSummary({
           <div><dt className="label">Despacho</dt><dd className="mt-0.5 font-semibold tabular text-[#333832]">{departureDate || '—'}</dd></div>
           <div><dt className="label">Salida</dt><dd className="mt-0.5 text-[#333832]">{departurePort || '—'}</dd></div>
           <div><dt className="label">Llegada</dt><dd className="mt-0.5 text-[#333832]">{arrivalPort || '—'}</dd></div>
+          <div><dt className="label">Bultos</dt><dd className="mt-0.5 font-semibold tabular text-[#333832]">{packing.bagCount} · bruto {formatKg(packing.grossWeightKg)}</dd></div>
+          <div><dt className="label">Importe</dt><dd className="mt-0.5 font-semibold tabular text-[#333832]">{unitPrice > 0 ? formatMoney(total, currency) : '—'}</dd></div>
         </dl>
 
-        <div className="flex flex-wrap items-end gap-3 border-t border-[#c7dacc] px-5 py-4">
-          <Button onClick={onGenerateProforma}><FileOutput size={15} /> Generar proforma</Button>
-          <label>
-            <span className="label">Precio unit. (USD/kg)</span>
-            <input
-              className="field tabular w-[140px]"
-              type="number"
-              min="0"
-              step="0.01"
-              value={unitPrice || ''}
-              onChange={(event) => setUnitPrice(Number(event.target.value))}
-            />
-          </label>
-          <Button variant="secondary" onClick={() => onGenerateFactura(unitPrice, currency)} disabled={unitPrice <= 0}>
-            <Receipt size={15} /> Generar factura
+        <div className="flex flex-wrap items-end gap-2 border-t border-[#c7dacc] px-5 py-4">
+          <Button onClick={onGeneratePack} disabled={unitPrice <= 0 || !transporter}>
+            <Files size={15} /> Emitir paquete documental
+          </Button>
+          <Button variant="secondary" onClick={onGenerateProforma}><FileOutput size={15} /> Proforma</Button>
+          <Button variant="secondary" onClick={onGenerateFactura} disabled={unitPrice <= 0}>
+            <Receipt size={15} /> Factura
+          </Button>
+          <Button variant="secondary" onClick={onGenerateListaEmpaque}>
+            <Package size={15} /> Lista de empaque
           </Button>
           <Button variant="secondary" onClick={onGenerateRemito} disabled={!transporter}>
-            <Truck size={15} /> Generar remito
+            <Truck size={15} /> Remito
           </Button>
         </div>
+        <p className="px-5 pb-4 text-[10px] leading-4 text-[#617267]">
+          El paquete emite proforma, factura, lista de empaque y remito con los mismos datos congelados. Cada documento también se puede generar por separado.
+        </p>
       </div>
 
       {transporter && <TransporterProfileCard transporter={transporter} compact />}

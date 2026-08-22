@@ -16,6 +16,8 @@ export function formatKg(value: number): string {
   return `${numberFormatter.format(value)} kg`;
 }
 
+export { formatQuantity } from './quantity';
+
 export function formatSignedKg(value: number): string {
   const sign = value > 0 ? '+' : '';
   return `${sign}${numberFormatter.format(value)} kg`;
@@ -27,6 +29,10 @@ export function formatNumber(value: number): string {
 
 export function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
+}
+
+export function formatMoney(value: number, currency = 'USD'): string {
+  return `${currency} ${currencyFormatter.format(value)}`;
 }
 
 export function formatDate(value: string): string {

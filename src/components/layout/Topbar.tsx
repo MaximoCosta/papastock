@@ -5,7 +5,13 @@ import { useDemoSession } from '../../state/DemoSessionContext';
 const sectionTitles: Record<string, string> = {
   '/': 'Control operativo',
   '/stock': 'Stock consolidado',
+  '/stock/control': 'Control de stock',
+  '/locations': 'Ubicaciones',
+  '/warehouse': 'Modelo de depósito',
   '/lots': 'Lotes y trazabilidad',
+  '/movements': 'Movimientos',
+  '/movements/new': 'Movimiento de stock',
+  '/transporters': 'Transportistas',
   '/exports/new': 'Preparación de exportación',
   '/documents': 'Documentación emitida',
 };

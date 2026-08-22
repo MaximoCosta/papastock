@@ -9,13 +9,16 @@ describe('PapaStockRepository', () => {
       { rowCount: 1, rows: [{ id: 'lot', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' }] },
       { rowCount: 1, rows: [{ id: 'stock', lot_id: 'lot', location_id: 'loc', declared_quantity: '25000', verified_quantity: '24000', verification_pending: false, updated_at: 'x' }] },
       { rowCount: 1, rows: [{ id: 'move', reference: 'MV-1032', lot_id: 'lot', origin_location_id: null, destination_location_id: 'loc', quantity: '1000', movement_date: '2026-08-20', status: 'pending', created_at: 'x' }] },
+      { rowCount: 1, rows: [{ id: 'mitem-move', movement_id: 'move', lot_id: 'lot', dispatched_quantity: '1000', received_quantity: null, received_at: null, unit: 'kg', sort_order: 0, created_at: 'x' }] },
+      { rowCount: 0, rows: [] },
+      { rowCount: 0, rows: [] },
       { rowCount: 0, rows: [] },
     ];
     const query = vi.fn(async () => responses.shift());
     const repository = new PapaStockRepository({ query } as unknown as pg.Pool);
     const result = await repository.loadSnapshot();
 
-    expect(query).toHaveBeenCalledTimes(5);
+    expect(query).toHaveBeenCalledTimes(8);
     expect(result.stockRecords[0]).toMatchObject({ declaredQuantity: 25000, verifiedQuantity: 24000 });
     expect(result.movements[0]).toMatchObject({ reference: 'MV-1032', quantity: 1000 });
   });
@@ -30,12 +33,18 @@ describe('PapaStockRepository', () => {
       if (sql.includes('from public.lots')) return { rows: [{ id: 'lot', code: 'A-310', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' }] };
       if (sql.includes('from public.stock_records')) return { rows: [{ id: 'stock', lot_id: 'lot', location_id: 'central', declared_quantity: '22000', verified_quantity: '22000', verification_pending: false, updated_at: 'x' }] };
       if (sql.includes('insert into public.movements')) return { rows: [{ id: 'move', reference: 'MV-N01-TEST', lot_id: 'lot', origin_location_id: 'central', destination_location_id: 'warehouse', quantity: '500', movement_date: '2026-08-22', status: 'completed', created_at: 'x' }] };
+      if (sql.includes('insert into public.movement_items')) return { rows: [{ id: 'mitem', movement_id: 'move', lot_id: 'lot', dispatched_quantity: '500', received_quantity: null, received_at: null, unit: 'kg', sort_order: 0, created_at: 'x' }] };
       return { rows: [] };
     });
     const release = vi.fn();
     const repository = new PapaStockRepository({ connect: async () => ({ query, release }) } as unknown as pg.Pool);
 
-    const result = await repository.executeStockTransfer({ action: 'transfer', lotCode: 'A-310', quantityKg: 500, origin: 'Frigorífico Central', destination: 'Galpón Principal' });
+    const result = await repository.executeStockTransfer({
+      action: 'transfer',
+      origin: 'Frigorífico Central',
+      destination: 'Galpón Principal',
+      items: [{ lotCode: 'A-310', quantity: 500, unit: 'kg' }],
+    });
 
     expect(result).toMatchObject({ status: 'completed', quantity: 500 });
     expect(query.mock.calls.some(([sql]) => String(sql).startsWith('update public.stock_records'))).toBe(true);
@@ -57,7 +66,12 @@ describe('PapaStockRepository', () => {
     });
     const repository = new PapaStockRepository({ connect: async () => ({ query, release: vi.fn() }) } as unknown as pg.Pool);
 
-    await expect(repository.executeStockTransfer({ action: 'transfer', lotCode: 'A-204', quantityKg: 500, origin: 'Frigorífico Central', destination: 'Galpón Principal' })).rejects.toMatchObject({ status: 409 });
+    await expect(repository.executeStockTransfer({
+      action: 'transfer',
+      origin: 'Frigorífico Central',
+      destination: 'Galpón Principal',
+      items: [{ lotCode: 'A-204', quantity: 500, unit: 'kg' }],
+    })).rejects.toMatchObject({ status: 409 });
     expect(query).toHaveBeenCalledWith('rollback');
     expect(query.mock.calls.some(([sql]) => String(sql).startsWith('update public.stock_records'))).toBe(false);
   });
@@ -89,12 +103,12 @@ describe('PapaStockRepository', () => {
         ], rowCount: 2 };
       }
       if (sql.startsWith('insert into public.movements')) return { rows: [], rowCount: 1 };
-      if (sql.includes('from public.movements where lot_id')) {
+      if (sql.includes('from public.movement_items items')) {
         expect(params?.[0]).toBe('lot-imp-241');
         return { rows: [{
-          id: 'mov', reference: 'IMP-1', lot_id: 'lot-imp-241', origin_location_id: 'loc-imp-campo',
-          destination_location_id: 'loc-imp-dos-panca', quantity: '35160', movement_date: '2026-03-09',
-          status: 'completed', created_at: 'x', data: {},
+          id: 'mitem', movement_id: 'mov', lot_id: 'lot-imp-241', dispatched_quantity: '35160',
+          received_quantity: null, received_at: null, unit: 'kg', sort_order: 0, created_at: 'x',
+          origin_location_id: 'loc-imp-campo', destination_location_id: 'loc-imp-dos-panca', status: 'completed',
         }], rowCount: 1 };
       }
       if (sql.startsWith('insert into public.stock_records')) {
@@ -129,5 +143,86 @@ describe('PapaStockRepository', () => {
     expect(result.createdMovements).toBe(1);
     expect(query.mock.calls.some((call) => String(call[0]).includes('stock_records') && call[1]?.includes('lot-a204'))).toBe(false);
     expect(query).toHaveBeenCalledWith('commit');
+  });
+
+  it('TEST A: un movimiento con dos ítems y commit', async () => {
+    const insertedItems: unknown[] = [];
+    const query = vi.fn(async (sql: string) => {
+      if (sql === 'begin' || sql === 'commit' || sql === 'rollback') return { rows: [] };
+      if (sql.includes('from public.locations')) return { rows: [
+        { id: 'oriente', name: 'Campo Oriente', type: 'warehouse', created_at: 'x' },
+        { id: 'friga', name: 'Frigorífico A', type: 'cold_storage', created_at: 'x' },
+      ] };
+      if (sql.includes('from public.lots')) return { rows: [
+        { id: 'lot-300', code: '300', variety: 'Spunta', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' },
+        { id: 'lot-301', code: '301', variety: 'Spunta', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' },
+      ] };
+      if (sql.includes('from public.stock_records')) return { rows: [
+        { id: 's300', lot_id: 'lot-300', location_id: 'oriente', declared_quantity: '500', verified_quantity: '500', verification_pending: false, updated_at: 'x', unit: 'bags' },
+        { id: 's301', lot_id: 'lot-301', location_id: 'oriente', declared_quantity: '300', verified_quantity: '300', verification_pending: false, updated_at: 'x', unit: 'bags' },
+      ] };
+      if (sql.includes('insert into public.movements')) return { rows: [{
+        id: 'move-315', reference: 'MV-N01-TEST', lot_id: null, origin_location_id: 'oriente',
+        destination_location_id: 'friga', quantity: '600', movement_date: '2026-08-22', status: 'completed',
+        remito_number: '315', created_at: 'x',
+      }] };
+      if (sql.includes('insert into public.movement_items')) {
+        insertedItems.push(sql);
+        return { rows: [{
+          id: `mitem-${insertedItems.length}`, movement_id: 'move-315', lot_id: insertedItems.length === 1 ? 'lot-300' : 'lot-301',
+          dispatched_quantity: insertedItems.length === 1 ? '400' : '200', received_quantity: null, received_at: null,
+          unit: 'bags', sort_order: insertedItems.length - 1, created_at: 'x',
+        }] };
+      }
+      return { rows: [] };
+    });
+    const repository = new PapaStockRepository({ connect: async () => ({ query, release: vi.fn() }) } as unknown as pg.Pool);
+    const result = await repository.executeStockTransfer({
+      action: 'transfer',
+      remitoNumber: '315',
+      origin: 'Campo Oriente',
+      destination: 'Frigorífico A',
+      items: [
+        { lotCode: '300', quantity: 400, unit: 'bags' },
+        { lotCode: '301', quantity: 200, unit: 'bags' },
+      ],
+    });
+    expect(result.remitoNumber).toBe('315');
+    expect(result.items).toHaveLength(2);
+    expect(insertedItems).toHaveLength(2);
+    expect(query).toHaveBeenCalledWith('commit');
+  });
+
+  it('TEST B: rollback si el segundo lote no tiene stock', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql === 'begin' || sql === 'commit' || sql === 'rollback') return { rows: [] };
+      if (sql.includes('from public.locations')) return { rows: [
+        { id: 'oriente', name: 'Campo Oriente', type: 'warehouse', created_at: 'x' },
+        { id: 'friga', name: 'Frigorífico A', type: 'cold_storage', created_at: 'x' },
+      ] };
+      if (sql.includes('from public.lots')) return { rows: [
+        { id: 'lot-300', code: '300', variety: 'Spunta', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' },
+        { id: 'lot-301', code: '301', variety: 'Spunta', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' },
+      ] };
+      if (sql.includes('from public.stock_records')) return { rows: [
+        { id: 's300', lot_id: 'lot-300', location_id: 'oriente', declared_quantity: '500', verified_quantity: '500', verification_pending: false, updated_at: 'x', unit: 'bags' },
+        { id: 's301', lot_id: 'lot-301', location_id: 'oriente', declared_quantity: '100', verified_quantity: '100', verification_pending: false, updated_at: 'x', unit: 'bags' },
+      ] };
+      return { rows: [] };
+    });
+    const repository = new PapaStockRepository({ connect: async () => ({ query, release: vi.fn() }) } as unknown as pg.Pool);
+    await expect(repository.executeStockTransfer({
+      action: 'transfer',
+      remitoNumber: '315',
+      origin: 'Campo Oriente',
+      destination: 'Frigorífico A',
+      items: [
+        { lotCode: '300', quantity: 400, unit: 'bags' },
+        { lotCode: '301', quantity: 200, unit: 'bags' },
+      ],
+    })).rejects.toMatchObject({ status: 409 });
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(query.mock.calls.some(([sql]) => String(sql).startsWith('update public.stock_records'))).toBe(false);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('insert into public.movements'))).toBe(false);
   });
 });

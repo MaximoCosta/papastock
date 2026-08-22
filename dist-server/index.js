@@ -103,94 +103,314 @@ var transporters = [
   }
 ];
 
-// server/repositories/mappers.ts
-var mapLocation = (row) => ({ id: row.id, name: row.name, type: row.type });
-var mapLot = (row) => ({
-  id: row.id,
-  code: row.code,
-  variety: row.variety,
-  campaign: row.campaign,
-  producer: row.producer,
-  origin: row.origin,
-  harvestDate: row.harvest_date ?? void 0
-});
-var mapStockRecord = (row) => ({
-  id: row.id,
-  lotId: row.lot_id,
-  locationId: row.location_id,
-  declaredQuantity: Number(row.declared_quantity),
-  verifiedQuantity: Number(row.verified_quantity),
-  verificationPending: row.verification_pending,
-  updatedAt: row.updated_at
-});
-var mapMovement = (row) => {
-  const data = row.data && typeof row.data === "object" && !Array.isArray(row.data) ? row.data : void 0;
-  const entries = data ? Object.entries(data).filter(([, value]) => value !== void 0) : [];
-  return {
-    id: row.id,
-    reference: row.reference,
-    lotId: row.lot_id,
-    originLocationId: row.origin_location_id ?? void 0,
-    destinationLocationId: row.destination_location_id ?? void 0,
-    quantity: Number(row.quantity),
-    date: row.movement_date,
-    status: row.status,
-    data: entries.length > 0 ? Object.fromEntries(entries) : void 0
-  };
-};
-var mapTraceabilityEvent = (row) => ({
-  id: row.id,
-  lotId: row.lot_id,
-  type: row.event_type,
-  date: row.event_date,
-  locationId: row.location_id ?? void 0,
-  data: typeof row.data === "object" && row.data !== null && !Array.isArray(row.data) ? row.data : {}
-});
-
-// server/services/stockTransfer.ts
-var EPSILON = 1e-3;
-function normalize(value) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+// src/lib/quantity.ts
+function normalizeUnit(value) {
+  const normalized = value?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  if (!normalized) return void 0;
+  if (["kg", "kilo", "kilos", "kilogramo", "kilogramos"].includes(normalized)) return "kg";
+  if (["bag", "bags", "bolsa", "bolsas"].includes(normalized)) return "bags";
+  return void 0;
 }
-function buildStockTransferPreview(intent, snapshot) {
+function stockUnit(record) {
+  return record?.unit === "bags" ? "bags" : "kg";
+}
+
+// src/lib/movements.ts
+function movementItemsOf(movement) {
+  if (movement.items && movement.items.length > 0) return movement.items;
+  if (movement.lotId && movement.quantity && movement.quantity > 0) {
+    return [{
+      id: `${movement.id}-legacy`,
+      movementId: movement.id,
+      lotId: movement.lotId,
+      dispatchedQuantity: movement.quantity,
+      unit: "kg",
+      sortOrder: 0
+    }];
+  }
+  return [];
+}
+function movementTouchesLot(movement, lotId) {
+  if (movement.lotId === lotId) return true;
+  return movementItemsOf(movement).some((item2) => item2.lotId === lotId);
+}
+function movementQuantityForLot(movement, lotId) {
+  const items = movementItemsOf(movement);
+  if (!lotId) {
+    if (items.length === 0) return Number(movement.quantity ?? 0);
+    const units = new Set(items.map((item2) => item2.unit));
+    if (units.size !== 1) return Number(movement.quantity ?? items[0]?.dispatchedQuantity ?? 0);
+    return items.reduce((total, item2) => total + item2.dispatchedQuantity, 0);
+  }
+  return items.filter((item2) => item2.lotId === lotId).reduce((total, item2) => total + item2.dispatchedQuantity, 0);
+}
+function movementPrimaryLotId(movement) {
+  return movement.lotId ?? movementItemsOf(movement)[0]?.lotId ?? "";
+}
+function expandLegacyIntent(intent) {
+  if (intent.items?.length) {
+    return {
+      ...intent,
+      action: "transfer",
+      items: intent.items.map((item2) => ({
+        lotCode: item2.lotCode.trim(),
+        quantity: item2.quantity,
+        unit: item2.unit
+      })),
+      lotCode: intent.items[0]?.lotCode,
+      quantityKg: intent.items.length === 1 && intent.items[0]?.unit === "kg" ? intent.items[0].quantity : void 0
+    };
+  }
+  if (intent.lotCode && intent.quantityKg && intent.quantityKg > 0) {
+    const items = [{
+      lotCode: intent.lotCode,
+      quantity: intent.quantityKg,
+      unit: "kg"
+    }];
+    return { ...intent, action: "transfer", items };
+  }
+  return { ...intent, action: "transfer", items: intent.items ?? [] };
+}
+function stockKey(lotId, locationId, unit) {
+  return `${lotId}:${locationId}:${unit}`;
+}
+function recordMatchesUnit(record, unit) {
+  return stockUnit(record) === unit;
+}
+
+// src/lib/stockVerification.ts
+var PROTECTED_DEMO_LOT_CODES = /* @__PURE__ */ new Set(["A-204", "A-310", "C-102", "F-301"]);
+function issue(code, message) {
+  return { sheet: "verificaci\xF3n", rowNumber: 0, code, message };
+}
+function buildStockVerificationPreview(input, records) {
+  const record = records.find((item2) => item2.id === input.stockRecordId);
+  const countedQuantity = Number(input.countedQuantity);
+  const issues = [];
+  if (!record) {
+    issues.push(issue("RECORD_NOT_FOUND", "Seleccion\xE1 un lote y una ubicaci\xF3n existentes."));
+  }
+  if (record && PROTECTED_DEMO_LOT_CODES.has(record.lot.code)) {
+    issues.push(issue("PROTECTED_DEMO_LOT", `El lote ${record.lot.code} es de demo y no se verifica por este formulario.`));
+  }
+  if (!Number.isFinite(countedQuantity) || countedQuantity < 0) {
+    issues.push(issue("INVALID_QUANTITY", "Ingres\xE1 los kilos contados (0 o m\xE1s)."));
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
+    issues.push(issue("INVALID_DATE", "Ingres\xE1 la fecha del conteo."));
+  }
+  const declaredQuantity = record?.declaredQuantity ?? 0;
+  const previousVerified = record?.verifiedQuantity ?? 0;
+  return {
+    valid: issues.length === 0,
+    issues,
+    stockRecordId: input.stockRecordId,
+    lotId: record?.lotId ?? "",
+    lotCode: record?.lot.code ?? "",
+    variety: record?.lot.variety ?? "",
+    locationId: record?.locationId ?? "",
+    locationName: record?.location.name ?? "",
+    declaredQuantity,
+    previousVerified,
+    countedQuantity: Number.isFinite(countedQuantity) ? countedQuantity : 0,
+    difference: Number.isFinite(countedQuantity) ? countedQuantity - declaredQuantity : 0,
+    verificationPending: Boolean(record?.verificationPending),
+    date: input.date,
+    bags: input.bags,
+    notes: input.notes
+  };
+}
+function toStockVerificationConfirmation(preview, persisted, eventId) {
+  return {
+    persisted,
+    correction: {
+      stockRecordId: preview.stockRecordId,
+      lotCode: preview.lotCode,
+      countedQuantity: preview.countedQuantity,
+      previousVerified: preview.previousVerified,
+      notes: preview.notes
+    },
+    event: {
+      id: eventId ?? `verify-${preview.stockRecordId}`,
+      lotId: preview.lotId,
+      type: "stock_verification",
+      date: preview.date,
+      locationId: preview.locationId || void 0,
+      data: {
+        verifiedQuantity: preview.countedQuantity,
+        ...preview.bags ? { bags: preview.bags } : {},
+        ...preview.notes ? { notes: preview.notes } : {},
+        origin: "operator_confirmation"
+      }
+    }
+  };
+}
+
+// src/services/stockService.ts
+function getStockStatus(declared, verified, pending = false) {
+  if (pending) return "pending";
+  return declared === verified ? "verified" : "discrepancy";
+}
+function getStockViews(stockRecords2, lots2, locations2) {
+  return stockRecords2.flatMap((record) => {
+    const lot = lots2.find((item2) => item2.id === record.lotId);
+    const location = locations2.find((item2) => item2.id === record.locationId);
+    if (!lot || !location) return [];
+    const declaredQuantity = Number(record.declaredQuantity) || 0;
+    const verifiedQuantity = Number(record.verifiedQuantity) || 0;
+    return [{
+      ...record,
+      lot,
+      location,
+      declaredQuantity,
+      verifiedQuantity,
+      difference: verifiedQuantity - declaredQuantity,
+      status: getStockStatus(
+        declaredQuantity,
+        verifiedQuantity,
+        record.verificationPending
+      )
+    }];
+  });
+}
+
+// server/services/lotCorrection.ts
+var EPSILON = 1e-3;
+function buildLotCorrectionPlan(input, original, lots2, stockRecords2) {
   const errors = [];
-  const lot = snapshot.lots.find((item) => normalize(item.code) === normalize(intent.lotCode));
-  const origin = snapshot.locations.find((item) => normalize(item.id) === normalize(intent.origin) || normalize(item.name) === normalize(intent.origin));
-  const destination = snapshot.locations.find((item) => normalize(item.id) === normalize(intent.destination) || normalize(item.name) === normalize(intent.destination));
-  if (!Number.isFinite(intent.quantityKg) || intent.quantityKg <= 0) {
-    errors.push({ code: "INVALID_QUANTITY", message: "La cantidad debe ser mayor a cero." });
+  const fromLot = lots2.find((lot) => lot.code.toLowerCase() === input.fromLotCode.toLowerCase());
+  const toLot = lots2.find((lot) => lot.code.toLowerCase() === input.toLotCode.toLowerCase());
+  if (!fromLot) errors.push({ code: "LOT_NOT_FOUND", message: `No existe el lote ${input.fromLotCode}.` });
+  if (!toLot) errors.push({ code: "LOT_NOT_FOUND", message: `No existe el lote ${input.toLotCode}.` });
+  if (fromLot && toLot && fromLot.id === toLot.id) {
+    errors.push({ code: "SAME_LOT", message: "La correcci\xF3n tiene que reasignar entre dos lotes distintos." });
   }
-  if (!lot) errors.push({ code: "LOT_NOT_FOUND", message: `No existe el lote ${intent.lotCode}.` });
-  if (!origin) errors.push({ code: "ORIGIN_NOT_FOUND", message: `No existe la ubicaci\xF3n de origen \u201C${intent.origin}\u201D.` });
-  if (!destination) errors.push({ code: "DESTINATION_NOT_FOUND", message: `No existe la ubicaci\xF3n de destino \u201C${intent.destination}\u201D.` });
-  if (origin && destination && origin.id === destination.id) {
-    errors.push({ code: "SAME_LOCATION", message: "El origen y el destino deben ser distintos." });
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    errors.push({ code: "INVALID_QUANTITY", message: "La cantidad a reasignar debe ser mayor a cero." });
   }
-  const lotStock = lot ? snapshot.stockRecords.filter((item) => item.lotId === lot.id) : [];
-  const originRecord = origin ? lotStock.find((item) => item.locationId === origin.id) : void 0;
-  if (lot && origin && !originRecord) {
-    errors.push({ code: "ORIGIN_STOCK_NOT_FOUND", message: `El lote ${lot.code} no tiene stock registrado en ${origin.name}.` });
+  if (original.kind === "correction") {
+    errors.push({ code: "ALREADY_CORRECTION", message: "No se corrige una correcci\xF3n. Referenci\xE1 el movimiento original." });
   }
-  if (originRecord && intent.quantityKg > originRecord.verifiedQuantity + EPSILON) {
-    errors.push({ code: "INSUFFICIENT_VERIFIED_STOCK", message: "La cantidad supera el stock verificado disponible en origen." });
+  const originalItems = movementItemsOf(original);
+  if (fromLot && !originalItems.some((item2) => item2.lotId === fromLot.id)) {
+    errors.push({ code: "LOT_NOT_IN_MOVEMENT", message: `El lote ${fromLot.code} no participa del movimiento original.` });
   }
-  if (originRecord && intent.quantityKg > originRecord.declaredQuantity + EPSILON) {
-    errors.push({ code: "INSUFFICIENT_DECLARED_STOCK", message: "La cantidad supera el stock declarado disponible en origen." });
+  const toStock = toLot ? stockRecords2.find((record) => record.lotId === toLot.id && record.locationId === input.locationId && recordMatchesUnit(record, input.unit)) : void 0;
+  if (toLot && !toStock) {
+    errors.push({
+      code: "ORIGIN_STOCK_NOT_FOUND",
+      message: `El lote ${toLot.code} no tiene stock ${input.unit} en la ubicaci\xF3n de la correcci\xF3n.`
+    });
   }
-  if (lotStock.some((item) => item.verificationPending || Math.abs(item.verifiedQuantity - item.declaredQuantity) > EPSILON)) {
-    errors.push({ code: "UNRESOLVED_DISCREPANCY", message: "El lote presenta una discrepancia o verificaci\xF3n pendiente." });
+  if (toStock && input.quantity > toStock.verifiedQuantity + EPSILON) {
+    errors.push({ code: "INSUFFICIENT_VERIFIED_STOCK", message: "No hay stock verificado suficiente para reasignar." });
+  }
+  if (toStock && input.quantity > toStock.declaredQuantity + EPSILON) {
+    errors.push({ code: "INSUFFICIENT_DECLARED_STOCK", message: "No hay stock declarado suficiente para reasignar." });
   }
   return {
     valid: errors.length === 0,
     errors,
-    intent,
-    lot,
-    origin,
-    destination,
-    originStock: originRecord && {
-      declaredQuantity: originRecord.declaredQuantity,
-      verifiedQuantity: originRecord.verifiedQuantity
+    fromLot,
+    toLot,
+    locationId: input.locationId,
+    quantity: input.quantity,
+    unit: input.unit
+  };
+}
+
+// server/services/movementReception.ts
+var EPSILON2 = 1e-3;
+function buildReceptionPlan(movement, input) {
+  const errors = [];
+  const items = movementItemsOf(movement);
+  if (items.length === 0) {
+    errors.push({ code: "NO_ITEMS", message: "El movimiento no tiene l\xEDneas para recepcionar." });
+  }
+  if (movement.kind === "correction") {
+    errors.push({ code: "NOT_RECEIVABLE", message: "Una correcci\xF3n no se recepciona." });
+  }
+  const itemUpdates = [];
+  const stockAdjustments = [];
+  const discrepancies = [];
+  if (input.items?.length) {
+    for (const line of input.items) {
+      const item2 = items.find((candidate) => candidate.id === line.movementItemId);
+      if (!item2) {
+        errors.push({ code: "ITEM_NOT_FOUND", message: `No existe la l\xEDnea ${line.movementItemId}.` });
+        continue;
+      }
+      if (!Number.isFinite(line.receivedQuantity) || line.receivedQuantity < 0) {
+        errors.push({ code: "INVALID_QUANTITY", message: "La cantidad recibida no puede ser negativa." });
+        continue;
+      }
+      const difference2 = line.receivedQuantity - item2.dispatchedQuantity;
+      itemUpdates.push({ item: item2, receivedQuantity: line.receivedQuantity, difference: difference2 });
+      if (Math.abs(difference2) > EPSILON2) {
+        stockAdjustments.push({ lotId: item2.lotId, unit: item2.unit, deltaVerified: difference2 });
+        discrepancies.push({
+          movementId: movement.id,
+          movementItemId: item2.id,
+          lotId: item2.lotId,
+          locationId: movement.destinationLocationId,
+          type: "reception_shortfall",
+          expectedQuantity: item2.dispatchedQuantity,
+          observedQuantity: line.receivedQuantity,
+          unit: item2.unit,
+          difference: difference2,
+          status: "open"
+        });
+      }
     }
+    const missing = items.filter((item2) => !input.items?.some((line) => line.movementItemId === item2.id));
+    if (missing.length) {
+      errors.push({ code: "INCOMPLETE_LINES", message: "Si inform\xE1s recepci\xF3n por l\xEDnea, ten\xE9s que cubrir todas las l\xEDneas." });
+    }
+    return {
+      valid: errors.length === 0,
+      errors,
+      receptionStatus: discrepancies.length ? "received" : "received",
+      itemUpdates,
+      stockAdjustments,
+      discrepancies
+    };
+  }
+  if (input.receivedTotal === void 0) {
+    errors.push({ code: "MISSING_RECEPTION", message: "Inform\xE1 el total recibido o las cantidades por l\xEDnea." });
+    return { valid: false, errors, receptionStatus: "pending", itemUpdates, stockAdjustments, discrepancies };
+  }
+  const units = new Set(items.map((item2) => item2.unit));
+  const unit = input.unit ?? (units.size === 1 ? items[0]?.unit : void 0);
+  if (!unit || units.size === 1 && unit !== items[0]?.unit) {
+    errors.push({ code: "UNIT_REQUIRED", message: "La recepci\xF3n total necesita la misma unidad que el despacho." });
+  }
+  if (units.size > 1) {
+    errors.push({ code: "MIXED_UNITS", message: "Hay unidades distintas: no se puede recepcionar solo un total." });
+  }
+  const dispatchedTotal = items.reduce((total, item2) => total + item2.dispatchedQuantity, 0);
+  const difference = input.receivedTotal - dispatchedTotal;
+  if (Math.abs(difference) > EPSILON2) {
+    discrepancies.push({
+      movementId: movement.id,
+      locationId: movement.destinationLocationId,
+      type: "reception_unallocated",
+      expectedQuantity: dispatchedTotal,
+      observedQuantity: input.receivedTotal,
+      unit: unit ?? "bags",
+      difference,
+      status: "open",
+      cause: "Se conoce el total recibido pero no c\xF3mo se reparte entre lotes. No se inventa la distribuci\xF3n."
+    });
+  }
+  return {
+    valid: errors.length === 0,
+    errors,
+    receptionStatus: Math.abs(difference) > EPSILON2 ? "needs_reconciliation" : "received",
+    receivedTotal: input.receivedTotal,
+    receivedUnit: unit,
+    itemUpdates,
+    stockAdjustments,
+    discrepancies
   };
 }
 
@@ -203,7 +423,9 @@ var locations = [
   { id: "loc-north", name: "Frigor\xEDfico Norte", type: "cold_storage", capacityKg: 51e3, temperatureC: 4 },
   { id: "loc-south", name: "Frigor\xEDfico Sur", type: "cold_storage", capacityKg: 64e3, temperatureC: 3.5 },
   { id: "loc-central", name: "Frigor\xEDfico Central", type: "cold_storage", capacityKg: 7e4, temperatureC: 4.2 },
-  { id: "loc-warehouse", name: "Galp\xF3n Principal", type: "warehouse", capacityKg: 83e3 }
+  { id: "loc-warehouse", name: "Galp\xF3n Principal", type: "warehouse", capacityKg: 83e3 },
+  { id: "loc-oriente", name: "Campo Oriente", type: "warehouse", capacityKg: 4e4 },
+  { id: "loc-frig-a", name: "Frigor\xEDfico A", type: "cold_storage", capacityKg: 5e4, temperatureC: 4 }
 ];
 
 // src/data/lots.ts
@@ -297,10 +519,31 @@ var lots = [
     producer: "Los Aromos",
     origin: "Mar del Plata, Buenos Aires, Argentina",
     harvestDate: "2026-08-10"
+  },
+  {
+    id: "lot-300",
+    code: "300",
+    variety: "Spunta",
+    campaign: "2025/26",
+    producer: "Papasud",
+    origin: "Balcarce, Buenos Aires, Argentina",
+    harvestDate: "2026-07-30"
+  },
+  {
+    id: "lot-301",
+    code: "301",
+    variety: "Spunta",
+    campaign: "2025/26",
+    producer: "Papasud",
+    origin: "Balcarce, Buenos Aires, Argentina",
+    harvestDate: "2026-07-30"
   }
 ];
 
 // src/data/movements.ts
+function item(movementId, lotId, quantity) {
+  return [{ id: `${movementId}-item`, movementId, lotId, dispatchedQuantity: quantity, unit: "kg", sortOrder: 0 }];
+}
 var movements = [
   {
     id: "movement-1032",
@@ -311,7 +554,9 @@ var movements = [
     quantity: 1e3,
     date: "2026-08-20",
     status: "pending",
-    transporterId: "tr-pampa"
+    receptionStatus: "pending",
+    transporterId: "tr-pampa",
+    items: item("movement-1032", "lot-a204", 1e3)
   },
   {
     id: "movement-1028",
@@ -391,11 +636,13 @@ var stockRecords = [
   { id: "stock-e090", lotId: "lot-e090", locationId: "loc-north", shelfId: "shelf-n-a2", declaredQuantity: 12500, verifiedQuantity: 12500, updatedAt: "2026-08-19T16:55:00-03:00" },
   { id: "stock-f301", lotId: "lot-f301", locationId: "loc-warehouse", shelfId: "shelf-w-b1", declaredQuantity: 17e3, verifiedQuantity: 0, updatedAt: "2026-08-21T11:45:00-03:00", verificationPending: true },
   { id: "stock-g512", lotId: "lot-g512", locationId: "loc-south", shelfId: "shelf-s-b1", declaredQuantity: 21e3, verifiedQuantity: 21e3, updatedAt: "2026-08-20T18:00:00-03:00" },
-  { id: "stock-h118", lotId: "lot-h118", locationId: "loc-central", shelfId: "shelf-c-b1", declaredQuantity: 13500, verifiedQuantity: 13500, updatedAt: "2026-08-21T07:50:00-03:00" }
+  { id: "stock-h118", lotId: "lot-h118", locationId: "loc-central", shelfId: "shelf-c-b1", declaredQuantity: 13500, verifiedQuantity: 13500, updatedAt: "2026-08-21T07:50:00-03:00" },
+  { id: "stock-300-oriente", lotId: "lot-300", locationId: "loc-oriente", declaredQuantity: 500, verifiedQuantity: 500, updatedAt: "2026-08-22T12:00:00-03:00", unit: "bags" },
+  { id: "stock-301-oriente", lotId: "lot-301", locationId: "loc-oriente", declaredQuantity: 300, verifiedQuantity: 300, updatedAt: "2026-08-22T12:00:00-03:00", unit: "bags" }
 ];
 
 // server/services/planillaImport.ts
-var PROTECTED_DEMO_LOT_CODES = /* @__PURE__ */ new Set(["A-204", "A-310", "C-102", "F-301"]);
+var PROTECTED_DEMO_LOT_CODES2 = /* @__PURE__ */ new Set(["A-204", "A-310", "C-102", "F-301"]);
 var SAMPLE_SIZE = 25;
 var MAX_ISSUES = 80;
 var LOCATION_ALIASES = {
@@ -724,7 +971,7 @@ function parseWorkbook(buffer, fileName) {
         issues.push({ sheet: sheetName, rowNumber, code: "MISSING_DATE", message: `El lote ${lotCode} no tiene fecha.` });
         continue;
       }
-      if (PROTECTED_DEMO_LOT_CODES.has(lotCode)) {
+      if (PROTECTED_DEMO_LOT_CODES2.has(lotCode)) {
         skipped += 1;
         issues.push({
           sheet: sheetName,
@@ -792,11 +1039,11 @@ function parseWorkbook(buffer, fileName) {
 }
 function matchLocation(name, locations2) {
   const key = fold(name);
-  return locations2.find((item) => fold(item.name) === key || fold(item.id) === key);
+  return locations2.find((item2) => fold(item2.name) === key || fold(item2.id) === key);
 }
 function matchLot(code, lots2) {
   const key = fold(code);
-  return lots2.find((item) => fold(item.code) === key);
+  return lots2.find((item2) => fold(item2.code) === key);
 }
 function parsePlanillaBuffer(buffer, fileName) {
   if (!buffer.length) {
@@ -895,29 +1142,29 @@ function buildPlanillaImportFromFile(buffer, fileName, snapshot) {
 }
 function demoSnapshot() {
   return {
-    locations: locations.map((item) => ({ ...item })),
+    locations: locations.map((item2) => ({ ...item2 })),
     shelfUnits: [],
     shelves: [],
-    lots: lots.map((item) => ({ ...item })),
-    stockRecords: stockRecords.map((item) => ({ ...item })),
-    movements: movements.map((item) => ({ ...item })),
+    lots: lots.map((item2) => ({ ...item2 })),
+    stockRecords: stockRecords.map((item2) => ({ ...item2 })),
+    movements: movements.map((item2) => ({ ...item2 })),
     transporters: [],
     traceabilityEvents: []
   };
 }
 function materializePlanillaImport(plan, snapshot) {
-  const locations2 = snapshot.locations.map((item) => ({ ...item }));
+  const locations2 = snapshot.locations.map((item2) => ({ ...item2 }));
   let createdLocations = 0;
   for (const location of plan.locationsToCreate) {
-    if (locations2.some((item) => fold(item.name) === fold(location.name))) continue;
+    if (locations2.some((item2) => fold(item2.name) === fold(location.name))) continue;
     locations2.push({ id: location.id, name: location.name, type: location.type });
     createdLocations += 1;
   }
-  const lots2 = snapshot.lots.map((item) => ({ ...item }));
+  const lots2 = snapshot.lots.map((item2) => ({ ...item2 }));
   let createdLots = 0;
   for (const lot of plan.lotsToCreate) {
-    if (PROTECTED_DEMO_LOT_CODES.has(lot.code)) continue;
-    if (lots2.some((item) => fold(item.code) === fold(lot.code))) continue;
+    if (PROTECTED_DEMO_LOT_CODES2.has(lot.code)) continue;
+    if (lots2.some((item2) => fold(item2.code) === fold(lot.code))) continue;
     lots2.push({
       id: lot.id,
       code: lot.code,
@@ -929,17 +1176,17 @@ function materializePlanillaImport(plan, snapshot) {
     });
     createdLots += 1;
   }
-  const locationIdByName = new Map(locations2.map((item) => [fold(item.name), item.id]));
-  const lotByCode = new Map(lots2.map((item) => [item.code.toLowerCase(), item]));
-  const movements2 = snapshot.movements.map((item) => ({ ...item }));
-  const existingRefs = new Set(movements2.map((item) => item.reference));
+  const locationIdByName = new Map(locations2.map((item2) => [fold(item2.name), item2.id]));
+  const lotByCode = new Map(lots2.map((item2) => [item2.code.toLowerCase(), item2]));
+  const movements2 = snapshot.movements.map((item2) => ({ ...item2 }));
+  const existingRefs = new Set(movements2.map((item2) => item2.reference));
   let createdMovements = 0;
   let skippedMovements = 0;
   for (const movement of plan.movementsToInsert) {
     const lot = lotByCode.get(movement.lotCode.toLowerCase());
     const originId = locationIdByName.get(fold(movement.originName));
     const destinationId = locationIdByName.get(fold(movement.destinationName));
-    if (!lot || PROTECTED_DEMO_LOT_CODES.has(lot.code) || !originId || !destinationId || originId === destinationId) {
+    if (!lot || PROTECTED_DEMO_LOT_CODES2.has(lot.code) || !originId || !destinationId || originId === destinationId) {
       skippedMovements += 1;
       continue;
     }
@@ -965,20 +1212,21 @@ function materializePlanillaImport(plan, snapshot) {
   const importedLotIds = /* @__PURE__ */ new Set();
   for (const code of plan.stockLotCodes) {
     const lot = lotByCode.get(code.toLowerCase());
-    if (lot && !PROTECTED_DEMO_LOT_CODES.has(lot.code)) importedLotIds.add(lot.id);
+    if (lot && !PROTECTED_DEMO_LOT_CODES2.has(lot.code)) importedLotIds.add(lot.id);
   }
-  const stockRecords2 = snapshot.stockRecords.filter((record) => !importedLotIds.has(record.lotId)).map((item) => ({ ...item }));
+  const stockRecords2 = snapshot.stockRecords.filter((record) => !importedLotIds.has(record.lotId)).map((item2) => ({ ...item2 }));
   let upsertedStockRecords = 0;
   const now = (/* @__PURE__ */ new Date()).toISOString();
   for (const lotId of importedLotIds) {
     const net = /* @__PURE__ */ new Map();
     for (const movement of movements2) {
       if (movement.lotId !== lotId || movement.status === "cancelled") continue;
+      const quantity = movement.quantity ?? 0;
       if (movement.originLocationId) {
-        net.set(movement.originLocationId, (net.get(movement.originLocationId) ?? 0) - movement.quantity);
+        net.set(movement.originLocationId, (net.get(movement.originLocationId) ?? 0) - quantity);
       }
       if (movement.destinationLocationId) {
-        net.set(movement.destinationLocationId, (net.get(movement.destinationLocationId) ?? 0) + movement.quantity);
+        net.set(movement.destinationLocationId, (net.get(movement.destinationLocationId) ?? 0) + quantity);
       }
     }
     for (const [locationId, raw] of net) {
@@ -1029,7 +1277,7 @@ function buildStockIntakePlan(input, snapshot) {
     issues.push({ sheet: "Carga de stock", rowNumber: 1, code: "MISSING_DATE", message: "La fecha debe ser AAAA-MM-DD." });
   }
   if (!destinationRaw) issues.push({ sheet: "Carga de stock", rowNumber: 1, code: "MISSING_LOCATION", message: "Falta el destino." });
-  if (PROTECTED_DEMO_LOT_CODES.has(lotCode)) {
+  if (PROTECTED_DEMO_LOT_CODES2.has(lotCode)) {
     issues.push({
       sheet: "Carga de stock",
       rowNumber: 1,
@@ -1096,50 +1344,324 @@ function buildStockIntakePlan(input, snapshot) {
   return plan;
 }
 
+// server/services/stockTransfer.ts
+var EPSILON3 = 1e-3;
+function normalize(value) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+function cloneStock(record) {
+  return { declaredQuantity: record.declaredQuantity, verifiedQuantity: record.verifiedQuantity };
+}
+function emptyStock() {
+  return { declaredQuantity: 0, verifiedQuantity: 0 };
+}
+function buildStockTransferPreview(rawIntent, snapshot) {
+  const intent = expandLegacyIntent(rawIntent);
+  const errors = [];
+  const origin = snapshot.locations.find((item2) => normalize(item2.id) === normalize(intent.origin) || normalize(item2.name) === normalize(intent.origin));
+  const destination = snapshot.locations.find((item2) => normalize(item2.id) === normalize(intent.destination) || normalize(item2.name) === normalize(intent.destination));
+  if (!intent.items.length) {
+    errors.push({ code: "EMPTY_ITEMS", message: "El movimiento debe tener al menos una l\xEDnea de lote." });
+  }
+  if (!origin) errors.push({ code: "ORIGIN_NOT_FOUND", message: `No existe la ubicaci\xF3n de origen \u201C${intent.origin}\u201D.` });
+  if (!destination) errors.push({ code: "DESTINATION_NOT_FOUND", message: `No existe la ubicaci\xF3n de destino \u201C${intent.destination}\u201D.` });
+  if (origin && destination && origin.id === destination.id) {
+    errors.push({ code: "SAME_LOCATION", message: "El origen y el destino deben ser distintos." });
+  }
+  const simulated = /* @__PURE__ */ new Map();
+  for (const record of snapshot.stockRecords) {
+    simulated.set(
+      stockKey(record.lotId, record.locationId, stockUnit(record)),
+      cloneStock(record)
+    );
+  }
+  const lines = [];
+  for (const item2 of intent.items) {
+    const lot = snapshot.lots.find((candidate) => normalize(candidate.code) === normalize(item2.lotCode));
+    const unit = item2.unit;
+    if (!Number.isFinite(item2.quantity) || item2.quantity <= 0) {
+      errors.push({ code: "INVALID_QUANTITY", message: `La cantidad del lote ${item2.lotCode} debe ser mayor a cero.` });
+    }
+    if (!lot) errors.push({ code: "LOT_NOT_FOUND", message: `No existe el lote ${item2.lotCode}.` });
+    if (unit !== "kg" && unit !== "bags") {
+      errors.push({ code: "INVALID_UNIT", message: `Unidad no soportada para el lote ${item2.lotCode}.` });
+    }
+    const lotStock = lot ? snapshot.stockRecords.filter((record) => record.lotId === lot.id) : [];
+    if (lotStock.some((record) => record.verificationPending || Math.abs(record.verifiedQuantity - record.declaredQuantity) > EPSILON3)) {
+      errors.push({
+        code: "UNRESOLVED_DISCREPANCY",
+        message: `El lote ${lot?.code ?? item2.lotCode} presenta una discrepancia o verificaci\xF3n pendiente.`
+      });
+    }
+    const originRecord = lot && origin ? lotStock.find((record) => record.locationId === origin.id && recordMatchesUnit(record, unit)) : void 0;
+    const destRecord = lot && destination ? lotStock.find((record) => record.locationId === destination.id && recordMatchesUnit(record, unit)) : void 0;
+    const otherUnitAtOrigin = lot && origin ? lotStock.find((record) => record.locationId === origin.id && !recordMatchesUnit(record, unit)) : void 0;
+    if (lot && origin && !originRecord && otherUnitAtOrigin) {
+      errors.push({
+        code: "UNIT_MISMATCH",
+        message: `El lote ${lot.code} en ${origin.name} est\xE1 en ${stockUnit(otherUnitAtOrigin)}; no se convierte ${unit}.`
+      });
+    } else if (lot && origin && !originRecord) {
+      errors.push({
+        code: "ORIGIN_STOCK_NOT_FOUND",
+        message: `El lote ${lot.code} no tiene stock registrado en ${origin.name} (${unit}).`
+      });
+    }
+    const originKey = lot && origin ? stockKey(lot.id, origin.id, unit) : "";
+    const destKey = lot && destination ? stockKey(lot.id, destination.id, unit) : "";
+    const originSim = originKey ? simulated.get(originKey) ?? emptyStock() : emptyStock();
+    const destSim = destKey ? simulated.get(destKey) ?? emptyStock() : emptyStock();
+    if (originRecord && item2.quantity > originSim.verifiedQuantity + EPSILON3) {
+      errors.push({
+        code: "INSUFFICIENT_VERIFIED_STOCK",
+        message: `El lote ${lot?.code ?? item2.lotCode} no tiene stock verificado suficiente en origen.`
+      });
+    }
+    if (originRecord && item2.quantity > originSim.declaredQuantity + EPSILON3) {
+      errors.push({
+        code: "INSUFFICIENT_DECLARED_STOCK",
+        message: `El lote ${lot?.code ?? item2.lotCode} no tiene stock declarado suficiente en origen.`
+      });
+    }
+    const originAfter = {
+      declaredQuantity: originSim.declaredQuantity - item2.quantity,
+      verifiedQuantity: originSim.verifiedQuantity - item2.quantity
+    };
+    const destinationAfter = {
+      declaredQuantity: destSim.declaredQuantity + item2.quantity,
+      verifiedQuantity: destSim.verifiedQuantity + item2.quantity
+    };
+    if (originKey) simulated.set(originKey, originAfter);
+    if (destKey) simulated.set(destKey, destinationAfter);
+    lines.push({
+      lotCode: item2.lotCode,
+      quantity: item2.quantity,
+      unit,
+      lot,
+      originStock: originRecord && cloneStock(originSim),
+      destinationStock: destRecord ? cloneStock(destSim) : emptyStock(),
+      originAfter,
+      destinationAfter
+    });
+  }
+  const uniqueCodes = new Set(errors.map((error) => `${error.code}:${error.message}`));
+  const deduped = errors.filter((error, index) => {
+    const key = `${error.code}:${error.message}`;
+    return [...uniqueCodes].indexOf(key) === index;
+  });
+  return {
+    valid: deduped.length === 0,
+    errors: deduped,
+    intent,
+    remitoNumber: intent.remitoNumber,
+    origin,
+    destination,
+    lines,
+    lot: lines[0]?.lot,
+    originStock: lines[0]?.originStock
+  };
+}
+
+// server/services/stockCount.ts
+function buildStockCountPlan(input, lots2, locations2, stockRecords2) {
+  const errors = [];
+  const lot = lots2.find((item2) => input.lotId && item2.id === input.lotId || input.lotCode && item2.code.toLowerCase() === input.lotCode.toLowerCase());
+  const location = locations2.find((item2) => input.locationId && item2.id === input.locationId || input.location && (normalize(item2.id) === normalize(input.location) || normalize(item2.name) === normalize(input.location)));
+  if (!lot) errors.push({ code: "LOT_NOT_FOUND", message: "No existe el lote a contar." });
+  if (!location) errors.push({ code: "LOCATION_NOT_FOUND", message: "No existe la ubicaci\xF3n del conteo." });
+  if (!Number.isFinite(input.observedQuantity) || input.observedQuantity < 0) {
+    errors.push({ code: "INVALID_QUANTITY", message: "La cantidad observada no puede ser negativa." });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
+    errors.push({ code: "INVALID_DATE", message: "Ingres\xE1 la fecha del conteo." });
+  }
+  const record = lot && location ? stockRecords2.find((item2) => item2.lotId === lot.id && item2.locationId === location.id && recordMatchesUnit(item2, input.unit)) : void 0;
+  if (lot && location && !record) {
+    errors.push({ code: "STOCK_NOT_FOUND", message: `No hay stock ${input.unit} de ${lot.code} en ${location.name}.` });
+  }
+  const expectedQuantity = record?.verifiedQuantity ?? 0;
+  const difference = input.observedQuantity - expectedQuantity;
+  return {
+    valid: errors.length === 0,
+    errors,
+    lot,
+    location,
+    record,
+    expectedQuantity,
+    observedQuantity: input.observedQuantity,
+    difference,
+    count: {
+      locationId: location?.id ?? "",
+      lotId: lot?.id ?? "",
+      expectedQuantity,
+      observedQuantity: input.observedQuantity,
+      unit: input.unit,
+      difference,
+      countedAt: input.date,
+      notes: input.notes
+    }
+  };
+}
+
+// server/repositories/mappers.ts
+var mapLocation = (row) => ({ id: row.id, name: row.name, type: row.type });
+var mapLot = (row) => ({
+  id: row.id,
+  code: row.code,
+  variety: row.variety,
+  campaign: row.campaign,
+  producer: row.producer,
+  origin: row.origin,
+  harvestDate: row.harvest_date ?? void 0
+});
+var mapStockRecord = (row) => ({
+  id: row.id,
+  lotId: row.lot_id,
+  locationId: row.location_id,
+  declaredQuantity: Number(row.declared_quantity),
+  verifiedQuantity: Number(row.verified_quantity),
+  verificationPending: row.verification_pending,
+  updatedAt: row.updated_at,
+  unit: stockUnit(row)
+});
+var mapMovementItem = (row) => ({
+  id: row.id,
+  movementId: row.movement_id,
+  lotId: row.lot_id,
+  dispatchedQuantity: Number(row.dispatched_quantity),
+  receivedQuantity: row.received_quantity == null ? void 0 : Number(row.received_quantity),
+  receivedAt: row.received_at ?? void 0,
+  unit: row.unit,
+  sortOrder: row.sort_order
+});
+var mapMovement = (row, items = []) => {
+  const data = row.data && typeof row.data === "object" && !Array.isArray(row.data) ? row.data : void 0;
+  const entries = data ? Object.entries(data).filter(([, value]) => value !== void 0) : [];
+  const mapped = {
+    id: row.id,
+    reference: row.reference,
+    lotId: row.lot_id ?? void 0,
+    originLocationId: row.origin_location_id ?? void 0,
+    destinationLocationId: row.destination_location_id ?? void 0,
+    quantity: row.quantity == null ? void 0 : Number(row.quantity),
+    date: row.movement_date,
+    status: row.status,
+    remitoNumber: row.remito_number ?? void 0,
+    kind: row.kind ?? "transfer",
+    correctsMovementId: row.corrects_movement_id ?? void 0,
+    receptionStatus: row.reception_status ?? "not_applicable",
+    receivedTotal: row.received_total == null ? void 0 : Number(row.received_total),
+    receivedUnit: row.received_unit ?? void 0,
+    receivedAt: row.received_at ?? void 0,
+    data: entries.length > 0 ? Object.fromEntries(entries) : void 0,
+    items
+  };
+  if (!mapped.lotId) mapped.lotId = movementPrimaryLotId(mapped) || void 0;
+  if (mapped.quantity == null && items.length === 1) mapped.quantity = items[0].dispatchedQuantity;
+  return mapped;
+};
+var mapTraceabilityEvent = (row) => ({
+  id: row.id,
+  lotId: row.lot_id,
+  type: row.event_type,
+  date: row.event_date,
+  locationId: row.location_id ?? void 0,
+  data: typeof row.data === "object" && row.data !== null && !Array.isArray(row.data) ? row.data : {}
+});
+var mapDiscrepancy = (row) => ({
+  id: row.id,
+  movementId: row.movement_id ?? void 0,
+  movementItemId: row.movement_item_id ?? void 0,
+  stockRecordId: row.stock_record_id ?? void 0,
+  lotId: row.lot_id ?? void 0,
+  locationId: row.location_id ?? void 0,
+  type: row.type,
+  expectedQuantity: Number(row.expected_quantity),
+  observedQuantity: Number(row.observed_quantity),
+  unit: row.unit,
+  difference: Number(row.difference),
+  status: row.status,
+  cause: row.cause ?? void 0,
+  resolution: row.resolution ?? void 0,
+  createdAt: row.created_at,
+  resolvedAt: row.resolved_at ?? void 0
+});
+var mapStockCount = (row) => ({
+  id: row.id,
+  locationId: row.location_id,
+  lotId: row.lot_id,
+  expectedQuantity: Number(row.expected_quantity),
+  observedQuantity: Number(row.observed_quantity),
+  unit: row.unit,
+  difference: Number(row.observed_quantity) - Number(row.expected_quantity),
+  countedAt: row.counted_at,
+  notes: row.notes ?? void 0,
+  discrepancyId: row.discrepancy_id ?? void 0
+});
+
 // server/repositories/papaStockRepository.ts
+function attachMovements(rows, itemRows) {
+  const itemsByMovement = /* @__PURE__ */ new Map();
+  for (const row of itemRows) {
+    const current = itemsByMovement.get(row.movement_id) ?? [];
+    current.push(mapMovementItem(row));
+    itemsByMovement.set(row.movement_id, current);
+  }
+  return rows.map((row) => mapMovement(
+    row,
+    (itemsByMovement.get(row.id) ?? []).sort((left, right) => left.sortOrder - right.sortOrder)
+  ));
+}
 var PapaStockRepository = class {
   constructor(database) {
     this.database = database;
   }
   database;
   async loadSnapshot() {
-    const [locations2, lots2, stock, movements2, traceability] = await Promise.all([
+    const [locations2, lots2, stock, movements2, items, traceability, discrepancies, counts] = await Promise.all([
       this.database.query("select * from public.locations order by id"),
       this.database.query("select * from public.lots order by code"),
       this.database.query("select * from public.stock_records order by id"),
       this.database.query("select * from public.movements order by movement_date desc, id"),
-      this.database.query("select * from public.traceability_events order by event_date, id")
+      this.database.query("select * from public.movement_items order by movement_id, sort_order, id"),
+      this.database.query("select * from public.traceability_events order by event_date, id"),
+      this.database.query("select * from public.discrepancies order by created_at desc, id"),
+      this.database.query("select * from public.stock_counts order by counted_at desc, id")
     ]);
     if (!locations2.rowCount || !lots2.rowCount || !stock.rowCount) {
       throw new Error("La base existe pero el seed operativo est\xE1 incompleto.");
     }
     return {
       locations: locations2.rows.map(mapLocation),
-      shelfUnits: shelfUnits.map((item) => ({ ...item })),
-      shelves: shelves.map((item) => ({ ...item })),
+      shelfUnits: shelfUnits.map((item2) => ({ ...item2 })),
+      shelves: shelves.map((item2) => ({ ...item2 })),
       lots: lots2.rows.map(mapLot),
       stockRecords: stock.rows.map(mapStockRecord),
-      movements: movements2.rows.map(mapMovement),
-      transporters: transporters.map((item) => ({ ...item })),
-      traceabilityEvents: traceability.rows.map(mapTraceabilityEvent)
+      movements: attachMovements(movements2.rows, items.rows),
+      transporters: transporters.map((item2) => ({ ...item2 })),
+      traceabilityEvents: traceability.rows.map(mapTraceabilityEvent),
+      discrepancies: discrepancies.rows.map(mapDiscrepancy),
+      stockCounts: counts.rows.map(mapStockCount)
     };
   }
   async loadLot(idOrCode) {
     const snapshot = await this.loadSnapshot();
-    const lot = snapshot.lots.find((item) => item.id === idOrCode || item.code.toLowerCase() === idOrCode.toLowerCase());
+    const lot = snapshot.lots.find((item2) => item2.id === idOrCode || item2.code.toLowerCase() === idOrCode.toLowerCase());
     if (!lot) throw Object.assign(new Error("Lote no encontrado."), { status: 404 });
     const lotLocationIds = new Set(
-      snapshot.stockRecords.filter((item) => item.lotId === lot.id).map((item) => item.locationId)
+      snapshot.stockRecords.filter((item2) => item2.lotId === lot.id).map((item2) => item2.locationId)
     );
     return {
       locations: snapshot.locations,
       shelfUnits: snapshot.shelfUnits.filter((unit) => lotLocationIds.has(unit.locationId)),
       shelves: snapshot.shelves.filter((shelf) => lotLocationIds.has(shelf.locationId)),
       lots: [lot],
-      stockRecords: snapshot.stockRecords.filter((item) => item.lotId === lot.id),
-      movements: snapshot.movements.filter((item) => item.lotId === lot.id),
+      stockRecords: snapshot.stockRecords.filter((item2) => item2.lotId === lot.id),
+      movements: snapshot.movements.filter((item2) => movementTouchesLot(item2, lot.id)),
       transporters: snapshot.transporters,
-      traceabilityEvents: snapshot.traceabilityEvents.filter((item) => item.lotId === lot.id)
+      traceabilityEvents: snapshot.traceabilityEvents.filter((item2) => item2.lotId === lot.id),
+      discrepancies: (snapshot.discrepancies ?? []).filter((item2) => item2.lotId === lot.id),
+      stockCounts: (snapshot.stockCounts ?? []).filter((item2) => item2.lotId === lot.id)
     };
   }
   async insertTraceabilityEvent(event) {
@@ -1156,70 +1678,92 @@ var PapaStockRepository = class {
     return buildStockTransferPreview(intent, await this.loadSnapshot());
   }
   async executeStockTransfer(intent) {
+    const expanded = expandLegacyIntent(intent);
     const client = await this.database.connect();
     try {
       await client.query("begin");
+      const lotCodes = [...new Set(expanded.items.map((item2) => item2.lotCode.toLowerCase()))].sort();
       const [locationsResult, lotResult] = await Promise.all([
         client.query("select * from public.locations order by id"),
-        client.query("select * from public.lots where lower(code) = lower($1) for share", [intent.lotCode])
+        client.query("select * from public.lots where lower(code) = any($1::text[]) order by id for share", [lotCodes])
       ]);
-      const lot = lotResult.rows[0];
-      const stockResult = lot ? await client.query("select * from public.stock_records where lot_id = $1 order by id for update", [lot.id]) : { rows: [] };
+      const lotIds = lotResult.rows.map((row) => row.id);
+      const stockResult = lotIds.length ? await client.query("select * from public.stock_records where lot_id = any($1::text[]) order by id for update", [lotIds]) : { rows: [] };
       const snapshot = {
         locations: locationsResult.rows.map(mapLocation),
-        shelfUnits: shelfUnits.map((item) => ({ ...item })),
-        shelves: shelves.map((item) => ({ ...item })),
-        lots: lot ? [mapLot(lot)] : [],
+        shelfUnits: shelfUnits.map((item2) => ({ ...item2 })),
+        shelves: shelves.map((item2) => ({ ...item2 })),
+        lots: lotResult.rows.map(mapLot),
         stockRecords: stockResult.rows.map(mapStockRecord),
         movements: [],
-        transporters: transporters.map((item) => ({ ...item })),
+        transporters: transporters.map((item2) => ({ ...item2 })),
         traceabilityEvents: []
       };
-      const preview = buildStockTransferPreview(intent, snapshot);
-      if (!preview.valid || !preview.lot || !preview.origin || !preview.destination) {
+      const preview = buildStockTransferPreview(expanded, snapshot);
+      if (!preview.valid || !preview.origin || !preview.destination) {
         throw Object.assign(new Error("El movimiento no supera la validaci\xF3n operativa."), {
           status: 409,
           details: preview.errors
         });
       }
-      const originRecord = stockResult.rows.find((item) => item.location_id === preview.origin.id);
-      if (!originRecord) throw new Error("El stock de origen desapareci\xF3 durante la transacci\xF3n.");
-      await client.query(
-        `update public.stock_records
-         set declared_quantity = declared_quantity - $1,
-             verified_quantity = verified_quantity - $1,
-             updated_at = now()
-         where id = $2`,
-        [intent.quantityKg, originRecord.id]
-      );
-      await client.query(
-        `insert into public.stock_records
-          (id, lot_id, location_id, declared_quantity, verified_quantity, verification_pending, updated_at)
-         values ($1, $2, $3, $4, $4, false, now())
-         on conflict (lot_id, location_id) do update set
-           declared_quantity = public.stock_records.declared_quantity + excluded.declared_quantity,
-           verified_quantity = public.stock_records.verified_quantity + excluded.verified_quantity,
-           verification_pending = false,
-           updated_at = now()`,
-        [`stock-${randomUUID()}`, preview.lot.id, preview.destination.id, intent.quantityKg]
-      );
+      for (const line of preview.lines) {
+        if (!line.lot) throw new Error("La validaci\xF3n perdi\xF3 un lote durante la transacci\xF3n.");
+        const originRecord = stockResult.rows.find((item2) => item2.lot_id === line.lot.id && item2.location_id === preview.origin.id && stockUnit(item2) === line.unit);
+        if (!originRecord) throw new Error("El stock de origen desapareci\xF3 durante la transacci\xF3n.");
+        await client.query(
+          `update public.stock_records
+           set declared_quantity = declared_quantity - $1,
+               verified_quantity = verified_quantity - $1,
+               updated_at = now()
+           where id = $2`,
+          [line.quantity, originRecord.id]
+        );
+        await client.query(
+          `insert into public.stock_records
+            (id, lot_id, location_id, declared_quantity, verified_quantity, verification_pending, updated_at, unit)
+           values ($1, $2, $3, $4, $4, false, now(), $5)
+           on conflict (lot_id, location_id, unit) do update set
+             declared_quantity = public.stock_records.declared_quantity + excluded.declared_quantity,
+             verified_quantity = public.stock_records.verified_quantity + excluded.verified_quantity,
+             verification_pending = false,
+             updated_at = now()`,
+          [`stock-${randomUUID()}`, line.lot.id, preview.destination.id, line.quantity, line.unit]
+        );
+      }
       const token = randomUUID();
+      const units = new Set(preview.lines.map((line) => line.unit));
+      const headerQuantity = units.size === 1 ? preview.lines.reduce((total, line) => total + line.quantity, 0) : null;
+      const headerLotId = preview.lines.length === 1 ? preview.lines[0]?.lot?.id ?? null : null;
       const movementResult = await client.query(
         `insert into public.movements
-          (id, reference, lot_id, origin_location_id, destination_location_id, quantity, movement_date, status)
-         values ($1, $2, $3, $4, $5, $6, current_date, 'completed')
+          (id, reference, lot_id, origin_location_id, destination_location_id, quantity, movement_date, status, remito_number, kind, reception_status, data)
+         values ($1, $2, $3, $4, $5, $6, current_date, 'completed', $7, 'transfer', 'pending', $8::jsonb)
          returning *`,
         [
           `movement-${token}`,
           `MV-N01-${token.slice(0, 8).toUpperCase()}`,
-          preview.lot.id,
+          headerLotId,
           preview.origin.id,
           preview.destination.id,
-          intent.quantityKg
+          headerQuantity,
+          expanded.remitoNumber ?? null,
+          JSON.stringify({ source: "n01" })
         ]
       );
+      const movementId = movementResult.rows[0].id;
+      const itemRows = [];
+      for (const [index, line] of preview.lines.entries()) {
+        const inserted = await client.query(
+          `insert into public.movement_items
+            (id, movement_id, lot_id, dispatched_quantity, unit, sort_order)
+           values ($1, $2, $3, $4, $5, $6)
+           returning *`,
+          [`mitem-${token}-${index}`, movementId, line.lot.id, line.quantity, line.unit, index]
+        );
+        itemRows.push(inserted.rows[0]);
+      }
       await client.query("commit");
-      return mapMovement(movementResult.rows[0]);
+      return mapMovement(movementResult.rows[0], itemRows.map(mapMovementItem));
     } catch (error) {
       await client.query("rollback");
       throw error;
@@ -1251,7 +1795,7 @@ var PapaStockRepository = class {
       const locationIdByName = new Map(refreshedLocations.rows.map((row) => [fold(row.name), row.id]));
       let createdLots = 0;
       for (const lot of plan.lotsToCreate) {
-        if (PROTECTED_DEMO_LOT_CODES.has(lot.code)) continue;
+        if (PROTECTED_DEMO_LOT_CODES2.has(lot.code)) continue;
         if (lotRows.rows.some((row) => row.code.toLowerCase() === lot.code.toLowerCase())) continue;
         await client.query(
           `insert into public.lots (id, code, variety, campaign, producer, origin, harvest_date)
@@ -1270,14 +1814,14 @@ var PapaStockRepository = class {
         const lot = lotIdByCode.get(movement.lotCode.toLowerCase());
         const originId = locationIdByName.get(fold(movement.originName));
         const destinationId = locationIdByName.get(fold(movement.destinationName));
-        if (!lot || PROTECTED_DEMO_LOT_CODES.has(lot.code) || !originId || !destinationId || originId === destinationId) {
+        if (!lot || PROTECTED_DEMO_LOT_CODES2.has(lot.code) || !originId || !destinationId || originId === destinationId) {
           skippedMovements += 1;
           continue;
         }
         const inserted = await client.query(
           `insert into public.movements
-            (id, reference, lot_id, origin_location_id, destination_location_id, quantity, movement_date, status, data)
-           values ($1, $2, $3, $4, $5, $6, $7, 'completed', $8::jsonb)
+            (id, reference, lot_id, origin_location_id, destination_location_id, quantity, movement_date, status, data, remito_number, kind, reception_status)
+           values ($1, $2, $3, $4, $5, $6, $7, 'completed', $8::jsonb, $9, 'import', 'not_applicable')
            on conflict (reference) do nothing`,
           [
             movement.id,
@@ -1287,58 +1831,402 @@ var PapaStockRepository = class {
             destinationId,
             movement.quantityKg,
             movement.date,
-            JSON.stringify(movement.data)
+            JSON.stringify(movement.data),
+            typeof movement.data.remito === "string" ? movement.data.remito : null
           ]
         );
         if (inserted.rowCount) {
           createdMovements += 1;
           importedLotIds.add(lot.id);
+          await client.query(
+            `insert into public.movement_items (id, movement_id, lot_id, dispatched_quantity, unit, sort_order)
+             values ($1, $2, $3, $4, 'kg', 0)
+             on conflict (id) do nothing`,
+            [`mitem-${movement.id}`, movement.id, lot.id, movement.quantityKg]
+          );
         } else {
           skippedMovements += 1;
         }
       }
       for (const code of plan.stockLotCodes) {
         const lot = lotIdByCode.get(code.toLowerCase());
-        if (lot && !PROTECTED_DEMO_LOT_CODES.has(lot.code)) importedLotIds.add(lot.id);
+        if (lot && !PROTECTED_DEMO_LOT_CODES2.has(lot.code)) importedLotIds.add(lot.id);
       }
       let upsertedStockRecords = 0;
       for (const lotId of importedLotIds) {
         const lot = refreshedLots.rows.find((row) => row.id === lotId);
-        if (!lot || PROTECTED_DEMO_LOT_CODES.has(lot.code)) continue;
+        if (!lot || PROTECTED_DEMO_LOT_CODES2.has(lot.code)) continue;
         const history = await client.query(
-          "select * from public.movements where lot_id = $1",
+          `select items.*, movements.origin_location_id, movements.destination_location_id, movements.status
+           from public.movement_items items
+           join public.movements on movements.id = items.movement_id
+           where items.lot_id = $1`,
           [lotId]
         );
         const net = /* @__PURE__ */ new Map();
         for (const row of history.rows) {
           if (row.status === "cancelled") continue;
-          const quantity = Number(row.quantity);
+          const quantity = Number(row.dispatched_quantity);
+          const unit = row.unit;
           if (row.origin_location_id) {
-            net.set(row.origin_location_id, (net.get(row.origin_location_id) ?? 0) - quantity);
+            const key = `${row.origin_location_id}:${unit}`;
+            net.set(key, (net.get(key) ?? 0) - quantity);
           }
           if (row.destination_location_id) {
-            net.set(row.destination_location_id, (net.get(row.destination_location_id) ?? 0) + quantity);
+            const key = `${row.destination_location_id}:${unit}`;
+            net.set(key, (net.get(key) ?? 0) + quantity);
           }
         }
-        for (const [locationId, rawQuantity] of net) {
+        for (const [composite, rawQuantity] of net) {
+          const [locationId, unit] = composite.split(":");
           const quantity = Math.max(0, Math.round(rawQuantity * 1e3) / 1e3);
           if (quantity <= 0) continue;
           await client.query(
             `insert into public.stock_records
-              (id, lot_id, location_id, declared_quantity, verified_quantity, verification_pending, updated_at)
-             values ($1, $2, $3, $4, $4, false, now())
-             on conflict (lot_id, location_id) do update set
+              (id, lot_id, location_id, declared_quantity, verified_quantity, verification_pending, updated_at, unit)
+             values ($1, $2, $3, $4, $4, false, now(), $5)
+             on conflict (lot_id, location_id, unit) do update set
                declared_quantity = excluded.declared_quantity,
                verified_quantity = excluded.verified_quantity,
                verification_pending = false,
                updated_at = now()`,
-            [`stock-imp-${randomUUID()}`, lotId, locationId, quantity]
+            [`stock-imp-${randomUUID()}`, lotId, locationId, quantity, unit]
           );
           upsertedStockRecords += 1;
         }
       }
       await client.query("commit");
       return { createdLocations, createdLots, createdMovements, skippedMovements, upsertedStockRecords };
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  async executeStockVerification(input) {
+    const snapshot = await this.loadSnapshot();
+    const preview = buildStockVerificationPreview(
+      input,
+      getStockViews(snapshot.stockRecords, snapshot.lots, snapshot.locations)
+    );
+    if (!preview.valid) {
+      throw Object.assign(new Error(preview.issues[0]?.message ?? "La verificaci\xF3n no es v\xE1lida."), { status: 400, details: preview.issues });
+    }
+    const client = await this.database.connect();
+    try {
+      await client.query("begin");
+      const updated = await client.query(
+        `update public.stock_records
+            set verified_quantity = $1,
+                verification_pending = false,
+                updated_at = now()
+          where id = $2
+          returning id`,
+        [input.countedQuantity, input.stockRecordId]
+      );
+      if (!updated.rowCount) {
+        throw Object.assign(new Error("Registro de stock no encontrado."), { status: 404 });
+      }
+      const inserted = await client.query(
+        `insert into public.traceability_events
+          (id, lot_id, event_type, event_date, location_id, data)
+         values ($1, $2, $3, $4, $5, $6::jsonb)
+         returning *`,
+        [
+          `trace-${randomUUID()}`,
+          preview.lotId,
+          "stock_verification",
+          input.date,
+          preview.locationId || null,
+          JSON.stringify({
+            verifiedQuantity: input.countedQuantity,
+            ...input.bags ? { bags: input.bags } : {},
+            ...input.notes ? { notes: input.notes } : {},
+            origin: "operator_confirmation"
+          })
+        ]
+      );
+      await client.query("commit");
+      return toStockVerificationConfirmation(preview, true, inserted.rows[0]?.id);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  async executeReception(input) {
+    const client = await this.database.connect();
+    try {
+      await client.query("begin");
+      const movementResult = await client.query("select * from public.movements where id = $1 for update", [input.movementId]);
+      const movementRow = movementResult.rows[0];
+      if (!movementRow) throw Object.assign(new Error("Movimiento no encontrado."), { status: 404 });
+      const itemResult = await client.query(
+        "select * from public.movement_items where movement_id = $1 order by sort_order for update",
+        [input.movementId]
+      );
+      const movement = mapMovement(movementRow, itemResult.rows.map(mapMovementItem));
+      const plan = buildReceptionPlan(movement, input);
+      if (!plan.valid) {
+        throw Object.assign(new Error(plan.errors[0]?.message ?? "La recepci\xF3n no es v\xE1lida."), { status: 409, details: plan.errors });
+      }
+      if (movement.destinationLocationId) {
+        const lotIds = [...new Set(plan.stockAdjustments.map((item2) => item2.lotId))].sort();
+        if (lotIds.length) {
+          await client.query(
+            "select id from public.stock_records where lot_id = any($1::text[]) and location_id = $2 order by id for update",
+            [lotIds, movement.destinationLocationId]
+          );
+        }
+      }
+      for (const update of plan.itemUpdates) {
+        await client.query(
+          `update public.movement_items
+              set received_quantity = $1, received_at = $2
+            where id = $3`,
+          [update.receivedQuantity, `${input.date}T12:00:00Z`, update.item.id]
+        );
+      }
+      for (const adjustment of plan.stockAdjustments) {
+        await client.query(
+          `update public.stock_records
+              set verified_quantity = verified_quantity + $1, updated_at = now()
+            where lot_id = $2 and location_id = $3 and unit = $4`,
+          [adjustment.deltaVerified, adjustment.lotId, movement.destinationLocationId, adjustment.unit]
+        );
+      }
+      const created = [];
+      for (const discrepancy of plan.discrepancies) {
+        const inserted = await client.query(
+          `insert into public.discrepancies
+            (id, movement_id, movement_item_id, lot_id, location_id, type, expected_quantity, observed_quantity, unit, difference, status, cause)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11)
+           returning *`,
+          [
+            `disc-${randomUUID()}`,
+            discrepancy.movementId ?? null,
+            discrepancy.movementItemId ?? null,
+            discrepancy.lotId ?? null,
+            discrepancy.locationId ?? null,
+            discrepancy.type,
+            discrepancy.expectedQuantity,
+            discrepancy.observedQuantity,
+            discrepancy.unit,
+            discrepancy.difference,
+            discrepancy.cause ?? null
+          ]
+        );
+        created.push(mapDiscrepancy(inserted.rows[0]));
+        if (discrepancy.lotId) {
+          await client.query(
+            `insert into public.traceability_events
+              (id, lot_id, event_type, event_date, location_id, data)
+             values ($1, $2, 'reception', $3, $4, $5::jsonb)`,
+            [
+              `trace-${randomUUID()}`,
+              discrepancy.lotId,
+              input.date,
+              movement.destinationLocationId ?? null,
+              JSON.stringify({
+                remitoNumber: movement.remitoNumber,
+                reference: movement.reference,
+                expectedQuantity: discrepancy.expectedQuantity,
+                observedQuantity: discrepancy.observedQuantity,
+                difference: discrepancy.difference,
+                unit: discrepancy.unit
+              })
+            ]
+          );
+        }
+      }
+      await client.query(
+        `update public.movements
+            set reception_status = $1, received_total = $2, received_unit = $3, received_at = $4
+          where id = $5`,
+        [plan.receptionStatus, plan.receivedTotal ?? null, plan.receivedUnit ?? null, `${input.date}T12:00:00Z`, movement.id]
+      );
+      const refreshed = await client.query("select * from public.movements where id = $1", [movement.id]);
+      const refreshedItems = await client.query("select * from public.movement_items where movement_id = $1 order by sort_order", [movement.id]);
+      await client.query("commit");
+      return { movement: mapMovement(refreshed.rows[0], refreshedItems.rows.map(mapMovementItem)), discrepancies: created };
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  async executeLotCorrection(input) {
+    const client = await this.database.connect();
+    try {
+      await client.query("begin");
+      const originalResult = await client.query("select * from public.movements where id = $1 for update", [input.originalMovementId]);
+      if (!originalResult.rows[0]) throw Object.assign(new Error("Movimiento original no encontrado."), { status: 404 });
+      const itemResult = await client.query("select * from public.movement_items where movement_id = $1", [input.originalMovementId]);
+      const original = mapMovement(originalResult.rows[0], itemResult.rows.map(mapMovementItem));
+      const [lots2, stock] = await Promise.all([
+        client.query("select * from public.lots order by id for share"),
+        client.query("select * from public.stock_records where location_id = $1 order by id for update", [input.locationId])
+      ]);
+      const plan = buildLotCorrectionPlan(input, original, lots2.rows.map(mapLot), stock.rows.map(mapStockRecord));
+      if (!plan.valid || !plan.fromLot || !plan.toLot) {
+        throw Object.assign(new Error(plan.errors[0]?.message ?? "La correcci\xF3n no es v\xE1lida."), { status: 409, details: plan.errors });
+      }
+      await client.query(
+        `update public.stock_records
+            set declared_quantity = declared_quantity + $1,
+                verified_quantity = verified_quantity + $1,
+                updated_at = now()
+          where lot_id = $2 and location_id = $3 and unit = $4`,
+        [plan.quantity, plan.fromLot.id, plan.locationId, plan.unit]
+      );
+      await client.query(
+        `update public.stock_records
+            set declared_quantity = declared_quantity - $1,
+                verified_quantity = verified_quantity - $1,
+                updated_at = now()
+          where lot_id = $2 and location_id = $3 and unit = $4`,
+        [plan.quantity, plan.toLot.id, plan.locationId, plan.unit]
+      );
+      const token = randomUUID();
+      const movementResult = await client.query(
+        `insert into public.movements
+          (id, reference, lot_id, origin_location_id, destination_location_id, quantity, movement_date, status, remito_number, kind, corrects_movement_id, reception_status, data)
+         values ($1, $2, null, $3, $3, $4, current_date, 'completed', $5, 'correction', $6, 'not_applicable', $7::jsonb)
+         returning *`,
+        [
+          `movement-${token}`,
+          `MV-COR-${token.slice(0, 8).toUpperCase()}`,
+          plan.locationId,
+          plan.quantity,
+          original.remitoNumber ?? null,
+          original.id,
+          JSON.stringify({
+            source: "correction",
+            fromLotCode: plan.fromLot.code,
+            toLotCode: plan.toLot.code
+          })
+        ]
+      );
+      const items = [
+        await client.query(
+          `insert into public.movement_items (id, movement_id, lot_id, dispatched_quantity, unit, sort_order, data)
+           values ($1, $2, $3, $4, $5, 0, '{"effect":"restore"}'::jsonb) returning *`,
+          [`mitem-${token}-0`, movementResult.rows[0].id, plan.fromLot.id, plan.quantity, plan.unit]
+        ),
+        await client.query(
+          `insert into public.movement_items (id, movement_id, lot_id, dispatched_quantity, unit, sort_order, data)
+           values ($1, $2, $3, $4, $5, 1, '{"effect":"deduct"}'::jsonb) returning *`,
+          [`mitem-${token}-1`, movementResult.rows[0].id, plan.toLot.id, plan.quantity, plan.unit]
+        )
+      ];
+      for (const lot of [plan.fromLot, plan.toLot]) {
+        await client.query(
+          `insert into public.traceability_events (id, lot_id, event_type, event_date, location_id, data)
+           values ($1, $2, 'correction', current_date, $3, $4::jsonb)`,
+          [
+            `trace-${randomUUID()}`,
+            lot.id,
+            plan.locationId,
+            JSON.stringify({
+              reference: movementResult.rows[0].reference,
+              corrects: original.reference,
+              remitoNumber: original.remitoNumber,
+              quantity: plan.quantity,
+              unit: plan.unit,
+              fromLotCode: plan.fromLot.code,
+              toLotCode: plan.toLot.code
+            })
+          ]
+        );
+      }
+      await client.query("commit");
+      return mapMovement(movementResult.rows[0], items.flatMap((result) => result.rows.map(mapMovementItem)));
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  async executeStockCount(input) {
+    const client = await this.database.connect();
+    try {
+      await client.query("begin");
+      const [locations2, lots2, stock] = await Promise.all([
+        client.query("select * from public.locations order by id"),
+        client.query("select * from public.lots order by id for share"),
+        client.query("select * from public.stock_records order by id for update")
+      ]);
+      const plan = buildStockCountPlan(input, lots2.rows.map(mapLot), locations2.rows.map(mapLocation), stock.rows.map(mapStockRecord));
+      if (!plan.valid || !plan.record || !plan.lot || !plan.location) {
+        throw Object.assign(new Error(plan.errors[0]?.message ?? "El conteo no es v\xE1lido."), { status: 409, details: plan.errors });
+      }
+      await client.query(
+        `update public.stock_records
+            set verified_quantity = $1, verification_pending = false, updated_at = now()
+          where id = $2`,
+        [input.observedQuantity, plan.record.id]
+      );
+      let discrepancy;
+      if (plan.difference !== 0) {
+        const inserted = await client.query(
+          `insert into public.discrepancies
+            (id, stock_record_id, lot_id, location_id, type, expected_quantity, observed_quantity, unit, difference, status)
+           values ($1, $2, $3, $4, 'physical_count', $5, $6, $7, $8, 'open')
+           returning *`,
+          [
+            `disc-${randomUUID()}`,
+            plan.record.id,
+            plan.lot.id,
+            plan.location.id,
+            plan.expectedQuantity,
+            plan.observedQuantity,
+            input.unit,
+            plan.difference
+          ]
+        );
+        discrepancy = mapDiscrepancy(inserted.rows[0]);
+      }
+      const countResult = await client.query(
+        `insert into public.stock_counts
+          (id, location_id, lot_id, expected_quantity, observed_quantity, unit, counted_at, notes, discrepancy_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         returning *`,
+        [
+          `count-${randomUUID()}`,
+          plan.location.id,
+          plan.lot.id,
+          plan.expectedQuantity,
+          plan.observedQuantity,
+          input.unit,
+          input.date,
+          input.notes ?? null,
+          discrepancy?.id ?? null
+        ]
+      );
+      await client.query(
+        `insert into public.traceability_events
+          (id, lot_id, event_type, event_date, location_id, data)
+         values ($1, $2, 'physical_count', $3, $4, $5::jsonb)`,
+        [
+          `trace-${randomUUID()}`,
+          plan.lot.id,
+          input.date,
+          plan.location.id,
+          JSON.stringify({
+            expectedQuantity: plan.expectedQuantity,
+            observedQuantity: plan.observedQuantity,
+            difference: plan.difference,
+            unit: input.unit,
+            notes: input.notes
+          })
+        ]
+      );
+      await client.query("commit");
+      return { count: mapStockCount(countResult.rows[0]), discrepancy };
     } catch (error) {
       await client.query("rollback");
       throw error;
@@ -1357,11 +2245,11 @@ function movementEvidence(movements2) {
   return movements2.map((movement) => ({
     type: "movement",
     reference: movement.reference,
-    description: `${movement.quantity.toLocaleString("es-AR")} kg \xB7 ${movement.status} \xB7 ${movement.date}`
+    description: `${movementQuantityForLot(movement).toLocaleString("es-AR")} kg \xB7 ${movement.status} \xB7 ${movement.date}`
   }));
 }
 function hypothesis(title, explanation, movements2) {
-  return { title, explanation, movementReferences: movements2.map((item) => item.reference) };
+  return { title, explanation, movementReferences: movements2.map((item2) => item2.reference) };
 }
 function analyzeWithHeuristic(input) {
   const difference = input.stock.verifiedQuantity - input.stock.declaredQuantity;
@@ -1379,7 +2267,7 @@ function analyzeWithHeuristic(input) {
     };
   }
   const pending = input.movements.filter((movement) => movement.status === "pending").filter((movement) => movement.originLocationId === input.stock.locationId || movement.destinationLocationId === input.stock.locationId).sort(byRecent);
-  const exact = pending.find((movement) => movement.quantity === target);
+  const exact = pending.find((movement) => movementQuantityForLot(movement, input.lot.id) === target);
   if (exact) {
     return {
       engine: "heuristic",
@@ -1396,11 +2284,11 @@ function analyzeWithHeuristic(input) {
   }
   for (let left = 0; left < pending.length; left += 1) {
     for (let right = left + 1; right < pending.length; right += 1) {
-      if (pending[left].quantity + pending[right].quantity === target) {
+      if (movementQuantityForLot(pending[left], input.lot.id) + movementQuantityForLot(pending[right], input.lot.id) === target) {
         const matches = [pending[left], pending[right]];
         return {
           engine: "heuristic",
-          summary: `Dos movimientos pendientes (${matches.map((item) => item.reference).join(" + ")}) suman exactamente ${target.toLocaleString("es-AR")} kg.`,
+          summary: `Dos movimientos pendientes (${matches.map((item2) => item2.reference).join(" + ")}) suman exactamente ${target.toLocaleString("es-AR")} kg.`,
           confidence: 0.88,
           explainedQuantity: target,
           unexplainedQuantity: 0,
@@ -1408,13 +2296,13 @@ function analyzeWithHeuristic(input) {
           evidence: movementEvidence(matches),
           recommendedAction: "Contrastar ambos remitos y pesajes antes de conciliar el stock.",
           relatedMovementId: matches[0].id,
-          relatedMovementReference: matches.map((item) => item.reference).join(" + ")
+          relatedMovementReference: matches.map((item2) => item2.reference).join(" + ")
         };
       }
     }
   }
-  const partial = pending.filter((movement) => movement.quantity < target).slice(0, 4);
-  const explained = Math.min(target, partial.reduce((sum, movement) => sum + movement.quantity, 0));
+  const partial = pending.filter((movement) => movementQuantityForLot(movement, input.lot.id) < target).slice(0, 4);
+  const explained = Math.min(target, partial.reduce((sum, movement) => sum + movementQuantityForLot(movement, input.lot.id), 0));
   if (partial.length && explained > 0) {
     return {
       engine: "heuristic",
@@ -1426,7 +2314,7 @@ function analyzeWithHeuristic(input) {
       evidence: movementEvidence(partial),
       recommendedAction: "Revisar estos movimientos y buscar pesajes o remitos adicionales para la cantidad restante.",
       relatedMovementId: partial[0].id,
-      relatedMovementReference: partial.map((item) => item.reference).join(" + ")
+      relatedMovementReference: partial.map((item2) => item2.reference).join(" + ")
     };
   }
   return {
@@ -1539,13 +2427,13 @@ function createDiscrepancyAnalyzer(options) {
       const content = envelope.choices?.[0]?.message?.content;
       if (!content) throw new Error("Groq no devolvi\xF3 contenido.");
       const parsed = analysisSchema.parse(JSON.parse(content));
-      const movementReferences = new Set(input.movements.map((item) => item.reference));
-      for (const item of parsed.hypotheses.flatMap((entry) => entry.movementReferences)) {
-        if (!movementReferences.has(item)) throw new Error(`Groq invent\xF3 la referencia ${item}.`);
+      const movementReferences = new Set(input.movements.map((item2) => item2.reference));
+      for (const item2 of parsed.hypotheses.flatMap((entry) => entry.movementReferences)) {
+        if (!movementReferences.has(item2)) throw new Error(`Groq invent\xF3 la referencia ${item2}.`);
       }
       const allowedEvidence = {
-        movement: new Set(input.movements.flatMap((item) => [item.id, item.reference])),
-        traceability: new Set(input.traceability.map((item) => item.id)),
+        movement: new Set(input.movements.flatMap((item2) => [item2.id, item2.reference])),
+        traceability: new Set(input.traceability.map((item2) => item2.id)),
         stock: /* @__PURE__ */ new Set([input.stock.id, input.lot.id, input.lot.code])
       };
       for (const evidence of parsed.evidence) {
@@ -1556,8 +2444,8 @@ function createDiscrepancyAnalyzer(options) {
       if (Math.abs(parsed.explainedQuantity + parsed.unexplainedQuantity - target) > 1e-3) {
         throw new Error("Groq devolvi\xF3 cantidades inconsistentes con la diferencia.");
       }
-      const firstReference = parsed.hypotheses.flatMap((item) => item.movementReferences)[0];
-      const related = input.movements.find((item) => item.reference === firstReference);
+      const firstReference = parsed.hypotheses.flatMap((item2) => item2.movementReferences)[0];
+      const related = input.movements.find((item2) => item2.reference === firstReference);
       return {
         engine: "llm",
         ...parsed,
@@ -1745,43 +2633,122 @@ function createExportRequirementsParser(options) {
 
 // server/services/groqMovementIntent.ts
 import { z as z3 } from "zod";
+var movementItemSchema = z3.object({
+  lotCode: z3.string().trim().min(1).max(40),
+  quantity: z3.number().positive(),
+  unit: z3.enum(["bags", "kg"])
+});
 var parsedIntentSchema = z3.object({
   action: z3.literal("transfer"),
-  lotCode: z3.string().trim().min(1).max(40),
-  quantityKg: z3.number().positive(),
+  remitoNumber: z3.string().trim().max(40).optional().or(z3.literal("")),
   origin: z3.string().trim().min(1).max(120),
-  destination: z3.string().trim().min(1).max(120)
-});
+  destination: z3.string().trim().min(1).max(120),
+  items: z3.array(movementItemSchema).min(1).max(50)
+}).transform((value) => expandLegacyIntent({
+  ...value,
+  remitoNumber: value.remitoNumber || void 0
+}));
 var jsonSchema3 = {
   type: "object",
   additionalProperties: false,
-  required: ["action", "lotCode", "quantityKg", "origin", "destination"],
+  required: ["action", "remitoNumber", "origin", "destination", "items"],
   properties: {
     action: { type: "string", enum: ["transfer"] },
-    lotCode: { type: "string" },
-    quantityKg: { type: "number", exclusiveMinimum: 0 },
+    remitoNumber: { type: "string" },
     origin: { type: "string" },
-    destination: { type: "string" }
+    destination: { type: "string" },
+    items: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["lotCode", "quantity", "unit"],
+        properties: {
+          lotCode: { type: "string" },
+          quantity: { type: "number" },
+          unit: { type: "string", enum: ["bags", "kg"] }
+        }
+      }
+    }
   }
 };
 function normalize2(value) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
-function parseWithHeuristic(text, context) {
+function unitFromToken(token) {
+  return normalizeUnit(token);
+}
+function locationIndex(text, name, allNames) {
   const normalizedText = normalize2(text);
-  const lot = context.lots.find((item) => normalizedText.includes(normalize2(item.code)));
-  const quantityMatch = normalizedText.match(/(\d+(?:[.,]\d+)?)\s*(?:kg|kilos?|kilogramos?)\b/);
-  const locations2 = context.locations.map((item) => ({ item, index: normalizedText.indexOf(normalize2(item.name)) })).filter((candidate) => candidate.index >= 0).sort((left, right) => left.index - right.index);
-  if (!lot || !quantityMatch || locations2.length < 2) {
-    throw Object.assign(new Error("No pude identificar lote, cantidad, origen y destino. Escrib\xED las ubicaciones completas."), { status: 422 });
+  const normalizedName = normalize2(name);
+  const exact = normalizedText.indexOf(normalizedName);
+  if (exact >= 0) return exact;
+  const tail = normalizedName.split(/\s+/).filter((part) => part.length >= 4).at(-1);
+  if (!tail) return -1;
+  const ambiguous = allNames.some((other) => other !== name && normalize2(other).includes(tail));
+  if (ambiguous) return -1;
+  return normalizedText.indexOf(tail);
+}
+function matchLocations(text, context) {
+  const names = context.locations.map((item2) => item2.name);
+  return context.locations.map((item2) => ({ item: item2, index: locationIndex(text, item2.name, names) })).filter((candidate) => candidate.index >= 0).sort((left, right) => left.index - right.index);
+}
+function collectItems(text) {
+  const normalized = normalize2(text);
+  if (/\b(toneladas?|tn|tns|pallets?)\b/.test(normalized)) {
+    throw Object.assign(new Error("Solo se interpretan bolsas o kilos en este flujo. No convierto unidades."), { status: 422 });
   }
-  const quantityKg = Number(quantityMatch[1].replace(",", "."));
+  const byQuantity = [...normalized.matchAll(
+    /(\d+(?:[.,]\d+)?)\s*(bolsas?|bags?|kg|kilos?|kilogramos?)\b(?:(?!lote).){0,40}lote\s+([a-z0-9][a-z0-9-]{0,20})/g
+  )];
+  const byLot = [...normalized.matchAll(
+    /lote\s+([a-z0-9][a-z0-9-]{0,20})\s+(\d+(?:[.,]\d+)?)\s*(bolsas?|bags?|kg|kilos?|kilogramos?)/g
+  )];
+  const fromQuantity = byQuantity.flatMap((match) => {
+    const unit = unitFromToken(match[2]);
+    if (!unit) return [];
+    return [{ lotCode: match[3].toUpperCase() === match[3] ? match[3] : match[3], quantity: Number(match[1].replace(",", ".")), unit }];
+  });
+  const fromLot = byLot.flatMap((match) => {
+    const unit = unitFromToken(match[3]);
+    if (!unit) return [];
+    return [{ lotCode: match[1], quantity: Number(match[2].replace(",", ".")), unit }];
+  });
+  if (fromLot.length > 0 && fromQuantity.length > 0) {
+    const left = fromQuantity.map((item2) => `${item2.lotCode}:${item2.quantity}:${item2.unit}`).sort().join("|");
+    const right = fromLot.map((item2) => `${item2.lotCode}:${item2.quantity}:${item2.unit}`).sort().join("|");
+    if (left === right) return fromLot;
+    return fromLot.length >= fromQuantity.length ? fromLot : fromQuantity;
+  }
+  return fromLot.length ? fromLot : fromQuantity;
+}
+function resolveLotCode(extracted, context) {
+  const exact = context.lots.find((lot) => normalize2(lot.code) === normalize2(extracted));
+  if (exact) return exact.code;
+  const contained = context.lots.filter((lot) => normalize2(extracted).includes(normalize2(lot.code)) || normalize2(lot.code).includes(normalize2(extracted)));
+  if (contained.length === 1) return contained[0].code;
+  if (contained.length > 1) {
+    throw Object.assign(new Error("Hay m\xE1s de un lote que coincide con el texto. Especific\xE1 el c\xF3digo exacto."), { status: 422 });
+  }
+  return extracted;
+}
+function parseWithHeuristic(text, context) {
+  const remitoMatch = normalize2(text).match(/remito\s*(?:n(?:u|ú)mero\s*)?(?:n[°o.]?\s*)?(\d+)/i) ?? text.match(/remito\s+(\d+)/i);
+  const locations2 = matchLocations(text, context);
+  const items = collectItems(text).map((item2) => ({
+    ...item2,
+    lotCode: resolveLotCode(item2.lotCode, context)
+  }));
+  if (!items.length || locations2.length < 2) {
+    throw Object.assign(new Error("No pude identificar lotes, cantidades, origen y destino. Escrib\xED las ubicaciones completas."), { status: 422 });
+  }
   return parsedIntentSchema.parse({
     action: "transfer",
-    lotCode: lot.code,
-    quantityKg,
+    remitoNumber: remitoMatch?.[1],
     origin: locations2[0].item.name,
-    destination: locations2[1].item.name
+    destination: locations2[1].item.name,
+    items
   });
 }
 function createMovementIntentParser(options) {
@@ -1804,8 +2771,13 @@ function createMovementIntentParser(options) {
               content: [
                 "Interpret\xE1 una orden de transferencia de stock agr\xEDcola.",
                 "Solo extra\xE9 datos: nunca autorices, confirmes ni ejecutes la operaci\xF3n.",
-                "Us\xE1 exactamente un lote y dos ubicaciones del contexto proporcionado.",
+                "Puede haber una o varias l\xEDneas de lote. Extra\xE9 TODAS las l\xEDneas; no sumes, no elijas solo la primera.",
+                "No inventes lote, cantidad, unidad, origen, destino ni n\xFAmero de remito.",
+                "No conviertas bolsas a kilos ni kilos a bolsas.",
+                "Si una cantidad o unidad no est\xE1 dicha, no la completes.",
                 "La primera ubicaci\xF3n mencionada es el origen y la segunda el destino.",
+                "remitoNumber es el n\xFAmero de papel (vac\xEDo si no se mencion\xF3).",
+                "unit es bags para bolsas y kg para kilos.",
                 "Respond\xE9 en el JSON Schema solicitado."
               ].join(" ")
             },
@@ -1822,7 +2794,10 @@ function createMovementIntentParser(options) {
       const content = envelope.choices?.[0]?.message?.content;
       if (!content) throw new Error("Groq no devolvi\xF3 contenido.");
       return { ...parsedIntentSchema.parse(JSON.parse(content)), engine: "llm" };
-    } catch {
+    } catch (error) {
+      if (error && typeof error === "object" && "status" in error && error.status === 422) {
+        throw error;
+      }
       return fallback();
     } finally {
       clearTimeout(timeout);
@@ -1959,18 +2934,27 @@ var discrepancyInputSchema = z5.object({
   }),
   movements: z5.array(z5.object({
     id: identifier,
-    lotId: identifier,
+    lotId: identifier.optional(),
     originLocationId: identifier.optional(),
     destinationLocationId: identifier.optional(),
-    quantity: z5.number().positive(),
+    quantity: z5.number().nonnegative().optional(),
     date: z5.string(),
     status: z5.enum(["completed", "pending", "cancelled"]),
-    reference: identifier
+    reference: identifier,
+    remitoNumber: z5.string().optional(),
+    items: z5.array(z5.object({
+      id: identifier,
+      movementId: identifier,
+      lotId: identifier,
+      dispatchedQuantity: z5.number().positive(),
+      unit: z5.enum(["kg", "bags"]),
+      sortOrder: z5.number().int().default(0)
+    })).optional()
   })).max(100),
   traceability: z5.array(z5.object({
     id: identifier,
     lotId: identifier,
-    type: z5.enum(["planting", "harvest", "treatment", "quality_control", "stock_verification"]),
+    type: z5.enum(["planting", "harvest", "treatment", "quality_control", "stock_verification", "reception", "correction", "physical_count", "discrepancy"]),
     date: z5.string(),
     locationId: identifier.optional(),
     data: z5.record(z5.string(), z5.unknown())
@@ -1987,20 +2971,77 @@ var traceabilityInputSchema = z5.object({
     origin: z5.literal("operator_confirmation").optional()
   })
 });
-var movementTextSchema = z5.object({
-  text: z5.string().trim().min(8).max(500)
-});
-var movementIntentSchema = z5.object({
-  action: z5.literal("transfer"),
-  lotCode: identifier.max(40),
-  quantityKg: z5.number().positive().max(1e6),
-  origin: identifier,
-  destination: identifier
-});
 var optionalText = (max) => z5.preprocess(
   (value) => typeof value === "string" && value.trim() === "" ? void 0 : value,
   z5.string().trim().max(max).optional()
 );
+var movementTextSchema = z5.object({
+  text: z5.string().trim().min(8).max(500)
+});
+var movementItemInputSchema = z5.object({
+  lotCode: identifier.max(40),
+  quantity: z5.number().positive().max(1e6),
+  unit: z5.enum(["bags", "kg"])
+});
+var movementIntentSchema = z5.union([
+  z5.object({
+    action: z5.literal("transfer"),
+    remitoNumber: z5.string().trim().max(40).optional(),
+    origin: identifier,
+    destination: identifier,
+    items: z5.array(movementItemInputSchema).min(1).max(50)
+  }),
+  z5.object({
+    action: z5.literal("transfer"),
+    lotCode: identifier.max(40),
+    quantityKg: z5.number().positive().max(1e6),
+    origin: identifier,
+    destination: identifier,
+    remitoNumber: z5.string().trim().max(40).optional()
+  }).transform((value) => ({
+    action: "transfer",
+    remitoNumber: value.remitoNumber,
+    origin: value.origin,
+    destination: value.destination,
+    items: [{ lotCode: value.lotCode, quantity: value.quantityKg, unit: "kg" }],
+    lotCode: value.lotCode,
+    quantityKg: value.quantityKg
+  }))
+]);
+var receptionSchema = z5.object({
+  date: z5.iso.date(),
+  items: z5.array(z5.object({
+    movementItemId: identifier,
+    receivedQuantity: z5.number().nonnegative().max(1e6)
+  })).min(1).optional(),
+  receivedTotal: z5.number().nonnegative().max(1e6).optional(),
+  unit: z5.enum(["bags", "kg"]).optional()
+});
+var correctionSchema = z5.object({
+  originalMovementId: identifier,
+  locationId: identifier,
+  fromLotCode: identifier.max(40),
+  toLotCode: identifier.max(40),
+  quantity: z5.number().positive().max(1e6),
+  unit: z5.enum(["bags", "kg"])
+});
+var stockCountSchema = z5.object({
+  locationId: identifier.optional(),
+  location: z5.string().trim().min(1).max(120).optional(),
+  lotId: identifier.optional(),
+  lotCode: z5.string().trim().min(1).max(40).optional(),
+  observedQuantity: z5.number().nonnegative().max(1e6),
+  unit: z5.enum(["bags", "kg"]),
+  date: z5.iso.date(),
+  notes: optionalText(500)
+});
+var stockVerificationSchema = z5.object({
+  stockRecordId: identifier,
+  countedQuantity: z5.number().nonnegative().max(1e6),
+  date: z5.iso.date(),
+  bags: z5.number().positive().max(1e5).optional(),
+  notes: optionalText(500)
+});
 var stockIntakeSchema = z5.object({
   lotCode: z5.string().trim().min(1).max(40),
   variety: z5.string().trim().min(1).max(80),
@@ -2134,6 +3175,39 @@ function createApp(dependencies = {}) {
       next(error);
     }
   });
+  app2.post("/api/movements/:id/reception", async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error("Base de datos no configurada."), { status: 503 });
+      const body = receptionSchema.parse(request.body);
+      response.status(201).json({
+        data: await repository.executeReception({
+          movementId: request.params.id,
+          date: body.date,
+          items: body.items,
+          receivedTotal: body.receivedTotal,
+          unit: body.unit
+        })
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app2.post("/api/movements/corrections", async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error("Base de datos no configurada."), { status: 503 });
+      response.status(201).json({ data: await repository.executeLotCorrection(correctionSchema.parse(request.body)) });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app2.post("/api/stock-counts", async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error("Base de datos no configurada."), { status: 503 });
+      response.status(201).json({ data: await repository.executeStockCount(stockCountSchema.parse(request.body)) });
+    } catch (error) {
+      next(error);
+    }
+  });
   const excelBody = express.raw({ type: () => true, limit: "4mb" });
   function readWorkbookUpload(request) {
     const body = request.body;
@@ -2211,6 +3285,26 @@ function createApp(dependencies = {}) {
           }
         }
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app2.post("/api/stock/verify", async (request, response, next) => {
+    try {
+      const input = stockVerificationSchema.parse(request.body);
+      const snapshot = await snapshotForImport();
+      const preview = buildStockVerificationPreview(
+        input,
+        getStockViews(snapshot.stockRecords, snapshot.lots, snapshot.locations)
+      );
+      if (!preview.valid) {
+        throw Object.assign(new Error(preview.issues[0]?.message ?? "La verificaci\xF3n no es v\xE1lida."), { status: 400, details: preview.issues });
+      }
+      if (repository?.executeStockVerification) {
+        response.status(201).json({ data: await repository.executeStockVerification(input) });
+        return;
+      }
+      response.status(201).json({ data: toStockVerificationConfirmation(preview, false) });
     } catch (error) {
       next(error);
     }

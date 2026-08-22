@@ -25,18 +25,27 @@ const discrepancyInputSchema = z.object({
   }),
   movements: z.array(z.object({
     id: identifier,
-    lotId: identifier,
+    lotId: identifier.optional(),
     originLocationId: identifier.optional(),
     destinationLocationId: identifier.optional(),
-    quantity: z.number().positive(),
+    quantity: z.number().nonnegative().optional(),
     date: z.string(),
     status: z.enum(['completed', 'pending', 'cancelled']),
     reference: identifier,
+    remitoNumber: z.string().optional(),
+    items: z.array(z.object({
+      id: identifier,
+      movementId: identifier,
+      lotId: identifier,
+      dispatchedQuantity: z.number().positive(),
+      unit: z.enum(['kg', 'bags']),
+      sortOrder: z.number().int().default(0),
+    })).optional(),
   })).max(100),
   traceability: z.array(z.object({
     id: identifier,
     lotId: identifier,
-    type: z.enum(['planting', 'harvest', 'treatment', 'quality_control', 'stock_verification']),
+    type: z.enum(['planting', 'harvest', 'treatment', 'quality_control', 'stock_verification', 'reception', 'correction', 'physical_count', 'discrepancy']),
     date: z.string(),
     locationId: identifier.optional(),
     data: z.record(z.string(), z.unknown()),
@@ -55,22 +64,76 @@ const traceabilityInputSchema = z.object({
   }),
 });
 
-const movementTextSchema = z.object({
-  text: z.string().trim().min(8).max(500),
-});
-
-const movementIntentSchema = z.object({
-  action: z.literal('transfer'),
-  lotCode: identifier.max(40),
-  quantityKg: z.number().positive().max(1_000_000),
-  origin: identifier,
-  destination: identifier,
-});
-
 const optionalText = (max: number) => z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
   z.string().trim().max(max).optional(),
 );
+
+const movementTextSchema = z.object({
+  text: z.string().trim().min(8).max(500),
+});
+
+const movementItemInputSchema = z.object({
+  lotCode: identifier.max(40),
+  quantity: z.number().positive().max(1_000_000),
+  unit: z.enum(['bags', 'kg']),
+});
+
+const movementIntentSchema = z.union([
+  z.object({
+    action: z.literal('transfer'),
+    remitoNumber: z.string().trim().max(40).optional(),
+    origin: identifier,
+    destination: identifier,
+    items: z.array(movementItemInputSchema).min(1).max(50),
+  }),
+  z.object({
+    action: z.literal('transfer'),
+    lotCode: identifier.max(40),
+    quantityKg: z.number().positive().max(1_000_000),
+    origin: identifier,
+    destination: identifier,
+    remitoNumber: z.string().trim().max(40).optional(),
+  }).transform((value) => ({
+    action: 'transfer' as const,
+    remitoNumber: value.remitoNumber,
+    origin: value.origin,
+    destination: value.destination,
+    items: [{ lotCode: value.lotCode, quantity: value.quantityKg, unit: 'kg' as const }],
+    lotCode: value.lotCode,
+    quantityKg: value.quantityKg,
+  })),
+]);
+
+const receptionSchema = z.object({
+  date: z.iso.date(),
+  items: z.array(z.object({
+    movementItemId: identifier,
+    receivedQuantity: z.number().nonnegative().max(1_000_000),
+  })).min(1).optional(),
+  receivedTotal: z.number().nonnegative().max(1_000_000).optional(),
+  unit: z.enum(['bags', 'kg']).optional(),
+});
+
+const correctionSchema = z.object({
+  originalMovementId: identifier,
+  locationId: identifier,
+  fromLotCode: identifier.max(40),
+  toLotCode: identifier.max(40),
+  quantity: z.number().positive().max(1_000_000),
+  unit: z.enum(['bags', 'kg']),
+});
+
+const stockCountSchema = z.object({
+  locationId: identifier.optional(),
+  location: z.string().trim().min(1).max(120).optional(),
+  lotId: identifier.optional(),
+  lotCode: z.string().trim().min(1).max(40).optional(),
+  observedQuantity: z.number().nonnegative().max(1_000_000),
+  unit: z.enum(['bags', 'kg']),
+  date: z.iso.date(),
+  notes: optionalText(500),
+});
 
 const stockVerificationSchema = z.object({
   stockRecordId: identifier,
@@ -115,7 +178,7 @@ const exportRequirementsInputSchema = z.object({
 
 export interface AppDependencies {
   repository?: Pick<PapaStockRepository,
-    'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer' | 'executePlanillaImport' | 'executeStockVerification'>;
+    'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer' | 'executePlanillaImport' | 'executeStockVerification' | 'executeReception' | 'executeLotCorrection' | 'executeStockCount'>;
   analyze?: ReturnType<typeof createDiscrepancyAnalyzer>;
   parseMovementIntent?: ReturnType<typeof createMovementIntentParser>;
   parseTraceabilityIntent?: ReturnType<typeof createTraceabilityIntentParser>;
@@ -217,6 +280,36 @@ export function createApp(dependencies: AppDependencies = {}) {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const movement = await repository.executeStockTransfer(movementIntentSchema.parse(request.body));
       response.status(201).json({ data: movement });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/movements/:id/reception', async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      const body = receptionSchema.parse(request.body);
+      response.status(201).json({
+        data: await repository.executeReception({
+          movementId: request.params.id,
+          date: body.date,
+          items: body.items,
+          receivedTotal: body.receivedTotal,
+          unit: body.unit,
+        }),
+      });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/movements/corrections', async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      response.status(201).json({ data: await repository.executeLotCorrection(correctionSchema.parse(request.body)) });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/stock-counts', async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      response.status(201).json({ data: await repository.executeStockCount(stockCountSchema.parse(request.body)) });
     } catch (error) { next(error); }
   });
 

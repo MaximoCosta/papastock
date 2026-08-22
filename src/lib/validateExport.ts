@@ -91,7 +91,7 @@ function getFieldValue(field: ExportField, input: ExportValidationLine & Pick<Ex
     case 'variety':
       return text(lot?.variety);
     case 'quantity':
-      return input.quantity > 0 ? formatKg(input.quantity) : undefined;
+      return input.quantity && input.quantity > 0 ? formatKg(input.quantity) : undefined;
     case 'origin':
       return resolvedOrigin(input);
     case 'treatment':
@@ -118,7 +118,7 @@ function getFieldSource(field: ExportField, input: ExportValidationLine & Pick<E
         ? { label: 'Operación', detail: 'Origen declarado en el formulario' }
         : lotLabel ? { label: lotLabel, detail: 'Ficha de lote' } : { label: 'Operación' };
     case 'quantity': {
-      if (input.quantity <= 0) return undefined;
+      if (!input.quantity || input.quantity <= 0) return undefined;
       if (input.verifiedQuantity === undefined) return { label: 'Operación', detail: 'Cantidad declarada en el formulario' };
       const withinStock = input.quantity <= input.verifiedQuantity;
       return {

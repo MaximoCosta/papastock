@@ -46,8 +46,9 @@ export function operationalQuantity(record: Pick<StockView, 'declaredQuantity' |
 }
 
 export function getOperationalMetrics(stock: StockView[]) {
+  const kg = stock.filter((record) => (record.unit ?? 'kg') === 'kg');
   return {
-    totalStock: stock.reduce((total, record) => total + operationalQuantity(record), 0),
+    totalStock: kg.reduce((total, record) => total + operationalQuantity(record), 0),
     activeLots: new Set(stock.map((record) => record.lotId)).size,
     discrepancies: stock.filter((record) => record.status === 'discrepancy').length,
     pendingExports: 1,
