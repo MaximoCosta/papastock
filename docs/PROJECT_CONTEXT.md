@@ -58,10 +58,11 @@ La aplicación se organiza en tres niveles de valor:
 
 ```text
 texto libre
-  → POST /api/ai/movement-intent   (Groq o parser local → intención estructurada)
+  → POST /api/ai/movement-intent   (Groq o parser local → remito + N líneas)
   → POST /api/movements/preview    (validación determinística, sin escritura)
   → confirmación humana en la UI
   → POST /api/movements            (revalida con filas bloqueadas + BEGIN/COMMIT)
+  → POST /api/movements/:id/reception  (opcional, después, dispatched ≠ received)
 ```
 
 La IA **solo extrae datos**. No autoriza, no confirma y no escribe. La escritura
@@ -79,17 +80,53 @@ ocurre en una única transacción PostgreSQL disparada por un click humano.
 | `server/services/stockTransfer.ts` | `buildStockTransferPreview` — validación determinística canónica de N01 |
 | `server/repositories/papaStockRepository.ts` | `previewStockTransfer` y `executeStockTransfer` (transacción) |
 
+### Modelo de movimiento
+
+```text
+Movement                    reference = MV-N01-…   remito_number = 315
+ ├── MovementItem L300      400 bags despachadas
+ └── MovementItem L301      200 bags despachadas
+```
+
+- `reference` es el ID interno del sistema.
+- `remito_number` es el número de papel de Papasud. **No es unique global**:
+  puede repetirse entre series, ubicaciones o años. Hay índice para búsqueda.
+- `movements.lot_id` y `movements.quantity` quedan **legacy nullable**. Los
+  movimientos viejos se backfillearon a `movement_items`. Los nuevos multi-lote
+  dejan `lot_id` null y sólo llenan quantity si todas las líneas comparten unidad.
+- Un viaje = un `movements` + N `movement_items`. No se crean dos movimientos
+  que casualmente comparten remito.
+
+### Unidades
+
+Cada `stock_record` y cada `movement_item` tiene `unit` ∈ {`kg`, `bags`}.
+La unique de stock pasó a `(lot_id, location_id, unit)`. **Groq no convierte
+bolsas a kilos.** Si hace falta kg y no hay peso por bolsa, se conservan bolsas.
+
 ### Transacción de `executeStockTransfer`
 
 1. `begin`
-2. `select … from public.lots … for share` + `select … from public.stock_records … for update`
-3. `buildStockTransferPreview` se vuelve a ejecutar sobre las filas bloqueadas.
-   Si falla → `rollback` + HTTP 409 con los códigos de error.
-4. `update stock_records` en origen: resta `quantityKg` a declarado **y** verificado.
-5. `insert … on conflict (lot_id, location_id) do update` en destino: suma la cantidad.
-6. `insert into movements` con `status = 'completed'`, `movement_date = current_date`
-   y `reference = MV-N01-<8 hex mayúsculas>`.
-7. `commit`
+2. `select … from public.lots … order by id for share` de todos los lotes
+3. `select … from public.stock_records … order by id for update` de esos lotes
+4. `buildStockTransferPreview` sobre las filas bloqueadas. Si **cualquier**
+   línea falla → `rollback` + HTTP 409. No hay descuento parcial.
+5. Por cada línea: resta origen y suma destino en la misma unidad.
+6. `insert into movements` (`reference` interna, `remito_number` operativo,
+   `reception_status = pending`).
+7. `insert into movement_items` (una fila por lote).
+8. `commit`
+
+### Recepción y corrección
+
+- `POST /api/movements/:id/reception` registra `received_quantity` o un total.
+  El despacho original no se pisa. Si sólo se conoce el total (600 → 595) y no
+  el reparto por lote, `reception_status = needs_reconciliation` y se crea
+  `discrepancies.type = reception_unallocated`. No se inventa distribución.
+- `POST /api/movements/corrections` crea un movimiento `kind = correction`
+  que referencia al original (`corrects_movement_id`). Restaura un lote y
+  descuenta el otro. El movimiento original queda intacto.
+- Discrepancia ≠ stock bajo. El umbral de stock bajo es una constante
+  (`src/lib/stockAlerts.ts`); TODO persistirlo.
 
 ### Restricciones vigentes de N01
 
@@ -315,8 +352,11 @@ existen hoy.
 | POST | `/api/traceability` | N03 | **escribe** | Sólo `type: 'treatment'`. Inserta en `traceability_events`. 201. Violación de unicidad → 409. |
 | POST | `/api/ai/discrepancy` | N02 | ninguno | Groq con Structured Outputs, fallback heurístico. Devuelve `{ data: { engine, … } }`. No requiere base. |
 | POST | `/api/ai/movement-intent` | N01 | ninguno | Texto (8–500 chars) → intención estructurada + `engine`. Carga el snapshot para dar contexto de lotes/ubicaciones al modelo. |
-| POST | `/api/movements/preview` | N01 | ninguno | Valida la intención contra el snapshot. Devuelve `StockTransferPreview` con `valid`, `errors`, `originStock`. **Nunca escribe.** |
-| POST | `/api/movements` | N01 | **escribe** | Revalida con filas bloqueadas y ejecuta la transferencia en una transacción. 201 o 409 con los errores de validación. |
+| POST | `/api/movements/preview` | N01 | ninguno | Valida la intención multi-lote. Devuelve `lines[]` con stock antes/después. **Nunca escribe.** |
+| POST | `/api/movements` | N01 | **escribe** | Revalida con filas bloqueadas y ejecuta el viaje completo en una transacción. 201 o 409. |
+| POST | `/api/movements/:id/reception` | N01 | **escribe** | Registra recibido vs despachado. Crea discrepancia si difieren. |
+| POST | `/api/movements/corrections` | N01 | **escribe** | Reasignación auditable entre lotes. No pisa el movimiento original. |
+| POST | `/api/stock-counts` | N02 | **escribe** | Conteo físico persistido. No usa `event_date` como identidad. |
 | POST | `/api/imports/planilla/preview` | migración | ninguno | Recibe el Excel (`.xls`/`.xlsx`, body binario ≤ 4 MB). Parser determinístico en `server/services/planillaImport.ts`. Devuelve conteos, lotes/ubicaciones a crear, sample y filas omitidas. **Nunca escribe.** |
 | POST | `/api/imports/planilla` | migración | **escribe** | Reparsea el mismo archivo, pide confirmación humana en la UI y persiste lotes, ubicaciones, movimientos y stock de esos lotes en una transacción. No toca A-204 / A-310 / C-102 / F-301. Idempotente por `movements.reference`. |
 | POST | `/api/stock/intake/preview` | operación | ninguno | Formulario de ingreso (lote, variedad, kilos, destino, remito, bolsas, calibre, DTV, etc.). Valida sin escribir. |
@@ -340,7 +380,8 @@ existen hoy.
 
 ## 8. PostgreSQL
 
-Schema en `migrations/001_initial_schema.sql` más `migrations/002_movement_import_metadata.sql`. Todo en el esquema `public`.
+Schema en `migrations/001_initial_schema.sql`, `002_movement_import_metadata.sql`
+y `003_multi_lot_core.sql`. Todo en el esquema `public`.
 
 ### Tablas reales
 
@@ -831,8 +872,9 @@ Orden sugerido. Reevaluar contra el código antes de empezar cualquiera.
 3. **Resolución humana de discrepancias** (§4). Cerrar el ciclo de N02: permitir
    que un operador confirme o cancele `MV-1032` y conciliar el stock, con
    auditoría. Hoy la IA explica pero nadie puede resolver.
-4. **Persistencia de despachos** (§16). Tabla + endpoint + validación server-side.
-   Hoy `validateDispatch` es sólo cliente y no deja rastro.
+4. **Despacho de `LotDetailPage`** sigue siendo DEMO (sessionStorage). El
+   movimiento real vive en `/movements/new`. No conectar ese formulario al
+   backend sin reutilizar `executeStockTransfer`.
 5. **Persistencia de `export_operation` y documentos generados** (§16). Sacar las
    proformas de `sessionStorage`.
 6. **Voz para N01** (§3). Reutilizando `/api/ai/movement-intent` → preview →

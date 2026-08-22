@@ -1,6 +1,8 @@
 import { ArrowRight, ClipboardCheck, PackageX } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { formatKg, formatSignedKg } from '../../lib/formatters';
+import { formatQuantity, formatSignedKg } from '../../lib/formatters';
+import { getStockAlert, stockAlertLabel } from '../../lib/stockAlerts';
+import { stockUnit } from '../../lib/quantity';
 import type { StockView } from '../../types/domain';
 import { EmptyState } from '../common/EmptyState';
 import { StockStatusBadge } from './StockStatusBadge';
@@ -44,12 +46,21 @@ export function StockTable({
                 </td>
                 {!compact && <td>{record.lot.variety}</td>}
                 <td>{record.location.name}</td>
-                <td className="tabular text-right!">{formatKg(record.declaredQuantity)}</td>
-                <td className="tabular text-right! font-medium">{record.verificationPending ? '—' : formatKg(record.verifiedQuantity)}</td>
+                <td className="tabular text-right!">{formatQuantity(record.declaredQuantity, stockUnit(record))}</td>
+                <td className="tabular text-right! font-medium">{record.verificationPending ? '—' : formatQuantity(record.verifiedQuantity, stockUnit(record))}</td>
                 <td className={`tabular text-right! font-bold ${record.status === 'discrepancy' ? 'text-[#a23b35]!' : 'text-[#697068]!'}`}>
                   {record.verificationPending ? '—' : formatSignedKg(record.difference)}
                 </td>
-                <td><StockStatusBadge status={record.status} /></td>
+                <td>
+                  <div className="flex flex-col items-start gap-1">
+                    <StockStatusBadge status={record.status} />
+                    {getStockAlert(record) && getStockAlert(record) !== 'discrepancy' && (
+                      <span className="text-[9px] font-bold uppercase tracking-[0.06em] text-[#7b5a19]">
+                        {stockAlertLabel(getStockAlert(record)!)}
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="w-28 text-right!">
                   <div className="flex items-center justify-end gap-1">
                     {onVerify && (record.verificationPending || record.status === 'discrepancy') && (

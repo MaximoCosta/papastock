@@ -19,7 +19,7 @@ export function StockControlPage() {
       <PageHeader
         eyebrow="Inventario"
         title="Control de stock"
-        description="Planilla de conteo físico, foto e interpretación asistida. Las correcciones quedan en esta sesión."
+        description="DEMO: la foto IA no persiste en PostgreSQL. El conteo real es POST /api/stock-counts o Verificar stock en /stock."
         actions={<Link to="/stock"><Button variant="secondary">Ver consolidado</Button></Link>}
       />
       <StockControlWizard

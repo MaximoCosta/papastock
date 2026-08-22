@@ -6,6 +6,7 @@ import { PageHeader } from '../components/common/PageHeader';
 import { PlanillaImportPanel } from '../components/stock/PlanillaImportPanel';
 import { StockIntakeForm } from '../components/stock/StockIntakeForm';
 import { StockTable } from '../components/stock/StockTable';
+import { VarietyStockPanel } from '../components/stock/VarietyStockPanel';
 import { StockVerificationForm } from '../components/stock/StockVerificationForm';
 import { mockDocumentService } from '../services/documentService';
 import { useAppData } from '../state/AppDataContext';
@@ -146,6 +147,7 @@ export function StockPage() {
           </div>
         </div>
       </section>
+      <VarietyStockPanel records={records} />
       <StockTable
         records={records}
         onVerify={(record) => {

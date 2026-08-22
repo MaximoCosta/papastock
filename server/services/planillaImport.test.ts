@@ -77,7 +77,8 @@ describe('planillaImport', () => {
     expect(plan.preview.sample.find((row) => row.lotCode === '300')?.destinationName).toBe('Galpón Principal');
     expect(plan.preview.existingLocations).toContain('Galpón Principal');
     expect(plan.preview.newLocations.map((item) => item.name)).toEqual(expect.arrayContaining(['Campo', 'Dos Panca', 'Planta Santa Ana']));
-    expect(plan.preview.newLots.map((item) => item.code)).toEqual(expect.arrayContaining(['241', '300', '224']));
+    expect(plan.preview.newLots.map((item) => item.code)).toEqual(expect.arrayContaining(['241', '224']));
+    expect(plan.preview.existingLots).toContain('300');
     expect(plan.preview.skippedSheets).toContain('Stocks');
     expect(plan.preview.issues.some((issue) => issue.code === 'PROTECTED_DEMO_LOT')).toBe(true);
     expect(plan.preview.issues.some((issue) => issue.code === 'MISSING_QUANTITY')).toBe(true);

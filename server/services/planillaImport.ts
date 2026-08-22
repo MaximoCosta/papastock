@@ -722,11 +722,12 @@ export function materializePlanillaImport(
     const net = new Map<string, number>();
     for (const movement of movements) {
       if (movement.lotId !== lotId || movement.status === 'cancelled') continue;
+      const quantity = movement.quantity ?? 0;
       if (movement.originLocationId) {
-        net.set(movement.originLocationId, (net.get(movement.originLocationId) ?? 0) - movement.quantity);
+        net.set(movement.originLocationId, (net.get(movement.originLocationId) ?? 0) - quantity);
       }
       if (movement.destinationLocationId) {
-        net.set(movement.destinationLocationId, (net.get(movement.destinationLocationId) ?? 0) + movement.quantity);
+        net.set(movement.destinationLocationId, (net.get(movement.destinationLocationId) ?? 0) + quantity);
       }
     }
     for (const [locationId, raw] of net) {

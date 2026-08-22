@@ -20,7 +20,7 @@ export function WarehousePage() {
       <PageHeader
         eyebrow="Inventario"
         title="Modelo de depósito"
-        description="Plano de estanterías y asignación de stock a cada posición."
+        description="DEMO: el plano de estanterías vive en memoria de sesión. No modifica PostgreSQL."
         actions={<Link to="/locations"><Button variant="secondary">Vista lista</Button></Link>}
       />
       <WarehouseModelPanel
