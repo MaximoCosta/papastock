@@ -22,6 +22,9 @@ const repository = {
     originLocationId: 'l', destinationLocationId: 'other', quantity: intent.quantityKg,
     date: '2026-08-22', status: 'completed' as const,
   })),
+  executePlanillaImport: vi.fn(async () => ({
+    createdLocations: 2, createdLots: 1, createdMovements: 1, skippedMovements: 0, upsertedStockRecords: 1,
+  })),
 };
 const analyze = vi.fn(async () => ({ engine: 'heuristic' as const, summary: 'x', confidence: 0.2, explainedQuantity: 0, unexplainedQuantity: 1, hypotheses: [], evidence: [], recommendedAction: 'Revisar.' }));
 const parseMovementIntent = vi.fn(async () => ({ action: 'transfer' as const, lotCode: 'A-204', quantityKg: 500, origin: 'Sur', destination: 'Norte', engine: 'llm' as const }));
@@ -54,5 +57,35 @@ describe('API PapaStock', () => {
 
     const created = (await request(app).post('/api/movements').send(parsed).expect(201)).body.data;
     expect(created).toMatchObject({ reference: 'MV-N01-TEST', status: 'completed' });
+  });
+
+  it('previsualiza una planilla sin escribir y confirma en un segundo paso', async () => {
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Remito', 'Fecha', 'Variedad', 'Lote', 'Kgs.', 'Transporte', 'Destino'],
+      [1001, new Date('2026-03-09T00:00:00Z'), 'agata', 241, 35160, 'serantes-vera', 'dospanca'],
+    ]), 'De campo a Frío');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+    const previewed = await request(app)
+      .post('/api/imports/planilla/preview')
+      .set('x-filename', encodeURIComponent('Planilla de movimientos 2026.xlsx'))
+      .set('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .send(buffer)
+      .expect(200);
+
+    expect(previewed.body.data).toMatchObject({ valid: true, movementCount: 1 });
+    expect(repository.executePlanillaImport).not.toHaveBeenCalled();
+
+    const confirmed = await request(app)
+      .post('/api/imports/planilla')
+      .set('x-filename', encodeURIComponent('Planilla de movimientos 2026.xlsx'))
+      .set('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .send(buffer)
+      .expect(201);
+
+    expect(confirmed.body.data).toMatchObject({ createdMovements: 1 });
+    expect(repository.executePlanillaImport).toHaveBeenCalledOnce();
   });
 });

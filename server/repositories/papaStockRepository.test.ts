@@ -61,4 +61,73 @@ describe('PapaStockRepository', () => {
     expect(query).toHaveBeenCalledWith('rollback');
     expect(query.mock.calls.some(([sql]) => String(sql).startsWith('update public.stock_records'))).toBe(false);
   });
+
+  it('importa la planilla sin mutar el stock protegido de A-204', async () => {
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql === 'begin' || sql === 'commit' || sql === 'rollback') return { rows: [], rowCount: 0 };
+      if (sql.includes('from public.locations') && sql.includes('for update')) {
+        return { rows: [
+          { id: 'loc-south', name: 'Frigorífico Sur', type: 'cold_storage', created_at: 'x' },
+          { id: 'loc-warehouse', name: 'Galpón Principal', type: 'warehouse', created_at: 'x' },
+        ], rowCount: 2 };
+      }
+      if (sql.startsWith('select * from public.locations')) {
+        return { rows: [
+          { id: 'loc-south', name: 'Frigorífico Sur', type: 'cold_storage', created_at: 'x' },
+          { id: 'loc-warehouse', name: 'Galpón Principal', type: 'warehouse', created_at: 'x' },
+          { id: 'loc-imp-campo', name: 'Campo', type: 'warehouse', created_at: 'x' },
+          { id: 'loc-imp-dos-panca', name: 'Dos Panca', type: 'cold_storage', created_at: 'x' },
+        ], rowCount: 4 };
+      }
+      if (sql.includes('from public.lots') && sql.includes('for update')) {
+        return { rows: [{ id: 'lot-a204', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' }], rowCount: 1 };
+      }
+      if (sql.startsWith('select * from public.lots')) {
+        return { rows: [
+          { id: 'lot-a204', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' },
+          { id: 'lot-imp-241', code: '241', variety: 'Agata', campaign: '2026', producer: 'Papasud', origin: 'Balcarce', harvest_date: '2026-03-09', created_at: 'x' },
+        ], rowCount: 2 };
+      }
+      if (sql.startsWith('insert into public.movements')) return { rows: [], rowCount: 1 };
+      if (sql.includes('from public.movements where lot_id')) {
+        expect(params?.[0]).toBe('lot-imp-241');
+        return { rows: [{
+          id: 'mov', reference: 'IMP-1', lot_id: 'lot-imp-241', origin_location_id: 'loc-imp-campo',
+          destination_location_id: 'loc-imp-dos-panca', quantity: '35160', movement_date: '2026-03-09',
+          status: 'completed', created_at: 'x', data: {},
+        }], rowCount: 1 };
+      }
+      if (sql.startsWith('insert into public.stock_records')) {
+        expect(params?.[1]).toBe('lot-imp-241');
+        expect(params?.[1]).not.toBe('lot-a204');
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const repository = new PapaStockRepository({ connect: async () => ({ query, release: vi.fn() }) } as unknown as pg.Pool);
+    const result = await repository.executePlanillaImport({
+      preview: {
+        fileName: 'planilla.xlsx', movementCount: 1, totalKg: 35160, sample: [], sheets: [], skippedSheets: [],
+        issues: [], newLocations: [], newLots: [], existingLocations: [], existingLots: [], valid: true,
+      },
+      locationsToCreate: [
+        { id: 'loc-imp-campo', name: 'Campo', type: 'warehouse' },
+        { id: 'loc-imp-dos-panca', name: 'Dos Panca', type: 'cold_storage' },
+      ],
+      lotsToCreate: [{
+        id: 'lot-imp-241', code: '241', variety: 'Agata', campaign: '2026',
+        producer: 'Papasud', origin: 'Balcarce', harvestDate: '2026-03-09',
+      }],
+      movementsToInsert: [{
+        id: 'mov-imp-1', reference: 'IMP-1', lotCode: '241', originName: 'Campo',
+        destinationName: 'Dos Panca', quantityKg: 35160, date: '2026-03-09',
+        data: { source: 'planilla', sheet: 'De campo a Frío' },
+      }],
+      stockLotCodes: ['241'],
+    });
+
+    expect(result.createdMovements).toBe(1);
+    expect(query.mock.calls.some((call) => String(call[0]).includes('stock_records') && call[1]?.includes('lot-a204'))).toBe(false);
+    expect(query).toHaveBeenCalledWith('commit');
+  });
 });

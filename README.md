@@ -29,7 +29,9 @@ npm run db:seed
 npm run dev
 ```
 
-`npm run dev` levanta Express y Vite en `http://localhost:3000`. Sin `DATABASE_URL`, la API de datos devuelve indisponibilidad y la UI usa el fallback mock. Para forzarlo, usar `VITE_DATA_SOURCE=mock`.
+`npm run dev` levanta Express y Vite en `http://localhost:3000`. Sin `DATABASE_URL`, la API de datos devuelve indisponibilidad y la UI usa el fallback mock. Para forzarlo, usar `VITE_DATA_SOURCE=mock`. El script de desarrollo carga `.env` si existe.
+
+En **Stock → Movimientos** está el botón para importar la planilla operativa de Papasud (`.xls`/`.xlsx`). El backend parsea, muestra un preview y recién escribe en PostgreSQL cuando el operador confirma. No modifica los lotes de demo A-204 / A-310 / C-102 / F-301.
 
 ## Comandos
 

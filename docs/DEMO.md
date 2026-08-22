@@ -92,6 +92,10 @@ En `/exports/new` con A-310 → Brasil → Analizar.
 Decidí antes de presentar cuál de los dos caminos de la sección **Demo N03** vas
 a usar.
 
+No importes la planilla real de movimientos durante la demo: suma lotes y
+ubicaciones operativas, pero no altera A-204 ni A-310. El botón está en
+`/stock?tab=movimientos`.
+
 ---
 
 ## Demo N01 — Movimiento con lenguaje natural

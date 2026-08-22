@@ -60,10 +60,13 @@ export function MovementsPanel({
 
   const locationName = (id?: string) => locations.find((item) => item.id === id)?.name ?? 'Externo';
   const lotCode = (id: string) => lots.find((item) => item.id === id)?.code ?? id;
-  const transporterLabel = (id?: string) => {
-    if (!id) return '—';
-    const transporter = transporters.find((item) => item.id === id);
-    return transporter ? (transporter.tradeName || transporter.companyName) : '—';
+  const transporterLabel = (movement: Movement) => {
+    if (movement.transporterId) {
+      const transporter = transporters.find((item) => item.id === movement.transporterId);
+      if (transporter) return transporter.tradeName || transporter.companyName;
+    }
+    const imported = movement.data?.transporter;
+    return typeof imported === 'string' && imported.trim() ? imported : '—';
   };
 
   return (
@@ -152,7 +155,7 @@ export function MovementsPanel({
                       <span className="truncate">{locationName(movement.destinationLocationId)}</span>
                     </span>
                   </td>
-                  <td className="text-[11px]">{transporterLabel(movement.transporterId)}</td>
+                  <td className="text-[11px]">{transporterLabel(movement)}</td>
                   <td className="tabular text-right! font-semibold">{formatKg(movement.quantity)}</td>
                   <td className="tabular">{formatDate(movement.date)}</td>
                   <td><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge></td>

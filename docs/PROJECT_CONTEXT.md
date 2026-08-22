@@ -71,6 +71,7 @@ ocurre en una única transacción PostgreSQL disparada por un click humano.
 
 | Archivo | Rol |
 | --- | --- |
+| `server/services/planillaImport.ts` | Parser determinístico de la planilla 2026 (Excel → preview) |
 | `src/pages/NewMovementPage.tsx` | UI del flujo completo (ruta `/movements/new`) |
 | `src/services/movementService.ts` | Cliente HTTP: `interpretMovement`, `previewMovement`, `confirmMovement` |
 | `server/app.ts` | Los tres endpoints + schemas Zod (`movementTextSchema`, `movementIntentSchema`) |
@@ -105,6 +106,23 @@ No implementada. No hay `SpeechRecognition`, ni MediaRecorder, ni endpoint de
 transcripción en el repositorio. Cuando se implemente, debe **reutilizar** el
 mismo pipeline (`/api/ai/movement-intent` → preview → confirmación), no crear un
 camino paralelo de escritura.
+
+### Migración desde planilla Excel
+
+Flujo separado de N01, para cargar el historial operativo de Papasud:
+
+```text
+Stock → Movimientos → seleccionar .xls/.xlsx
+  → POST /api/imports/planilla/preview   (parser determinístico, sin escritura)
+  → confirmación humana en la UI
+  → POST /api/imports/planilla           (reparsea + transacción PostgreSQL)
+```
+
+Hojas importables: `De campo a Frío`, `Ingreso Tolvas Santa Ana`, `Env a Frio`,
+`Ret Frio`, `P.Chica`, `Ingreso Trevelin`, `Entregas a clientes 2026`. Hojas de
+resumen vacías (`Stocks`, `DJ Panc`, `SP`, `Transportes`, `Frigoríficos`) se
+omiten. El stock se reconstruye sólo para los lotes de la planilla. **A-204,
+A-310, C-102 y F-301 no se modifican.**
 
 ---
 
@@ -276,6 +294,8 @@ existen hoy.
 | POST | `/api/ai/movement-intent` | N01 | ninguno | Texto (8–500 chars) → intención estructurada + `engine`. Carga el snapshot para dar contexto de lotes/ubicaciones al modelo. |
 | POST | `/api/movements/preview` | N01 | ninguno | Valida la intención contra el snapshot. Devuelve `StockTransferPreview` con `valid`, `errors`, `originStock`. **Nunca escribe.** |
 | POST | `/api/movements` | N01 | **escribe** | Revalida con filas bloqueadas y ejecuta la transferencia en una transacción. 201 o 409 con los errores de validación. |
+| POST | `/api/imports/planilla/preview` | migración | ninguno | Recibe el Excel (`.xls`/`.xlsx`, body binario ≤ 4 MB). Parser determinístico en `server/services/planillaImport.ts`. Devuelve conteos, lotes/ubicaciones a crear, sample y filas omitidas. **Nunca escribe.** |
+| POST | `/api/imports/planilla` | migración | **escribe** | Reparsea el mismo archivo, pide confirmación humana en la UI y persiste lotes, ubicaciones, movimientos y stock de esos lotes en una transacción. No toca A-204 / A-310 / C-102 / F-301. Idempotente por `movements.reference`. |
 | * | `/api/*` (catch-all) | — | ninguno | 404 `{ error: 'Endpoint no encontrado.' }` |
 
 ### Convenciones transversales
@@ -283,7 +303,8 @@ existen hoy.
 - Respuestas exitosas: `{ data: … }`, con `source: 'database'` en las lecturas.
 - Errores: `{ error: string, details?: unknown }`.
 - Validación de entrada con **Zod** en todos los `POST`.
-- `express.json({ limit: '64kb' })`, `x-powered-by` deshabilitado.
+- `express.json({ limit: '64kb' })` para JSON; los endpoints de planilla usan `express.raw({ limit: '4mb' })`.
+- `x-powered-by` deshabilitado.
 - Manejador de errores central: `ZodError` → 400 con `z.treeifyError`;
   código PostgreSQL `23505` → 409; `error.status` respetado; ≥500 se loguea con
   prefijo `[api]` y se responde con un mensaje genérico.
@@ -294,7 +315,7 @@ existen hoy.
 
 ## 8. PostgreSQL
 
-Schema en `migrations/001_initial_schema.sql`. Todo en el esquema `public`.
+Schema en `migrations/001_initial_schema.sql` más `migrations/002_movement_import_metadata.sql`. Todo en el esquema `public`.
 
 ### Tablas reales
 
@@ -303,7 +324,7 @@ Schema en `migrations/001_initial_schema.sql`. Todo en el esquema `public`.
 | `locations` | `id` (text PK), `name`, `type` ∈ {`cold_storage`, `warehouse`}, `created_at` |
 | `lots` | `id` (text PK), `code` (unique), `variety`, `campaign`, `producer`, `origin`, `harvest_date`, `created_at` |
 | `stock_records` | `id` (text PK), `lot_id` → `lots`, `location_id` → `locations`, `declared_quantity` / `verified_quantity` `numeric(14,3)` no negativos, `verification_pending` bool, `updated_at`. **Unique `(lot_id, location_id)`** |
-| `movements` | `id` (text PK), `reference` (unique), `lot_id` → `lots`, `origin_location_id` / `destination_location_id` → `locations` (nullable), `quantity > 0`, `movement_date`, `status` ∈ {`completed`, `pending`, `cancelled`}, `created_at` |
+| `movements` | `id` (text PK), `reference` (unique), `lot_id` → `lots`, `origin_location_id` / `destination_location_id` → `locations` (nullable), `quantity > 0`, `movement_date`, `status` ∈ {`completed`, `pending`, `cancelled`}, `data` jsonb objeto (remito, hoja, transporte, bolsas, calibre, DTV; default `{}`), `created_at` |
 | `traceability_events` | `id` (text PK), `lot_id` → `lots`, `event_type` ∈ {`planting`, `harvest`, `treatment`, `quality_control`, `stock_verification`}, `event_date`, `location_id` (nullable), `data` jsonb (debe ser objeto), `created_at`. **Unique `(lot_id, event_type, event_date)`** |
 | `schema_migrations` | `name` (PK), `checksum`, `applied_at`. Creada y mantenida por el runner de migraciones. |
 

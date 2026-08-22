@@ -40,6 +40,7 @@ export interface MovementRow {
   movement_date: string;
   status: MovementStatus;
   created_at: string;
+  data?: Json;
 }
 
 export interface TraceabilityEventRow {

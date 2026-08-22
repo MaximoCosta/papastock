@@ -5,6 +5,7 @@ import { pool } from './db/pool';
 import { PapaStockRepository } from './repositories/papaStockRepository';
 import { createDiscrepancyAnalyzer } from './services/groqDiscrepancy';
 import { createMovementIntentParser } from './services/groqMovementIntent';
+import { buildPlanillaImportFromFile } from './services/planillaImport';
 
 const identifier = z.string().min(1).max(120);
 const discrepancyInputSchema = z.object({
@@ -64,7 +65,7 @@ const movementIntentSchema = z.object({
 
 export interface AppDependencies {
   repository?: Pick<PapaStockRepository,
-    'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer'>;
+    'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer' | 'executePlanillaImport'>;
   analyze?: ReturnType<typeof createDiscrepancyAnalyzer>;
   parseMovementIntent?: ReturnType<typeof createMovementIntentParser>;
 }
@@ -141,6 +142,38 @@ export function createApp(dependencies: AppDependencies = {}) {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const movement = await repository.executeStockTransfer(movementIntentSchema.parse(request.body));
       response.status(201).json({ data: movement });
+    } catch (error) { next(error); }
+  });
+
+  const excelBody = express.raw({ type: () => true, limit: '4mb' });
+
+  function readWorkbookUpload(request: Request): { buffer: Buffer; fileName: string } {
+    const body = request.body;
+    if (!Buffer.isBuffer(body) || body.length === 0) {
+      throw Object.assign(new Error('Adjuntá un archivo .xls o .xlsx.'), { status: 400 });
+    }
+    const headerName = request.header('x-filename');
+    const fileName = headerName ? decodeURIComponent(headerName) : 'planilla.xls';
+    return { buffer: body, fileName };
+  }
+
+  app.post('/api/imports/planilla/preview', excelBody, async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      const { buffer, fileName } = readWorkbookUpload(request);
+      const snapshot = await repository.loadSnapshot();
+      const plan = buildPlanillaImportFromFile(buffer, fileName, snapshot);
+      response.json({ data: plan.preview });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/imports/planilla', excelBody, async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      const { buffer, fileName } = readWorkbookUpload(request);
+      const snapshot = await repository.loadSnapshot();
+      const plan = buildPlanillaImportFromFile(buffer, fileName, snapshot);
+      response.status(201).json({ data: await repository.executePlanillaImport(plan) });
     } catch (error) { next(error); }
   });
 

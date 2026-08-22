@@ -62,6 +62,66 @@ export interface Movement {
   status: MovementStatus;
   reference: string;
   transporterId?: string;
+  data?: Record<string, unknown>;
+}
+
+export type PlanillaMovementKind = 'inbound' | 'transfer' | 'outbound';
+
+export interface PlanillaImportRow {
+  sheet: string;
+  rowNumber: number;
+  remito?: string;
+  date: string;
+  lotCode: string;
+  variety: string;
+  quantityKg: number;
+  originName: string;
+  destinationName: string;
+  transporter?: string;
+  bags?: number;
+  caliber?: string;
+  category?: string;
+  notes?: string;
+  dtv?: string;
+  client?: string;
+  kind: PlanillaMovementKind;
+  reference: string;
+}
+
+export interface PlanillaImportIssue {
+  sheet: string;
+  rowNumber: number;
+  code: string;
+  message: string;
+}
+
+export interface PlanillaSheetSummary {
+  name: string;
+  imported: number;
+  skipped: number;
+}
+
+export interface PlanillaImportPreview {
+  fileName: string;
+  movementCount: number;
+  totalKg: number;
+  sample: PlanillaImportRow[];
+  sheets: PlanillaSheetSummary[];
+  skippedSheets: string[];
+  issues: PlanillaImportIssue[];
+  newLocations: Array<{ name: string; type: LocationType }>;
+  newLots: Array<{ code: string; variety: string }>;
+  existingLocations: string[];
+  existingLots: string[];
+  valid: boolean;
+}
+
+export interface PlanillaImportResult {
+  createdLocations: number;
+  createdLots: number;
+  createdMovements: number;
+  skippedMovements: number;
+  upsertedStockRecords: number;
 }
 
 export interface Transporter {

@@ -5,6 +5,7 @@ import { Button } from '../components/common/Button';
 import { PageHeader } from '../components/common/PageHeader';
 import { LocationsPanel } from '../components/stock/LocationsPanel';
 import { MovementsPanel } from '../components/stock/MovementsPanel';
+import { PlanillaImportPanel } from '../components/stock/PlanillaImportPanel';
 import { StockControlWizard } from '../components/stock/StockControlWizard';
 import { parseStockHubTab, StockHubTabs, type StockHubTab } from '../components/stock/StockHubTabs';
 import { StockTable } from '../components/stock/StockTable';
@@ -22,6 +23,7 @@ export function StockPage() {
     stockViews,
     movements,
     transporters,
+    dataSource,
     addGeneratedDocument,
     applyStockCorrections,
     addMovement,
@@ -29,6 +31,7 @@ export function StockPage() {
     addShelfUnit,
     removeShelfUnit,
     assignStockToShelf,
+    refreshData,
   } = useAppData();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -145,13 +148,16 @@ export function StockPage() {
       )}
 
       {activeTab === 'movimientos' && (
-        <MovementsPanel
-          movements={movements}
-          locations={locations}
-          lots={lots}
-          transporters={transporters}
-          onAdd={addMovement}
-        />
+        <div className="space-y-4">
+          <PlanillaImportPanel canWrite={dataSource === 'database'} onImported={refreshData} />
+          <MovementsPanel
+            movements={movements}
+            locations={locations}
+            lots={lots}
+            transporters={transporters}
+            onAdd={addMovement}
+          />
+        </div>
       )}
 
       {activeTab === 'control' && (

@@ -23,16 +23,21 @@ export const mapStockRecord = (row: StockRecordRow): StockRecord => ({
   updatedAt: row.updated_at,
 });
 
-export const mapMovement = (row: MovementRow): Movement => ({
-  id: row.id,
-  reference: row.reference,
-  lotId: row.lot_id,
-  originLocationId: row.origin_location_id ?? undefined,
-  destinationLocationId: row.destination_location_id ?? undefined,
-  quantity: Number(row.quantity),
-  date: row.movement_date,
-  status: row.status,
-});
+export const mapMovement = (row: MovementRow): Movement => {
+  const data = row.data && typeof row.data === 'object' && !Array.isArray(row.data) ? row.data : undefined;
+  const entries = data ? Object.entries(data).filter(([, value]) => value !== undefined) : [];
+  return {
+    id: row.id,
+    reference: row.reference,
+    lotId: row.lot_id,
+    originLocationId: row.origin_location_id ?? undefined,
+    destinationLocationId: row.destination_location_id ?? undefined,
+    quantity: Number(row.quantity),
+    date: row.movement_date,
+    status: row.status,
+    data: entries.length > 0 ? Object.fromEntries(entries) : undefined,
+  };
+};
 
 export const mapTraceabilityEvent = (row: TraceabilityEventRow): TraceabilityEvent => ({
   id: row.id,

@@ -4,14 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch server/index.ts",
-    "build": "npm run check && vite build && tsup server/index.ts server/db/migrate.ts server/db/seed.ts --format esm --platform node --external vite --out-dir dist-server --clean",
+    "dev": "tsx watch --env-file-if-exists=.env server/index.ts",
+    "build": "npm run check && vite build && tsup server/index.ts server/db/migrate.ts server/db/seed.ts --format esm --platform node --external vite --external xlsx --out-dir dist-server --clean",
     "start": "node dist-server/index.js",
     "check": "tsc --noEmit",
     "test": "vitest run",
     "render:validate": "node scripts/validate-render.mjs",
-    "db:migrate": "tsx server/db/migrate.ts",
-    "db:seed": "tsx server/db/seed.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env server/db/migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=.env server/db/seed.ts"
   },
   "dependencies": {
     "express": "^5.2.1",
@@ -21,6 +21,7 @@
     "react-dom": "19.2.8",
     "react-router-dom": "7.18.2",
     "tsx": "^4.23.12",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
