@@ -16,14 +16,19 @@ export function getStockViews(
 
     if (!lot || !location) return [];
 
+    const declaredQuantity = Number(record.declaredQuantity) || 0;
+    const verifiedQuantity = Number(record.verifiedQuantity) || 0;
+
     return [{
       ...record,
       lot,
       location,
-      difference: record.verifiedQuantity - record.declaredQuantity,
+      declaredQuantity,
+      verifiedQuantity,
+      difference: verifiedQuantity - declaredQuantity,
       status: getStockStatus(
-        record.declaredQuantity,
-        record.verifiedQuantity,
+        declaredQuantity,
+        verifiedQuantity,
         record.verificationPending,
       ),
     }];
@@ -31,12 +36,18 @@ export function getStockViews(
 }
 
 export function getStockViewByLotId(stock: StockView[], lotId: string): StockView | undefined {
-  return stock.find((record) => record.lotId === lotId);
+  const target = String(lotId);
+  return stock.find((record) => String(record.lotId) === target);
+}
+
+export function operationalQuantity(record: Pick<StockView, 'declaredQuantity' | 'verifiedQuantity' | 'verificationPending' | 'status'>): number {
+  if (record.verificationPending || record.status === 'pending') return record.declaredQuantity;
+  return record.verifiedQuantity;
 }
 
 export function getOperationalMetrics(stock: StockView[]) {
   return {
-    totalStock: stock.reduce((total, record) => total + record.verifiedQuantity, 0),
+    totalStock: stock.reduce((total, record) => total + operationalQuantity(record), 0),
     activeLots: new Set(stock.map((record) => record.lotId)).size,
     discrepancies: stock.filter((record) => record.status === 'discrepancy').length,
     pendingExports: 1,

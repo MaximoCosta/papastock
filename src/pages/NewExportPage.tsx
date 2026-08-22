@@ -80,10 +80,14 @@ export function NewExportPage() {
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    if (exportLines.length === 0 && defaultLot) {
-      setExportLines([{ lotId: defaultLot.id, quantity: 18000 }]);
-    }
-  }, [defaultLot, exportLines.length]);
+    if (exportLines.length > 0 || lots.length === 0) return;
+    const firstLot = lots.find((lot) => lot.code === 'A-310') ?? lots[0];
+    setExportLines([{
+      lotId: firstLot.id,
+      quantity: 18000,
+      origin: firstLot.origin?.trim() || undefined,
+    }]);
+  }, [exportLines.length, lots]);
 
   useEffect(() => {
     if (transporterId) return;

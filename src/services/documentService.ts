@@ -1,6 +1,7 @@
 import { DEFAULT_COMMERCIAL, DEFAULT_PACKING, PAPASUD_EXPORTER } from '../data/exporter';
 import { addUtcDays, derivePacking, shippingMarks } from '../lib/documentPacking';
 import type { Lot, Shelf, StockView, TraceabilityEvent, Transporter } from '../types/domain';
+import { latestTreatment as latestTreatmentEvent, readTreatmentProduct } from '../lib/validateExport';
 import type {
   DocumentCommercialFields,
   DocumentSnapshot,
@@ -53,6 +54,11 @@ function latestEvent(events: TraceabilityEvent[], lotId: string, type: Traceabil
     .sort((a, b) => b.date.localeCompare(a.date))[0];
 }
 
+function latestTreatment(events: TraceabilityEvent[], lot: Pick<Lot, 'id' | 'code'>): string {
+  const treatment = latestTreatmentEvent(events, lot);
+  return (treatment && readTreatmentProduct(treatment)) || 'No informado';
+}
+
 function treatmentLabel(events: TraceabilityEvent[], lotId: string): { product: string; date?: string } {
   const treatment = latestEvent(events, lotId, 'treatment');
   if (!treatment || typeof treatment.data.product !== 'string') {
@@ -81,9 +87,10 @@ export function buildExportDocumentItems(
 ): ExportDocumentItem[] {
   const bagWeightKg = operation.bagWeightKg ?? DEFAULT_PACKING.bagWeightKg;
   const unitPrice = operation.unitPrice;
+  const lotsById = new Map(lots.map((lot) => [String(lot.id), lot]));
 
   return operation.items.flatMap((line) => {
-    const lot = lotById(lots, line.lotId);
+    const lot = lotsById.get(String(line.lotId)) ?? lotById(lots, line.lotId) ?? lots.find((item) => item.code === line.lotId);
     if (!lot) return [];
     const packing = derivePacking(line.quantity, bagWeightKg);
     const treatment = treatmentLabel(events, lot.id);
@@ -92,11 +99,11 @@ export function buildExportDocumentItems(
       lotCode: lot.code,
       variety: lot.variety,
       campaign: lot.campaign,
-      origin: lot.origin,
+      origin: line.origin?.trim() || lot.origin,
       producer: lot.producer,
       harvestDate: lot.harvestDate,
       quantity: line.quantity,
-      treatment: treatment.product,
+      treatment: treatment.product || latestTreatment(events, lot),
       treatmentDate: treatment.date,
       qualityResult: qualityLabel(events, lot.id),
       bagCount: packing.bagCount,

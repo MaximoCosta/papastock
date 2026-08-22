@@ -7,6 +7,7 @@ import { shelfUnits as mockShelfUnits } from '../data/shelfUnits';
 import { stockRecords as mockStockRecords } from '../data/stock';
 import { transporters as mockTransporters } from '../data/transporters';
 import { apiUrl, normalizeSnapshot, readApiData, traceabilityBody } from '../services/apiClient';
+import { presentStockForOralDemo } from '../lib/demoStockPresentation';
 import type { Location, Lot, Movement, Shelf, ShelfUnit, StockRecord, TraceabilityEvent, Transporter } from '../types/domain';
 
 export type DataSource = 'database' | 'mock';
@@ -28,8 +29,15 @@ export interface SnapshotResult {
   warning?: string;
 }
 
-function mockSnapshot(): PapaStockSnapshot {
+function withDemoStock(snapshot: PapaStockSnapshot): PapaStockSnapshot {
   return {
+    ...snapshot,
+    stockRecords: presentStockForOralDemo(snapshot.stockRecords, snapshot.lots),
+  };
+}
+
+function mockSnapshot(): PapaStockSnapshot {
+  return withDemoStock({
     locations: mockLocations.map((item) => ({ ...item })),
     shelfUnits: mockShelfUnits.map((item) => ({ ...item })),
     shelves: mockShelves.map((item) => ({ ...item })),
@@ -38,7 +46,7 @@ function mockSnapshot(): PapaStockSnapshot {
     movements: mockMovements.map((item) => ({ ...item })),
     transporters: mockTransporters.map((item) => ({ ...item })),
     traceabilityEvents: initialTraceabilityEvents.map((item) => ({ ...item, data: { ...item.data } })),
-  };
+  });
 }
 
 function errorMessage(error: unknown): string {
@@ -65,14 +73,19 @@ export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
     return { data: mockSnapshot(), source: 'mock', warning: 'Modo demo mock forzado. Los cambios son temporales.' };
   }
 
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), 12_000);
   try {
-    const response = await fetch(apiUrl('/api/snapshot'), { headers: { accept: 'application/json' } });
+    const response = await fetch(apiUrl('/api/snapshot'), {
+      headers: { accept: 'application/json' },
+      signal: controller.signal,
+    });
     if (!response.ok) throw new Error(`API HTTP ${response.status}`);
     const payload = await response.json() as { data?: unknown };
     if (!isSnapshot(payload.data) || !payload.data.locations.length || !payload.data.lots.length || !payload.data.stockRecords.length) {
       throw new Error('snapshot remoto inválido o sin seed');
     }
-    const snapshot = normalizeSnapshot(payload.data);
+    const snapshot = withDemoStock(normalizeSnapshot(payload.data));
     return {
       data: {
         ...snapshot,
@@ -88,6 +101,8 @@ export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
       source: 'mock',
       warning: `La API no respondió (${errorMessage(error)}). Se cargó el snapshot mock completo.`,
     };
+  } finally {
+    globalThis.clearTimeout(timeout);
   }
 }
 

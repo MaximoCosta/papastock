@@ -80,9 +80,10 @@ export function analyzeExportReadiness(input: ExportReadinessInput): ExportValid
     traceabilityEvents: input.traceabilityEvents,
     requirements: aiParsed.length ? aiParsed : exportRequirements,
     lines: input.lines.map((line) => ({
-      lotId: line.lotId,
+      lotId: String(line.lotId),
       lot: line.lot,
       quantity: line.quantity,
+      origin: line.origin || line.lot?.origin,
       verifiedQuantity: line.stock?.verifiedQuantity,
       stockLocationName: line.stock?.location.name,
     })),

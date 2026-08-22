@@ -123,7 +123,16 @@ export function ExportForm({
     const nextLot = lots.find((lot) => !usedLotIds.has(lot.id));
     if (!nextLot) return;
     const verified = stockByLotId.get(nextLot.id)?.verifiedQuantity ?? 0;
-    onExportLinesChange([...exportLines, { lotId: nextLot.id, quantity: verified > 0 ? verified : 0 }]);
+    onExportLinesChange([...exportLines, {
+      lotId: nextLot.id,
+      quantity: verified > 0 ? verified : 0,
+      origin: nextLot.origin?.trim() || undefined,
+    }]);
+  }
+
+  function changeLot(index: number, lotId: string) {
+    const lot = lots.find((item) => item.id === lotId);
+    updateLine(index, { lotId, origin: lot?.origin?.trim() || undefined });
   }
 
   return (
@@ -137,15 +146,15 @@ export function ExportForm({
       </div>
 
       <div className="space-y-5 p-5">
-        <FieldGroup step="01" title="Operación" description="Indicá uno o más lotes y el peso neto de cada uno.">
+        <FieldGroup step="01" title="Operación" description="Indicá uno o más lotes, el peso neto y el origen de cada uno.">
           <div className="space-y-3">
             {exportLines.map((line, index) => {
               const stock = stockByLotId.get(line.lotId);
               return (
-              <div key={`${line.lotId}-${index}`} className="grid grid-cols-[minmax(0,1.4fr)_minmax(150px,0.6fr)_auto] items-end gap-3 max-[680px]:grid-cols-1">
+              <div key={`${line.lotId}-${index}`} className="grid grid-cols-[minmax(0,1.3fr)_minmax(140px,0.55fr)_minmax(0,1.2fr)_auto] items-end gap-3 max-[780px]:grid-cols-1">
                 <label>
                   <span className="label">Lote {index + 1}</span>
-                  <select className="field" value={line.lotId} onChange={(event) => updateLine(index, { lotId: event.target.value })}>
+                  <select className="field" value={line.lotId} onChange={(event) => changeLot(index, event.target.value)}>
                     {lots.filter((lot) => lot.id === line.lotId || !usedLotIds.has(lot.id)).map((lot) => (
                       <option key={lot.id} value={lot.id}>
                         {lot.code} · {lot.variety}{missing.has(lot.id) ? ' · falta tratamiento' : ''}
@@ -164,6 +173,15 @@ export function ExportForm({
                       {formatKg(stock.verifiedQuantity)} verificados
                     </span>
                   )}
+                </label>
+                <label>
+                  <span className="label">Origen</span>
+                  <input
+                    className="field"
+                    value={line.origin ?? ''}
+                    onChange={(event) => updateLine(index, { origin: event.target.value })}
+                    placeholder="Ej. Balcarce, Buenos Aires"
+                  />
                 </label>
                 <Button variant="secondary" className="h-10 px-3" onClick={() => onExportLinesChange(exportLines.filter((_, lineIndex) => lineIndex !== index))} disabled={exportLines.length === 1} aria-label={`Quitar lote ${index + 1}`}>
                   <Trash2 size={15} />

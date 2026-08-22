@@ -74,6 +74,8 @@ export interface ExportOperation {
 export interface ExportLotLine {
   lotId: string;
   quantity: number;
+  /** Origen geográfico declarado en la operación. Si falta, se usa el de la ficha del lote. */
+  origin?: string;
 }
 
 export interface ExportValidationLine extends ExportLotLine {
