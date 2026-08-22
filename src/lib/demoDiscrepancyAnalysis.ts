@@ -4,8 +4,14 @@ import type { DiscrepancyAnalysis } from '../types/export';
 const DEMO_LOT = 'LUDMILLA-600';
 const DEMO_MOVEMENT = 'MV-1847';
 
+function kg(value: number): string {
+  return `${value.toLocaleString('es-AR')} kg`;
+}
+
 export function hardcodedDiscrepancyAnalysis(
-  stock: Pick<StockView, 'declaredQuantity' | 'verifiedQuantity' | 'location'> & { lot: { code: string } },
+  stock: Pick<StockView, 'declaredQuantity' | 'verifiedQuantity' | 'location'> & {
+    lot: { code: string; variety?: string; campaign?: string };
+  },
   movements: Movement[] = [],
 ): DiscrepancyAnalysis | undefined {
   if (stock.lot.code.toUpperCase() !== DEMO_LOT) return undefined;
@@ -15,10 +21,18 @@ export function hardcodedDiscrepancyAnalysis(
   const difference = verified - declared;
   const gap = Math.abs(difference);
   const matching = movements.find((movement) => movement.reference === DEMO_MOVEMENT || movement.quantity === gap);
+  const intakes = movements
+    .filter((movement) => movement.status === 'completed' && movement.quantity > 0)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.reference.localeCompare(b.reference));
+  const intakeLine = intakes.length > 0
+    ? intakes.map((movement) => `${kg(movement.quantity)} (${movement.reference})`).join(' + ')
+    : '37.520 kg (R49) + 41.260 kg (R50) + 39.400 kg (R52) + 43.420 kg (R53)';
+  const variety = stock.lot.variety || 'Ludmilla';
+  const campaign = stock.lot.campaign || '2026';
 
   return {
     engine: 'llm',
-    summary: `El lote ${DEMO_LOT} figura con ${declared.toLocaleString('es-AR')} kg declarados y ${verified.toLocaleString('es-AR')} kg verificados en ${stock.location.name}. El faltante de ${gap.toLocaleString('es-AR')} kg coincide con el movimiento interno ${DEMO_MOVEMENT}, un traslado a playa de carga que quedó pendiente de cierre el 20/08. No aparece otra evidencia operativa que explique el desvío.`,
+    summary: `${DEMO_LOT} · variedad ${variety} · campaña ${campaign} · ${stock.location.name}. Stock: ${kg(declared)} declarados vs ${kg(verified)} verificados (${difference.toLocaleString('es-AR')} kg). El declarado cierra con 4 ingresos de tolva a Santa Ana: ${intakeLine}. El faltante de ${kg(gap)} no está en esos ingresos: encaja con ${DEMO_MOVEMENT} (${kg(gap)}, 20/08/2026, cámara → playa de carga, estado pendiente). Confianza operativa alta porque cantidad y fecha coinciden; la confirmación queda en el operador.`,
     confidence: 0.91,
     explainedQuantity: gap,
     unexplainedQuantity: 0,
