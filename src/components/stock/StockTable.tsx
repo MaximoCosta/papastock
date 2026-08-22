@@ -1,4 +1,5 @@
 import { ArrowRight, ClipboardCheck, PackageX } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { formatQuantity, formatSignedKg } from '../../lib/formatters';
 import { getStockAlert, stockAlertLabel } from '../../lib/stockAlerts';
@@ -10,10 +11,12 @@ import { StockStatusBadge } from './StockStatusBadge';
 export function StockTable({
   records,
   compact = false,
+  footer,
   onVerify,
 }: {
   records: StockView[];
   compact?: boolean;
+  footer?: ReactNode;
   onVerify?: (record: StockView) => void;
 }) {
   if (records.length === 0) {
@@ -86,10 +89,12 @@ export function StockTable({
           </tbody>
         </table>
       </div>
-      <div className="flex h-10 items-center gap-2 border-t border-[#e2e4de] bg-[#fafaf7] px-4 text-[10px] text-[#747970]">
-        <PackageX size={13} />
-        {records.length} registro{records.length === 1 ? '' : 's'} · Cantidades en kilogramos
-      </div>
+      {footer ?? (
+        <div className="flex h-10 items-center gap-2 border-t border-[#e2e4de] bg-[#fafaf7] px-4 text-[10px] text-[#747970]">
+          <PackageX size={13} />
+          {records.length} registro{records.length === 1 ? '' : 's'} · Cantidades en kilogramos
+        </div>
+      )}
     </div>
   );
 }

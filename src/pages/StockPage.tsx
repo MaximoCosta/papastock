@@ -1,13 +1,15 @@
 import { ClipboardCheck, ClipboardList, Filter, PackagePlus, Search, Upload } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/common/Button';
 import { PageHeader } from '../components/common/PageHeader';
+import { PaginationBar } from '../components/common/PaginationBar';
 import { PlanillaImportPanel } from '../components/stock/PlanillaImportPanel';
 import { StockIntakeForm } from '../components/stock/StockIntakeForm';
 import { StockTable } from '../components/stock/StockTable';
 import { VarietyStockPanel } from '../components/stock/VarietyStockPanel';
 import { StockVerificationForm } from '../components/stock/StockVerificationForm';
+import { paginate } from '../lib/pagination';
 import { mockDocumentService } from '../services/documentService';
 import { useAppData } from '../state/AppDataContext';
 import type { StockStatus } from '../types/domain';
@@ -37,6 +39,7 @@ export function StockPage() {
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [locationId, setLocationId] = useState('all');
+  const [page, setPage] = useState(1);
   const [status, setStatus] = useState<StockStatus | 'all'>(() => {
     const initial = searchParams.get('status');
     return initial === 'verified' || initial === 'discrepancy' || initial === 'pending' ? initial : 'all';
@@ -53,6 +56,12 @@ export function StockPage() {
   if (tab && tabRedirects[tab]) {
     return <Navigate to={tabRedirects[tab]} replace />;
   }
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, locationId, status]);
+
+  const pageWindow = paginate(records, page);
 
   function generatePlanilla() {
     const scopeLabel = locationId === 'all' ? 'Todas las ubicaciones' : locations.find((location) => location.id === locationId)?.name ?? 'Ubicación filtrada';
@@ -149,7 +158,8 @@ export function StockPage() {
       </section>
       <VarietyStockPanel records={records} />
       <StockTable
-        records={records}
+        records={pageWindow.items}
+        footer={<PaginationBar window={pageWindow} onPageChange={setPage} noun="registros" />}
         onVerify={(record) => {
           setVerifyRecordId(record.id);
           setVerifyOpen(true);
