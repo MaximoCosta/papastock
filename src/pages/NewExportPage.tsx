@@ -9,7 +9,7 @@ import { RequirementChecklist } from '../components/exports/RequirementChecklist
 import { DEFAULT_COMMERCIAL, DEFAULT_PACKING, DESTINATION_DEFAULTS } from '../data/exporter';
 import { derivePacking } from '../lib/documentPacking';
 import { aiService, toTraceabilityEvent } from '../services/aiService';
-import { mockDocumentService, type ExportDocumentContext } from '../services/documentService';
+import { buildExportItems, mockDocumentService, type ExportDocumentContext } from '../services/documentService';
 import {
   analyzeExportReadiness,
   buildDocumentSnapshot,
@@ -276,6 +276,7 @@ export function NewExportPage() {
         exportLines={exportLines.length ? exportLines : (defaultLot ? [{ lotId: defaultLot.id, quantity: 18000 }] : [])}
         lots={lots}
         lotsMissingTreatment={lotsMissingTreatment}
+        stockViews={stockViews}
         destinationCountry={destinationCountry}
         buyerName={buyerName}
         incoterm={incoterm}
@@ -325,7 +326,7 @@ export function NewExportPage() {
             </div>
           </div>
           <div className="grid grid-cols-[1.05fr_0.95fr] items-start gap-4 max-[1100px]:grid-cols-1">
-            <RequirementChecklist requirements={validation.requirements} engine={requirementsEngine} />
+            <RequirementChecklist requirements={validation.requirements} lots={selectedLots} engine={requirementsEngine} />
             <div className="space-y-4">
               {missingTreatmentLots.map((lot) => (
                 <MissingDataPanel
@@ -338,6 +339,7 @@ export function NewExportPage() {
               {validation.valid && (
                 <ExportSummary
                   lots={selectedLots}
+                  items={buildExportItems(exportLines, selectedLots, traceabilityEvents)}
                   destination={destinationCountry}
                   quantity={totalQuantity}
                   buyerName={buyerName}

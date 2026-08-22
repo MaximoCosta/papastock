@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { lots } from '../data/lots';
 import { transporters } from '../data/transporters';
 import { initialTraceabilityEvents } from '../data/traceability';
+import { buildExportItems, mockDocumentService } from './documentService';
 import { buildExportOperation } from './exportService';
-import { mockDocumentService } from './documentService';
 
 const a310 = lots.find((lot) => lot.code === 'A-310');
 const h118 = lots.find((lot) => lot.code === 'H-118');
@@ -32,6 +32,23 @@ function operationFor(items: Array<{ lotId: string; quantity: number }>) {
     transporterId: transporter.id,
   });
 }
+
+describe('buildExportItems', () => {
+  it('no agrupa lotes distintos y conserva el peso de cada línea', () => {
+    const items = buildExportItems(
+      [
+        { lotId: 'lot-a310', quantity: 18000 },
+        { lotId: 'lot-b118', quantity: 5000 },
+      ],
+      lots,
+      initialTraceabilityEvents,
+    );
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ lotId: 'lot-a310', lotCode: 'A-310', quantity: 18000 });
+    expect(items[1]).toMatchObject({ lotId: 'lot-b118', lotCode: 'B-118', quantity: 5000 });
+  });
+});
 
 describe('mockDocumentService', () => {
   it('emite una proforma con precios, empaque y trazabilidad del lote', () => {

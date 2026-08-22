@@ -4,6 +4,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { DocumentPage } from './pages/DocumentPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { LocationsPage } from './pages/LocationsPage';
+import { LoginPage } from './pages/LoginPage';
 import { LotDetailPage } from './pages/LotDetailPage';
 import { LotsPage } from './pages/LotsPage';
 import { MovementsPage } from './pages/MovementsPage';
@@ -14,8 +15,13 @@ import { StockControlPage } from './pages/StockControlPage';
 import { StockPage } from './pages/StockPage';
 import { TransportersPage } from './pages/TransportersPage';
 import { WarehousePage } from './pages/WarehousePage';
+import { useDemoSession } from './state/DemoSessionContext';
 
 export default function App() {
+  const { session } = useDemoSession();
+
+  if (!session) return <LoginPage />;
+
   return (
     <Routes>
       <Route element={<AppLayout />}>

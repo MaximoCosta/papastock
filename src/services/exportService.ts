@@ -174,6 +174,7 @@ export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSna
   const { operation, validation, transporter } = input;
   const packing = derivePacking(operation.quantity, operation.bagWeightKg ?? DEFAULT_PACKING.bagWeightKg);
   const marksLot = input.lots.length === 1 ? input.lots[0].code : operation.id;
+  const lotCodeById = new Map(input.lots.map((lot) => [lot.id, lot.code]));
 
   return {
     generatedAt: new Date().toISOString(),
@@ -218,6 +219,8 @@ export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSna
       shippingMarks: shippingMarks(marksLot, operation.destinationCountry),
     },
     requirements: validation.requirements.map((requirement) => ({
+      lotId: requirement.lotId,
+      lotCode: requirement.lotId ? lotCodeById.get(requirement.lotId) : undefined,
       field: requirement.field,
       label: requirement.label,
       status: requirement.status,

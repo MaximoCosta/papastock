@@ -8,6 +8,8 @@ import { createExportRequirementsParser } from './services/groqExportRequirement
 import { createMovementIntentParser } from './services/groqMovementIntent';
 import { createTraceabilityIntentParser } from './services/groqTraceabilityIntent';
 import { buildPlanillaImportFromFile, buildStockIntakePlan, demoSnapshot, materializePlanillaImport } from './services/planillaImport';
+import { getStockViews } from '../src/services/stockService';
+import { buildStockVerificationPreview, toStockVerificationConfirmation } from '../src/lib/stockVerification';
 
 const identifier = z.string().min(1).max(120);
 const discrepancyInputSchema = z.object({
@@ -70,6 +72,14 @@ const optionalText = (max: number) => z.preprocess(
   z.string().trim().max(max).optional(),
 );
 
+const stockVerificationSchema = z.object({
+  stockRecordId: identifier,
+  countedQuantity: z.number().nonnegative().max(1_000_000),
+  date: z.iso.date(),
+  bags: z.number().positive().max(100_000).optional(),
+  notes: optionalText(500),
+});
+
 const stockIntakeSchema = z.object({
   lotCode: z.string().trim().min(1).max(40),
   variety: z.string().trim().min(1).max(80),
@@ -105,7 +115,7 @@ const exportRequirementsInputSchema = z.object({
 
 export interface AppDependencies {
   repository?: Pick<PapaStockRepository,
-    'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer' | 'executePlanillaImport'>;
+    'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer' | 'executePlanillaImport' | 'executeStockVerification'>;
   analyze?: ReturnType<typeof createDiscrepancyAnalyzer>;
   parseMovementIntent?: ReturnType<typeof createMovementIntentParser>;
   parseTraceabilityIntent?: ReturnType<typeof createTraceabilityIntentParser>;
@@ -291,6 +301,25 @@ export function createApp(dependencies: AppDependencies = {}) {
           },
         },
       });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/stock/verify', async (request, response, next) => {
+    try {
+      const input = stockVerificationSchema.parse(request.body);
+      const snapshot = await snapshotForImport();
+      const preview = buildStockVerificationPreview(
+        input,
+        getStockViews(snapshot.stockRecords, snapshot.lots, snapshot.locations),
+      );
+      if (!preview.valid) {
+        throw Object.assign(new Error(preview.issues[0]?.message ?? 'La verificación no es válida.'), { status: 400, details: preview.issues });
+      }
+      if (repository?.executeStockVerification) {
+        response.status(201).json({ data: await repository.executeStockVerification(input) });
+        return;
+      }
+      response.status(201).json({ data: toStockVerificationConfirmation(preview, false) });
     } catch (error) { next(error); }
   });
 

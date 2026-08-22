@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, Ban, CheckCircle2, Send, Truck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Ban, CheckCircle2, ClipboardCheck, Send, Truck } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/common/Button';
@@ -7,10 +7,11 @@ import { LotHeader } from '../components/lots/LotHeader';
 import { MovementList } from '../components/lots/MovementList';
 import { TraceabilityTimeline } from '../components/lots/TraceabilityTimeline';
 import { DiscrepancyPanel } from '../components/stock/DiscrepancyPanel';
+import { StockVerificationForm } from '../components/stock/StockVerificationForm';
 import { formatDate, formatKg, formatSignedKg } from '../lib/formatters';
 import { validateDispatch } from '../lib/validateDispatch';
 import { aiService } from '../services/aiService';
-import { mockDocumentService } from '../services/documentService';
+import { buildExportItems, mockDocumentService } from '../services/documentService';
 import { getStockViewByLotId } from '../services/stockService';
 import { useAppData } from '../state/AppDataContext';
 import type { ValidationResult } from '../types/domain';
@@ -19,7 +20,7 @@ import type { DiscrepancyAnalysis } from '../types/export';
 export function LotDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { locations, lots, movements, stockViews, traceabilityEvents, addGeneratedDocument } = useAppData();
+  const { locations, lots, movements, stockViews, traceabilityEvents, addGeneratedDocument, applyStockVerification } = useAppData();
   const lot = lots.find((item) => item.code.toLowerCase() === id?.toLowerCase());
   const stock = lot ? getStockViewByLotId(stockViews, lot.id) : undefined;
   const lotMovements = lot ? movements.filter((movement) => movement.lotId === lot.id) : [];
@@ -31,6 +32,7 @@ export function LotDetailPage() {
   const [dispatchDestination, setDispatchDestination] = useState('');
   const [dispatchTransporter, setDispatchTransporter] = useState('');
   const [dispatchResult, setDispatchResult] = useState<ValidationResult>();
+  const [verifyOpen, setVerifyOpen] = useState(false);
 
   if (!lot || !stock) return <Navigate to="/lots" replace />;
   const currentLot = lot;
@@ -61,8 +63,11 @@ export function LotDetailPage() {
   function generateRemito() {
     if (!dispatchResult?.valid) return;
     const document = mockDocumentService.createRemito({
-      lot: currentLot,
-      quantity: dispatchQuantity,
+      items: buildExportItems(
+        [{ lotId: currentLot.id, quantity: dispatchQuantity }],
+        [currentLot],
+        lotEvents,
+      ),
       originLocation: currentStock.location.name,
       destinationLocation: dispatchDestination || 'No informado',
       transporter: dispatchTransporter,
@@ -109,7 +114,14 @@ export function LotDetailPage() {
               <h2 className="text-sm font-semibold">Stock</h2>
               <p className="mt-1 text-[11px] text-[#747970]">{stock.location.name}</p>
             </div>
-            <StatusBadge tone={stock.status === 'discrepancy' ? 'danger' : 'success'}>{stock.status === 'discrepancy' ? 'Control requerido' : 'Conciliado'}</StatusBadge>
+            <div className="flex items-center gap-2">
+              <StatusBadge tone={stock.status === 'discrepancy' ? 'danger' : stock.status === 'pending' ? 'warning' : 'success'}>
+                {stock.status === 'discrepancy' ? 'Control requerido' : stock.status === 'pending' ? 'Pendiente' : 'Conciliado'}
+              </StatusBadge>
+              <Button variant="secondary" onClick={() => setVerifyOpen((value) => !value)}>
+                <ClipboardCheck size={14} /> Verificar stock
+              </Button>
+            </div>
           </div>
           <div className="grid grid-cols-3 divide-x divide-[#e2e4de] px-2 py-5">
             <div className="px-4"><p className="label">Declarado</p><p className="tabular text-[22px] font-semibold tracking-[-0.03em]">{formatKg(stock.declaredQuantity)}</p></div>
@@ -119,6 +131,20 @@ export function LotDetailPage() {
           <div className="border-t border-[#e4e6e0] bg-[#fafaf7] px-5 py-2.5 text-[10px] text-[#777c74]">Última verificación · {formatDate(stock.updatedAt)}</div>
         </section>
       </div>
+
+      {verifyOpen && (
+        <div className="mb-5">
+          <StockVerificationForm
+            records={stockViews.filter((record) => record.lotId === currentLot.id)}
+            initialRecordId={currentStock.id}
+            onClose={() => setVerifyOpen(false)}
+            onVerified={async (confirmation) => {
+              applyStockVerification(confirmation.correction, confirmation.event);
+              setVerifyOpen(false);
+            }}
+          />
+        </div>
+      )}
 
       {stock.status === 'discrepancy' && (
         <div className="mb-5">

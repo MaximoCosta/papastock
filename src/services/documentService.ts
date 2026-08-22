@@ -5,6 +5,7 @@ import type {
   DocumentCommercialFields,
   DocumentSnapshot,
   ExportDocumentItem,
+  ExportLotLine,
   ExportOperation,
   FacturaDocument,
   GeneratedDocument,
@@ -204,9 +205,24 @@ export interface ExportDocumentContext {
   originLocation?: string;
 }
 
+/** Detalle por lote. Los lotes nunca se agrupan, aunque compartan variedad u origen. */
+export function buildExportItems(
+  lines: ExportLotLine[],
+  lots: Lot[],
+  events: TraceabilityEvent[],
+): ExportDocumentItem[] {
+  return buildExportDocumentItems({
+    id: 'tmp',
+    items: lines,
+    destinationCountry: '',
+    quantity: lines.reduce((total, line) => total + line.quantity, 0),
+    status: 'draft',
+    createdAt: new Date().toISOString(),
+  }, lots, events);
+}
+
 export interface RemitoInput {
-  lot: Lot;
-  quantity: number;
+  items: ExportDocumentItem[];
   originLocation: string;
   destinationLocation: string;
   transporter: string;
@@ -374,8 +390,7 @@ export const mockDocumentService: DocumentService = {
   },
 
   createRemito({
-    lot,
-    quantity,
+    items,
     originLocation,
     destinationLocation,
     transporter,
@@ -389,27 +404,18 @@ export const mockDocumentService: DocumentService = {
     operationId,
     destinationCountry,
   }) {
+    const quantity = items.reduce((total, item) => total + item.quantity, 0);
     const packing = derivePacking(quantity);
-    const items: ExportDocumentItem[] = [{
-      lotId: lot.id,
-      lotCode: lot.code,
-      variety: lot.variety,
-      campaign: lot.campaign,
-      origin: lot.origin,
-      producer: lot.producer,
-      harvestDate: lot.harvestDate,
-      quantity,
-      bagCount: packing.bagCount,
-      lastBagKg: packing.lastBagKg,
-      packingHomogeneous: packing.homogeneous,
-    }];
+    const lotCode = items.map((item) => item.lotCode).join(' · ') || '—';
+    const variety = [...new Set(items.map((item) => item.variety))].join(' · ') || '—';
+    const origin = [...new Set(items.map((item) => item.origin))].join(' · ') || undefined;
     return {
       id: nextDocumentId('RM'),
       type: 'remito',
       createdAt: new Date().toISOString(),
       operationId,
-      lotCode: lot.code,
-      variety: lot.variety,
+      lotCode,
+      variety,
       quantity,
       items,
       originLocation,
@@ -422,11 +428,11 @@ export const mockDocumentService: DocumentService = {
       transporterContact,
       transporterPhone,
       snapshot,
-      campaign: lot.campaign,
-      origin: lot.origin,
+      campaign: items[0]?.campaign,
+      origin,
       destinationCountry,
-      producer: lot.producer,
-      harvestDate: lot.harvestDate,
+      producer: items.length === 1 ? items[0].producer : undefined,
+      harvestDate: items.length === 1 ? items[0].harvestDate : undefined,
       bagCount: packing.bagCount,
       bagWeightKg: packing.bagWeightKg,
       packaging: DEFAULT_PACKING.packaging,
@@ -437,7 +443,7 @@ export const mockDocumentService: DocumentService = {
       tareKg: packing.tareKg,
       lastBagKg: packing.lastBagKg,
       packingHomogeneous: packing.homogeneous,
-      shippingMarks: shippingMarks(lot.code, destinationCountry || destinationLocation),
+      shippingMarks: shippingMarks(items.length === 1 ? lotCode : operationId || lotCode, destinationCountry || destinationLocation),
     };
   },
 

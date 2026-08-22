@@ -182,15 +182,19 @@ incompleta y el escenario de demo está consumido.**
 
 ```text
 /exports/new
-  → uno o más lotes (default A-310), país (default Brasil), kilos, empaque y
-    condiciones comerciales
-  → validateExport determinístico contra src/data/requirements.ts (por lote)
-  → si falta el tratamiento: MissingDataPanel (texto libre → parser → confirmar)
-  → POST /api/traceability  (persiste el evento treatment en PostgreSQL)
-  → revalidación → requisitos completos
+  → uno o más lotes con peso neto (default A-310, 18.000 kg), país (default Brasil),
+    empaque y condiciones comerciales
+  → validateExport determinístico por lote contra src/data/requirements.ts
+  → si falta el tratamiento en algún lote: MissingDataPanel (texto libre → parser → confirmar)
+  → POST /api/traceability  (persiste el evento treatment en PostgreSQL, un lote a la vez)
+  → revalidación → todos los requisitos de todos los lotes
   → emitir paquete (proforma, factura, lista de empaque, remito) o cada uno
     por separado → sessionStorage → /documents/:id
 ```
+
+La operación es una lista de líneas (`ExportLotLine`: `lotId` + `quantity`). Los lotes
+no se agrupan: cada uno conserva su peso, variedad, origen y tratamiento. Los
+documentos emitidos incluyen `items[]` con una fila por lote.
 
 ### Estado real de A-310 en la base de producción
 
@@ -293,6 +297,9 @@ Las pestañas internas de stock se reemplazaron por páginas. Las URLs viejas
 `/stock?tab=ubicaciones|modelo|movimientos|control` redirigen a la página
 correspondiente.
 
+Hay un **login ficticio de demo** (`operador` / `papasud`) que tapa la SPA hasta
+que hay sesión en `sessionStorage`. No es autenticación real ni protege la API.
+
 ---
 
 ## 7. Backend — endpoints reales
@@ -313,7 +320,7 @@ existen hoy.
 | POST | `/api/imports/planilla/preview` | migración | ninguno | Recibe el Excel (`.xls`/`.xlsx`, body binario ≤ 4 MB). Parser determinístico en `server/services/planillaImport.ts`. Devuelve conteos, lotes/ubicaciones a crear, sample y filas omitidas. **Nunca escribe.** |
 | POST | `/api/imports/planilla` | migración | **escribe** | Reparsea el mismo archivo, pide confirmación humana en la UI y persiste lotes, ubicaciones, movimientos y stock de esos lotes en una transacción. No toca A-204 / A-310 / C-102 / F-301. Idempotente por `movements.reference`. |
 | POST | `/api/stock/intake/preview` | operación | ninguno | Formulario de ingreso (lote, variedad, kilos, destino, remito, bolsas, calibre, DTV, etc.). Valida sin escribir. |
-| POST | `/api/stock/intake` | operación | **escribe** | Confirma la carga: crea lote/ubicación si hace falta, acredita stock y registra el movimiento. No toca A-204 / A-310 / C-102 / F-301. |
+| POST | `/api/stock/verify` | operación | **escribe** | Conteo físico: actualiza `verified_quantity`, limpia `verification_pending` y registra `stock_verification`. No toca A-204 / A-310 / C-102 / F-301. |
 | * | `/api/*` (catch-all) | — | ninguno | 404 `{ error: 'Endpoint no encontrado.' }` |
 
 ### Convenciones transversales
@@ -570,9 +577,10 @@ A-204 no puede despachar aunque la IA ya explicó la diferencia.
 ### `src/lib/validateExport.ts` — `validateExport`
 
 Recorre los requisitos aplicables (`country` coincidente y `required: true`) y
-resuelve cada campo desde datos reales: `lotCode`, `variety` y `origin` del lote,
-`quantity` de la operación, `treatment` del evento de trazabilidad `treatment`
-más reciente. `valid` sólo si hay requisitos y no falta ninguno.
+los evalúa **por cada línea** de la operación. Resuelve cada campo desde datos
+reales: `lotCode`, `variety` y `origin` del lote, `quantity` de esa línea,
+`treatment` del evento de trazabilidad `treatment` más reciente de ese lote.
+`valid` sólo si hay requisitos y no falta ninguno en ningún lote.
 
 ### `server/services/stockTransfer.ts` — `buildStockTransferPreview`
 
@@ -716,8 +724,9 @@ Leyenda: ✅ implementado · 🟡 parcial · 🧪 demo/mock · 🔴 falta
 - **Despachos.** `validateDispatch` es una función cliente que devuelve un
   `ValidationResult` renderizado en pantalla. No hay tabla, ni endpoint, ni
   registro de auditoría de intentos de despacho.
-- **`ExportOperation`.** Se arma en `NewExportPage` (`id: EXP-<timestamp>`)
-  sólo para alimentar el paquete documental.
+- **`ExportOperation`.** Se arma en `NewExportPage` con `buildExportOperation`
+  (`id: EXP-<timestamp>`, `items[]` por lote) sólo para alimentar el paquete
+  documental.
 - **Análisis de discrepancia.** Los resultados de Groq/heurística viven en el
   estado del componente. No se guardan ni se auditan.
 
@@ -786,9 +795,9 @@ Vitest: usa `vite.config.ts`.
 | `server/services/groqMovementIntent.test.ts` | 3 | Intención estructurada de Groq, parser local ante HTTP 429, y rechazo de texto incompleto sin inventar ubicaciones |
 | `server/services/stockTransfer.test.ts` | 4 | Aprobación sin escritura, bloqueo de A-204 por discrepancia, stock insuficiente y ubicaciones iguales, tolerancia a nombres sin acentos |
 | `src/lib/validateDispatch.test.ts` | 3 | Bloqueo por discrepancia, bloqueo por stock verificado insuficiente, despacho seguro |
-| `src/lib/validateExport.test.ts` | 5 | A-310 en 4/5 con `treatment` faltante, 5/5 tras confirmar, y procedencia de cada dato |
-| `src/lib/documentPacking.test.ts` | 3 | Bultos homogéneos, remanente en el último bulto, marcas de embarque y vigencia UTC |
-| `src/services/documentService.test.ts` | 2 | Proforma completa (precio, empaque, trazabilidad) y paquete multi-lote |
+| `src/lib/validateExport.test.ts` | 7 | A-310 en 4/5, 5/5 tras treatment, procedencia, exceso de stock, origen demo, y validación por lote en operaciones de varios lotes |
+| `src/lib/documentPacking.test.ts` | 4 | Bultos homogéneos, remanente en el último bulto, marcas de embarque y vigencia UTC |
+| `src/services/documentService.test.ts` | 3 | Proforma completa (precio, empaque, trazabilidad), `buildExportItems` sin agrupar lotes, y paquete multi-lote |
 | `src/repositories/mappers.test.ts` | 4 | Mapeo de filas `snake_case`, mapeo de `data` jsonb, discrepancia de A-204 y métricas agregadas, determinismo de `getStockStatus` |
 
 Notas:

@@ -1,6 +1,34 @@
 import { Download } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { formatDate } from '../../lib/formatters';
+import type { ExportDocumentItem } from '../../types/export';
+
+/**
+ * Detalle por lote de un documento emitido. Los documentos guardados antes de que
+ * existiera el detalle multi-lote no tienen `items`: se reconstruye uno a partir de
+ * los campos agregados para que sigan imprimiéndose.
+ */
+export function exportItemsOf(document: {
+  items?: ExportDocumentItem[];
+  lotCode: string;
+  variety: string;
+  quantity: number;
+  campaign?: string;
+  origin?: string;
+  treatment?: string;
+}): ExportDocumentItem[] {
+  if (document.items && document.items.length > 0) return document.items;
+
+  return [{
+    lotId: document.lotCode,
+    lotCode: document.lotCode,
+    variety: document.variety,
+    campaign: document.campaign ?? '—',
+    origin: document.origin ?? '—',
+    quantity: document.quantity,
+    treatment: document.treatment,
+  }];
+}
 
 export function DocumentArticle({ children }: { children: ReactNode }) {
   return (

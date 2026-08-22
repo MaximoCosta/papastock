@@ -47,6 +47,7 @@ interface AppDataContextValue {
   addGeneratedDocument: (document: GeneratedDocument) => void;
   addGeneratedDocuments: (documents: GeneratedDocument[]) => void;
   applyStockCorrections: (corrections: StockControlCorrection[]) => void;
+  applyStockVerification: (correction: StockControlCorrection, event?: TraceabilityEvent) => void;
   addMovement: (movement: Movement) => void;
   addShelfUnit: (input: AddShelfUnitInput) => ShelfUnit;
   removeShelfUnit: (unitId: string) => void;
@@ -167,6 +168,21 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
         };
       }));
+    },
+    applyStockVerification: (correction, event) => {
+      const now = new Date().toISOString();
+      setStockRecords((current) => current.map((record) => (
+        record.id === correction.stockRecordId
+          ? { ...record, verifiedQuantity: correction.countedQuantity, verificationPending: false, updatedAt: now }
+          : record
+      )));
+      if (!event) return;
+      setTraceabilityEvents((current) => {
+        const withoutEquivalent = current.filter(
+          (item) => !(item.lotId === event.lotId && item.type === event.type && item.date.slice(0, 10) === event.date.slice(0, 10)),
+        );
+        return [...withoutEquivalent, event];
+      });
     },
     addMovement: (movement) => {
       setMovements((current) => [movement, ...current]);

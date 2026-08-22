@@ -2,11 +2,13 @@ import { ArrowRight, CheckCircle2, FileOutput, Files, Package, Receipt, Truck } 
 import { formatKg, formatMoney } from '../../lib/formatters';
 import type { DerivedPacking } from '../../lib/documentPacking';
 import type { Lot, Transporter } from '../../types/domain';
+import type { ExportDocumentItem } from '../../types/export';
 import { Button } from '../common/Button';
 import { TransporterProfileCard } from '../transporters/TransporterProfileCard';
 
 export function ExportSummary({
   lots,
+  items,
   destination,
   quantity,
   buyerName,
@@ -25,6 +27,7 @@ export function ExportSummary({
   onGenerateListaEmpaque,
 }: {
   lots: Lot[];
+  items: ExportDocumentItem[];
   destination: string;
   quantity: number;
   buyerName: string;
@@ -68,6 +71,25 @@ export function ExportSummary({
               <span>{incoterm}</span>
             </div>
           </div>
+        </div>
+
+        <div className="border-t border-[#c7dacc]">
+          <div className="grid grid-cols-[1fr_1.2fr_auto] gap-4 bg-[#e9f1eb] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.08em] text-[#5f7266]">
+            <span>Lote</span><span>Variedad</span><span className="text-right">Peso neto</span>
+          </div>
+          {items.map((item) => (
+            <div key={item.lotId} className="grid grid-cols-[1fr_1.2fr_auto] gap-4 border-t border-[#d9e6dd] px-5 py-2.5 text-[11px] text-[#333832]">
+              <span className="font-semibold">{item.lotCode}</span>
+              <span>{item.variety}</span>
+              <span className="tabular text-right font-semibold">{formatKg(item.quantity)}</span>
+            </div>
+          ))}
+          {items.length > 1 && (
+            <div className="grid grid-cols-[1fr_1.2fr_auto] gap-4 border-t border-[#c7dacc] px-5 py-2.5 text-[11px] font-bold text-[#25412f]">
+              <span className="col-span-2">Total</span>
+              <span className="tabular text-right">{formatKg(quantity)}</span>
+            </div>
+          )}
         </div>
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-t border-[#c7dacc] px-5 py-4 text-[11px]">

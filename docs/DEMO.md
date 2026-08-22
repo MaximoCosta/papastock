@@ -11,6 +11,11 @@ URL: `https://papastock.onrender.com`
 
 Hacelo **10 minutos antes**, no en vivo.
 
+Al abrir la app aparece un **login ficticio**. Usuario `operador`, contraseña
+`papasud`. No autentica contra el servidor: solo abre la sesión de demo en el
+navegador. La sesión vive en `sessionStorage` y se cierra con **Salir** en la
+barra superior.
+
 ### 1. Despertar el servicio
 
 El plan Free de Render suspende el servicio por inactividad. La primera request
@@ -211,8 +216,9 @@ Elegí uno de estos dos caminos **antes** de presentar.
 Cualquier lote sin evento de tratamiento arranca en 4/5 con “Tratamiento
 fitosanitario” faltante. Sirven **H-118, B-221, D-405, E-090, G-512** y **C-102**.
 
-1. Lote **H-118**, destino **Brasil**, cantidad **13.000**.
-2. “Analizar requisitos” → **4 de 5**, falta el tratamiento.
+1. Lote **H-118**, destino **Brasil**, peso neto **13.000 kg**. Se pueden agregar
+   más lotes con “Agregar lote”; cada uno lleva su propio peso.
+2. “Analizar documentación” → **4 de 5**, falta el tratamiento.
 3. En “Información faltante”, escribir:
    `El lote fue tratado con Mancozeb el 18 de agosto.`
 4. “Interpretar información” → revisar producto y fecha extraídos.
@@ -258,8 +264,9 @@ registrado como pendiente en `docs/PROJECT_CONTEXT.md` §20. Hasta que exista,
   contra datos reales del lote y de su trazabilidad. No la decide un modelo.
 - El texto libre sólo **propone** un dato estructurado; el operador lo confirma
   antes de que se persista.
-- La documentación se arma con datos trazables del lote más empaque, precio,
-  comprador y transportista cargados en la operación.
+- La documentación se arma con datos trazables de cada lote más empaque, precio,
+  comprador y transportista. Si hay varios lotes, el documento lista una fila
+  por lote y el total de la operación.
 - Aclarar que los requisitos son simulados para la demo (la propia pantalla lo
   dice) y que proforma/factura son documentos no fiscales.
 

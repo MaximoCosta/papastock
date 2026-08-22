@@ -1,4 +1,4 @@
-import { ClipboardList, Filter, PackagePlus, Search, Upload } from 'lucide-react';
+import { ClipboardCheck, ClipboardList, Filter, PackagePlus, Search, Upload } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/common/Button';
@@ -6,6 +6,7 @@ import { PageHeader } from '../components/common/PageHeader';
 import { PlanillaImportPanel } from '../components/stock/PlanillaImportPanel';
 import { StockIntakeForm } from '../components/stock/StockIntakeForm';
 import { StockTable } from '../components/stock/StockTable';
+import { StockVerificationForm } from '../components/stock/StockVerificationForm';
 import { mockDocumentService } from '../services/documentService';
 import { useAppData } from '../state/AppDataContext';
 import type { StockStatus } from '../types/domain';
@@ -23,11 +24,14 @@ export function StockPage() {
     stockViews,
     dataSource,
     addGeneratedDocument,
+    applyStockVerification,
     refreshData,
     applyImportedSnapshot,
   } = useAppData();
   const importInputRef = useRef<HTMLInputElement>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [verifyRecordId, setVerifyRecordId] = useState<string>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState('');
@@ -67,6 +71,9 @@ export function StockPage() {
             <Button variant="secondary" onClick={() => setIntakeOpen((value) => !value)}>
               <PackagePlus size={14} /> Cargar stock
             </Button>
+            <Button variant="secondary" onClick={() => { setVerifyRecordId(undefined); setVerifyOpen((value) => !value); }}>
+              <ClipboardCheck size={14} /> Verificar stock
+            </Button>
             <Button variant="secondary" onClick={() => importInputRef.current?.click()}>
               <Upload size={14} /> Subir archivo
             </Button>
@@ -76,6 +83,18 @@ export function StockPage() {
           </div>
         )}
       />
+
+      {verifyOpen && (
+        <StockVerificationForm
+          records={stockViews}
+          initialRecordId={verifyRecordId}
+          onClose={() => setVerifyOpen(false)}
+          onVerified={async (confirmation) => {
+            applyStockVerification(confirmation.correction, confirmation.event);
+            setVerifyOpen(false);
+          }}
+        />
+      )}
 
       {intakeOpen && (
         <StockIntakeForm
@@ -127,7 +146,13 @@ export function StockPage() {
           </div>
         </div>
       </section>
-      <StockTable records={records} />
+      <StockTable
+        records={records}
+        onVerify={(record) => {
+          setVerifyRecordId(record.id);
+          setVerifyOpen(true);
+        }}
+      />
     </>
   );
 }
