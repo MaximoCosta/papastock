@@ -1,4 +1,17 @@
-import { Boxes, ClipboardClock, PackageCheck, TriangleAlert, Upload } from 'lucide-react';
+import {
+  ArrowRight,
+  Boxes,
+  ClipboardClock,
+  ClipboardList,
+  FileText,
+  PackageCheck,
+  PackageSearch,
+  Route,
+  TriangleAlert,
+  Truck,
+  Upload,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/common/Button';
 import { PageHeader } from '../components/common/PageHeader';
@@ -8,10 +21,26 @@ import { formatKg } from '../lib/formatters';
 import { getOperationalMetrics } from '../services/stockService';
 import { useAppData } from '../state/AppDataContext';
 
+interface QuickAccessItem {
+  to: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}
+
 export function DashboardPage() {
-  const { stockViews, dataSource } = useAppData();
+  const { stockViews, lots, movements, transporters, generatedDocuments, dataSource } = useAppData();
   const metrics = getOperationalMetrics(stockViews);
   const alerts = stockViews.filter((record) => record.status === 'discrepancy');
+
+  const quickAccess: QuickAccessItem[] = [
+    { to: '/stock', label: 'Stock', description: `${stockViews.length} registros consolidados`, icon: Boxes },
+    { to: '/lots', label: 'Lotes', description: `${lots.length} lotes con trazabilidad`, icon: PackageSearch },
+    { to: '/movements/new', label: 'Mover stock', description: `${movements.length} movimientos registrados`, icon: Route },
+    { to: '/transporters', label: 'Transportistas', description: `${transporters.filter((item) => item.active).length} activos`, icon: Truck },
+    { to: '/exports/new', label: 'Exportaciones', description: 'Preparar nueva operación', icon: ClipboardList },
+    { to: '/documents', label: 'Documentos', description: `${generatedDocuments.length} generados`, icon: FileText },
+  ];
 
   return (
     <>
@@ -32,6 +61,29 @@ export function DashboardPage() {
         <StatCard icon={PackageCheck} label="Lotes activos" value={String(metrics.activeLots)} note="Campaña 2025/26" />
         <StatCard icon={TriangleAlert} label="Discrepancias" value={String(metrics.discrepancies)} note="Requieren revisión" tone="danger" />
         <StatCard icon={ClipboardClock} label="Exportaciones pendientes" value={String(metrics.pendingExports)} note="Preparación documental" tone="warning" />
+      </section>
+
+      <section className="mt-7">
+        <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.11em] text-[#777c74]">Accesos rápidos</p>
+        <div className="grid grid-cols-3 gap-3 max-[1100px]:grid-cols-2">
+          {quickAccess.map(({ to, label, description, icon: Icon }, index) => (
+            <Link
+              key={to}
+              to={to}
+              className="anim-row group flex items-center gap-3 border border-[#d9dbd4] bg-white p-4 transition-colors hover:border-[#8fa896] hover:bg-[#f6f8f5]"
+              style={{ animationDelay: `${index * 30}ms` }}
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center border border-[#d8dad3] bg-[#f4f5f1] text-[#315d43] group-hover:border-[#a9c0ad] group-hover:bg-white">
+                <Icon size={18} strokeWidth={1.8} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold text-[#242822]">{label}</p>
+                <p className="mt-0.5 truncate text-[11px] text-[#767b73]">{description}</p>
+              </div>
+              <ArrowRight size={15} className="shrink-0 text-[#9aa19a] transition-transform group-hover:translate-x-0.5 group-hover:text-[#315d43]" />
+            </Link>
+          ))}
+        </div>
       </section>
 
       <section className="mt-7">

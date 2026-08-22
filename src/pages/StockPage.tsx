@@ -1,4 +1,4 @@
-import { ClipboardList, Filter, PackagePlus, Search, Upload } from 'lucide-react';
+import { ClipboardCheck, ClipboardList, Filter, PackagePlus, Search, Upload } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/common/Button';
@@ -7,6 +7,7 @@ import { LocationsPanel } from '../components/stock/LocationsPanel';
 import { MovementsPanel } from '../components/stock/MovementsPanel';
 import { PlanillaImportPanel } from '../components/stock/PlanillaImportPanel';
 import { StockIntakeForm } from '../components/stock/StockIntakeForm';
+import { StockVerificationForm } from '../components/stock/StockVerificationForm';
 import { StockControlWizard } from '../components/stock/StockControlWizard';
 import { parseStockHubTab, StockHubTabs, type StockHubTab } from '../components/stock/StockHubTabs';
 import { StockTable } from '../components/stock/StockTable';
@@ -27,6 +28,7 @@ export function StockPage() {
     dataSource,
     addGeneratedDocument,
     applyStockCorrections,
+    applyStockVerification,
     addMovement,
     addShelfUnit,
     removeShelfUnit,
@@ -36,6 +38,8 @@ export function StockPage() {
   } = useAppData();
   const importInputRef = useRef<HTMLInputElement>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [verifyRecordId, setVerifyRecordId] = useState<string>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
@@ -79,6 +83,9 @@ export function StockPage() {
       <Button variant="secondary" onClick={() => setIntakeOpen((value) => !value)}>
         <PackagePlus size={14} /> Cargar stock
       </Button>
+      <Button variant="secondary" onClick={() => { setVerifyRecordId(undefined); setVerifyOpen((value) => !value); }}>
+        <ClipboardCheck size={14} /> Verificar stock
+      </Button>
       {uploadButton}
       {activeTab === 'consolidado' ? (
         <Button variant="secondary" onClick={generatePlanilla} disabled={records.length === 0}>
@@ -101,6 +108,18 @@ export function StockPage() {
         actions={headerActions}
       />
 
+      {verifyOpen && (
+        <StockVerificationForm
+          records={stockViews}
+          initialRecordId={verifyRecordId}
+          onClose={() => setVerifyOpen(false)}
+          onVerified={async (confirmation) => {
+            applyStockVerification(confirmation.correction, confirmation.event);
+            setVerifyOpen(false);
+            setTab('consolidado');
+          }}
+        />
+      )}
       {intakeOpen && (
         <StockIntakeForm
           locations={locations}
@@ -157,7 +176,13 @@ export function StockPage() {
               </div>
             </div>
           </section>
-          <StockTable records={records} />
+          <StockTable
+            records={records}
+            onVerify={(record) => {
+              setVerifyRecordId(record.id);
+              setVerifyOpen(true);
+            }}
+          />
         </>
       )}
 

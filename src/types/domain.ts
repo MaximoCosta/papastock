@@ -113,6 +113,39 @@ export interface StockIntakeInput {
   producer?: string;
 }
 
+export interface StockVerificationInput {
+  stockRecordId: string;
+  countedQuantity: number;
+  date: string;
+  bags?: number;
+  notes?: string;
+}
+
+export interface StockVerificationPreview {
+  valid: boolean;
+  issues: PlanillaImportIssue[];
+  stockRecordId: string;
+  lotId: string;
+  lotCode: string;
+  variety: string;
+  locationId: string;
+  locationName: string;
+  declaredQuantity: number;
+  previousVerified: number;
+  countedQuantity: number;
+  difference: number;
+  verificationPending: boolean;
+  date: string;
+  bags?: number;
+  notes?: string;
+}
+
+export interface StockVerificationConfirmation {
+  persisted: boolean;
+  correction: StockControlCorrection;
+  event: TraceabilityEvent;
+}
+
 export interface PlanillaImportIssue {
   sheet: string;
   rowNumber: number;
