@@ -76,7 +76,8 @@ export interface ExportValidationInput {
   /** Campos heredados para consumidores de una exportación de un solo lote. */
   lot?: Lot;
   destinationCountry: string;
-  quantity: number;
+  /** Sólo se usa en la forma heredada de un lote; con `lines` la cantidad vive en cada línea. */
+  quantity?: number;
   traceabilityEvents: TraceabilityEvent[];
   requirements: ExportRequirement[];
   /** Opcional: habilita la procedencia "Stock verificado" en el checklist. */
@@ -180,6 +181,9 @@ export interface DiscrepancyAnalysis {
 export type DocumentType = 'proforma' | 'factura' | 'remito' | 'planilla_stock' | 'planilla_conteo';
 
 export interface DocumentSnapshotRequirement {
+  /** Lote al que corresponde el requisito. Una exportación multi-lote lo valida por lote. */
+  lotId?: string;
+  lotCode?: string;
   field: string;
   label: string;
   status: RequirementStatus;

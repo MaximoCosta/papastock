@@ -1,6 +1,7 @@
 import { Plus, SearchCheck, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { Lot, Transporter } from '../../types/domain';
+import { formatKg } from '../../lib/formatters';
+import type { Lot, StockView, Transporter } from '../../types/domain';
 import type { ExportLotLine } from '../../types/export';
 import { Button } from '../common/Button';
 import { LoadingLabel } from '../common/LoadingLabel';
@@ -31,6 +32,7 @@ export function ExportForm({
   exportLines,
   lots,
   lotsMissingTreatment,
+  stockViews,
   destinationCountry,
   buyerName,
   incoterm,
@@ -59,6 +61,7 @@ export function ExportForm({
   exportLines: ExportLotLine[];
   lots: Lot[];
   lotsMissingTreatment: string[];
+  stockViews: StockView[];
   destinationCountry: string;
   buyerName: string;
   incoterm: string;
@@ -89,9 +92,17 @@ export function ExportForm({
   const missing = new Set(lotsMissingTreatment);
   const usedLotIds = new Set(exportLines.map((line) => line.lotId));
   const totalQuantity = exportLines.reduce((total, line) => total + line.quantity, 0);
+  const stockByLotId = new Map(stockViews.map((record) => [record.lotId, record]));
 
   function updateLine(index: number, change: Partial<ExportLotLine>) {
     onExportLinesChange(exportLines.map((line, lineIndex) => lineIndex === index ? { ...line, ...change } : line));
+  }
+
+  function addLot() {
+    const nextLot = lots.find((lot) => !usedLotIds.has(lot.id));
+    if (!nextLot) return;
+    const verified = stockByLotId.get(nextLot.id)?.verifiedQuantity ?? 0;
+    onExportLinesChange([...exportLines, { lotId: nextLot.id, quantity: verified > 0 ? verified : 0 }]);
   }
 
   return (
@@ -107,7 +118,9 @@ export function ExportForm({
       <div className="space-y-5 p-5">
         <FieldGroup step="01" title="Operación" description="Indicá uno o más lotes y el peso neto de cada uno.">
           <div className="space-y-3">
-            {exportLines.map((line, index) => (
+            {exportLines.map((line, index) => {
+              const stock = stockByLotId.get(line.lotId);
+              return (
               <div key={`${line.lotId}-${index}`} className="grid grid-cols-[minmax(0,1.4fr)_minmax(150px,0.6fr)_auto] items-end gap-3 max-[680px]:grid-cols-1">
                 <label>
                   <span className="label">Lote {index + 1}</span>
@@ -125,18 +138,21 @@ export function ExportForm({
                     <input className="field tabular pr-10" type="number" min="1" step="500" value={line.quantity || ''} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[#747970]">kg</span>
                   </span>
+                  {stock && (
+                    <span className="mt-1 block text-[10px] text-[#7b8078]">
+                      {formatKg(stock.verifiedQuantity)} verificados
+                    </span>
+                  )}
                 </label>
                 <Button variant="secondary" className="h-10 px-3" onClick={() => onExportLinesChange(exportLines.filter((_, lineIndex) => lineIndex !== index))} disabled={exportLines.length === 1} aria-label={`Quitar lote ${index + 1}`}>
                   <Trash2 size={15} />
                 </Button>
               </div>
-            ))}
+              );
+            })}
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#e8ebe4] pt-3">
-            <Button variant="secondary" onClick={() => {
-              const nextLot = lots.find((lot) => !usedLotIds.has(lot.id));
-              if (nextLot) onExportLinesChange([...exportLines, { lotId: nextLot.id, quantity: 0 }]);
-            }} disabled={usedLotIds.size >= lots.length}>
+            <Button variant="secondary" onClick={addLot} disabled={usedLotIds.size >= lots.length}>
               <Plus size={15} /> Agregar lote
             </Button>
             <span className="text-[11px] font-semibold text-[#4e5b50]">Total: {new Intl.NumberFormat('es-AR').format(totalQuantity)} kg</span>

@@ -182,13 +182,18 @@ incompleta y el escenario de demo está consumido.**
 
 ```text
 /exports/new
-  → elegir lote (default A-310), país (default Brasil), cantidad (default 18.000)
-  → validateExport determinístico contra src/data/requirements.ts
-  → si falta el tratamiento: MissingDataPanel (texto libre → parser local → confirmar)
-  → POST /api/traceability  (persiste el evento treatment en PostgreSQL)
-  → revalidación → 5/5
-  → generar proforma (mockDocumentService) → sessionStorage → /documents/:id
+  → elegir uno o más lotes con su peso neto (default A-310, 18.000 kg)
+  → país (default Brasil)
+  → validateExport determinístico por lote contra src/data/requirements.ts
+  → si falta el tratamiento en algún lote: MissingDataPanel (texto libre → parser → confirmar)
+  → POST /api/traceability  (persiste el evento treatment en PostgreSQL, un lote a la vez)
+  → revalidación → todos los requisitos de todos los lotes
+  → generar proforma / factura / remito (mockDocumentService) → sessionStorage → /documents/:id
 ```
+
+La operación es una lista de líneas (`ExportLotLine`: `lotId` + `quantity`). Los lotes
+no se agrupan: cada uno conserva su peso, variedad, origen y tratamiento. Los
+documentos emitidos incluyen `items[]` con una fila por lote.
 
 ### Estado real de A-310 en la base de producción
 
@@ -560,9 +565,10 @@ A-204 no puede despachar aunque la IA ya explicó la diferencia.
 ### `src/lib/validateExport.ts` — `validateExport`
 
 Recorre los requisitos aplicables (`country` coincidente y `required: true`) y
-resuelve cada campo desde datos reales: `lotCode`, `variety` y `origin` del lote,
-`quantity` de la operación, `treatment` del evento de trazabilidad `treatment`
-más reciente. `valid` sólo si hay requisitos y no falta ninguno.
+los evalúa **por cada línea** de la operación. Resuelve cada campo desde datos
+reales: `lotCode`, `variety` y `origin` del lote, `quantity` de esa línea,
+`treatment` del evento de trazabilidad `treatment` más reciente de ese lote.
+`valid` sólo si hay requisitos y no falta ninguno en ningún lote.
 
 ### `server/services/stockTransfer.ts` — `buildStockTransferPreview`
 
@@ -706,8 +712,8 @@ Leyenda: ✅ implementado · 🟡 parcial · 🧪 demo/mock · 🔴 falta
 - **Despachos.** `validateDispatch` es una función cliente que devuelve un
   `ValidationResult` renderizado en pantalla. No hay tabla, ni endpoint, ni
   registro de auditoría de intentos de despacho.
-- **`ExportOperation`.** Se arma inline en `NewExportPage.generateDocument`
-  (`id: EXP-<timestamp>`) sólo para alimentar la proforma.
+- **`ExportOperation`.** Se arma en `NewExportPage` con `buildExportOperation`
+  (`id: EXP-<timestamp>`, `items[]` por lote) sólo para alimentar los documentos.
 - **Análisis de discrepancia.** Los resultados de Groq/heurística viven en el
   estado del componente. No se guardan ni se auditan.
 
@@ -776,7 +782,8 @@ Vitest: usa `vite.config.ts`.
 | `server/services/groqMovementIntent.test.ts` | 3 | Intención estructurada de Groq, parser local ante HTTP 429, y rechazo de texto incompleto sin inventar ubicaciones |
 | `server/services/stockTransfer.test.ts` | 4 | Aprobación sin escritura, bloqueo de A-204 por discrepancia, stock insuficiente y ubicaciones iguales, tolerancia a nombres sin acentos |
 | `src/lib/validateDispatch.test.ts` | 3 | Bloqueo por discrepancia, bloqueo por stock verificado insuficiente, despacho seguro |
-| `src/lib/validateExport.test.ts` | 2 | A-310 en 4/5 con `treatment` faltante, y 5/5 tras confirmar el tratamiento |
+| `src/lib/validateExport.test.ts` | 7 | A-310 en 4/5, 5/5 tras treatment, procedencia, exceso de stock, origen demo, y validación por lote en operaciones de varios lotes |
+| `src/services/documentService.test.ts` | 2 | `items[]` de proforma multi-lote: una fila por lote, pesos separados, total agregado |
 | `src/repositories/mappers.test.ts` | 4 | Mapeo de filas `snake_case`, mapeo de `data` jsonb, discrepancia de A-204 y métricas agregadas, determinismo de `getStockStatus` |
 
 Notas:

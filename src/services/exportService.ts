@@ -137,6 +137,7 @@ export interface DocumentSnapshotInput {
  */
 export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSnapshot {
   const { operation, validation, transporter } = input;
+  const lotCodeById = new Map(input.lots.map((lot) => [lot.id, lot.code]));
 
   return {
     generatedAt: new Date().toISOString(),
@@ -165,6 +166,8 @@ export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSna
       originLocation: input.originLocation,
     },
     requirements: validation.requirements.map((requirement) => ({
+      lotId: requirement.lotId,
+      lotCode: requirement.lotId ? lotCodeById.get(requirement.lotId) : undefined,
       field: requirement.field,
       label: requirement.label,
       status: requirement.status,

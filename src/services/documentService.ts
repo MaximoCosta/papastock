@@ -1,6 +1,8 @@
 import type { Lot, Shelf, StockView, TraceabilityEvent, Transporter } from '../types/domain';
 import type {
   DocumentSnapshot,
+  ExportDocumentItem,
+  ExportLotLine,
   ExportOperation,
   FacturaDocument,
   GeneratedDocument,
@@ -45,9 +47,40 @@ function latestTreatment(events: TraceabilityEvent[], lotId: string): string {
   return typeof treatment?.data.product === 'string' ? treatment.data.product : 'No informado';
 }
 
+/**
+ * Detalle por lote de un documento de exportación. Cada línea queda trazada a su
+ * lote: los lotes nunca se agrupan, aunque compartan variedad u origen.
+ */
+export function buildExportItems(
+  lines: ExportLotLine[],
+  lots: Lot[],
+  events: TraceabilityEvent[],
+): ExportDocumentItem[] {
+  const lotById = new Map(lots.map((lot) => [lot.id, lot]));
+
+  return lines.flatMap((line) => {
+    const lot = lotById.get(line.lotId);
+    if (!lot) return [];
+    return [{
+      lotId: lot.id,
+      lotCode: lot.code,
+      variety: lot.variety,
+      campaign: lot.campaign,
+      origin: lot.origin,
+      quantity: line.quantity,
+      treatment: latestTreatment(events, lot.id),
+    }];
+  });
+}
+
+/** Resumen legible de un campo cuando el documento cubre varios lotes. */
+function joinDistinct(values: Array<string | undefined>): string {
+  const unique = [...new Set(values.filter((value): value is string => Boolean(value)))];
+  return unique.length > 0 ? unique.join(' · ') : 'No informado';
+}
+
 export interface RemitoInput {
-  lot: Lot;
-  quantity: number;
+  items: ExportDocumentItem[];
   originLocation: string;
   destinationLocation: string;
   transporter: string;
@@ -63,14 +96,15 @@ export interface RemitoInput {
 export interface DocumentService {
   createProforma(
     operation: ExportOperation,
-    lot: Lot,
+    lots: Lot[],
     events: TraceabilityEvent[],
     transporter?: Transporter,
     snapshot?: DocumentSnapshot,
   ): ProformaDocument;
   createFactura(
     operation: ExportOperation,
-    lot: Lot,
+    lots: Lot[],
+    events: TraceabilityEvent[],
     unitPrice: number,
     currency: string,
     transporter?: Transporter,
@@ -82,21 +116,23 @@ export interface DocumentService {
 }
 
 export const mockDocumentService: DocumentService = {
-  createProforma(operation, lot, events, transporter, snapshot) {
+  createProforma(operation, lots, events, transporter, snapshot) {
+    const items = buildExportItems(operation.items, lots, events);
     return {
       snapshot,
+      items,
       id: nextDocumentId('PF'),
       type: 'proforma',
       createdAt: new Date().toISOString(),
       operationId: operation.id,
       exporter: 'Papasud',
-      lotCode: lot.code,
-      variety: lot.variety,
+      lotCode: joinDistinct(items.map((item) => item.lotCode)),
+      variety: joinDistinct(items.map((item) => item.variety)),
       quantity: operation.quantity,
-      origin: lot.origin,
+      origin: joinDistinct(items.map((item) => item.origin)),
       destinationCountry: operation.destinationCountry,
-      treatment: latestTreatment(events, lot.id),
-      campaign: lot.campaign,
+      treatment: joinDistinct(items.map((item) => item.treatment)),
+      campaign: joinDistinct(items.map((item) => item.campaign)),
       buyerName: operation.buyerName,
       incoterm: operation.incoterm,
       departurePort: operation.departurePort,
@@ -109,21 +145,23 @@ export const mockDocumentService: DocumentService = {
     };
   },
 
-  createFactura(operation, lot, unitPrice, currency, transporter, snapshot) {
+  createFactura(operation, lots, events, unitPrice, currency, transporter, snapshot) {
+    const items = buildExportItems(operation.items, lots, events);
     return {
       snapshot,
+      items,
       id: nextDocumentId('FC'),
       type: 'factura',
       createdAt: new Date().toISOString(),
       operationId: operation.id,
       exporter: 'Papasud',
-      lotCode: lot.code,
-      variety: lot.variety,
+      lotCode: joinDistinct(items.map((item) => item.lotCode)),
+      variety: joinDistinct(items.map((item) => item.variety)),
       quantity: operation.quantity,
       destinationCountry: operation.destinationCountry,
       unitPrice,
       currency,
-      campaign: lot.campaign,
+      campaign: joinDistinct(items.map((item) => item.campaign)),
       buyerName: operation.buyerName,
       incoterm: operation.incoterm,
       transporterName: transporter ? (transporter.tradeName || transporter.companyName) : undefined,
@@ -131,8 +169,7 @@ export const mockDocumentService: DocumentService = {
   },
 
   createRemito({
-    lot,
-    quantity,
+    items,
     originLocation,
     destinationLocation,
     transporter,
@@ -146,12 +183,13 @@ export const mockDocumentService: DocumentService = {
   }) {
     return {
       snapshot,
+      items,
       id: nextDocumentId('RM'),
       type: 'remito',
       createdAt: new Date().toISOString(),
-      lotCode: lot.code,
-      variety: lot.variety,
-      quantity,
+      lotCode: joinDistinct(items.map((item) => item.lotCode)),
+      variety: joinDistinct(items.map((item) => item.variety)),
+      quantity: items.reduce((total, item) => total + item.quantity, 0),
       originLocation,
       destinationLocation,
       transporter,
