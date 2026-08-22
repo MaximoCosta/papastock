@@ -25,7 +25,13 @@ const repository = {
 };
 const analyze = vi.fn(async () => ({ engine: 'heuristic' as const, summary: 'x', confidence: 0.2, explainedQuantity: 0, unexplainedQuantity: 1, hypotheses: [], evidence: [], recommendedAction: 'Revisar.' }));
 const parseMovementIntent = vi.fn(async () => ({ action: 'transfer' as const, lotCode: 'A-204', quantityKg: 500, origin: 'Sur', destination: 'Norte', engine: 'llm' as const }));
-const app = createApp({ repository, analyze, parseMovementIntent });
+const parseTraceabilityIntent = vi.fn(async () => ({
+  engine: 'llm' as const, type: 'treatment' as const, product: 'Mancozeb', date: '2026-08-18', confidence: 0.94,
+}));
+const parseExportRequirements = vi.fn(async () => ({
+  engine: 'llm' as const, requirements: [{ key: 'treatment' as const, label: 'Tratamiento fitosanitario', required: true }],
+}));
+const app = createApp({ repository, analyze, parseMovementIntent, parseTraceabilityIntent, parseExportRequirements });
 
 describe('API PapaStock', () => {
   it('expone health exacto', async () => {
@@ -54,5 +60,22 @@ describe('API PapaStock', () => {
 
     const created = (await request(app).post('/api/movements').send(parsed).expect(201)).body.data;
     expect(created).toMatchObject({ reference: 'MV-N01-TEST', status: 'completed' });
+  });
+
+  it('interpreta trazabilidad sin escribirla', async () => {
+    const body = { text: 'El lote fue tratado con Mancozeb el 18 de agosto de 2026.', lotId: 'lot-a310' };
+    const data = (await request(app).post('/api/ai/traceability-intent').send(body).expect(200)).body.data;
+    expect(data).toMatchObject({ engine: 'llm', product: 'Mancozeb', date: '2026-08-18' });
+    expect(repository.insertTraceabilityEvent).not.toHaveBeenCalled();
+  });
+
+  it('rechaza una interpretación de trazabilidad sin lotId', async () => {
+    await request(app).post('/api/ai/traceability-intent').send({ text: 'Tratamiento con Mancozeb.' }).expect(400);
+  });
+
+  it('devuelve requisitos documentales estructurados', async () => {
+    const body = { country: 'Brasil', documentType: 'proforma', sourceText: 'Debe incluir tratamiento fitosanitario.' };
+    const data = (await request(app).post('/api/ai/export-requirements').send(body).expect(200)).body.data;
+    expect(data).toMatchObject({ engine: 'llm', requirements: [{ key: 'treatment' }] });
   });
 });

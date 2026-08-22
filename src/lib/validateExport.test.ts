@@ -42,5 +42,59 @@ describe('validateExport', () => {
     expect(result.missingFields).toEqual([]);
     expect(result.completedFields).toHaveLength(5);
   });
+
+  it('informa la procedencia de cada dato encontrado', () => {
+    const result = validateExport({
+      lot,
+      destinationCountry: 'Brasil',
+      quantity: 18000,
+      verifiedQuantity: 22000,
+      stockLocationName: 'Frigorífico Central',
+      traceabilityEvents: [
+        ...initialTraceabilityEvents,
+        {
+          id: 'trace-provenance',
+          lotId: 'lot-a310',
+          type: 'treatment',
+          date: '2026-08-18',
+          data: { product: 'Mancozeb', origin: 'operator_confirmation' },
+        },
+      ],
+      requirements: exportRequirements,
+    });
+
+    const byField = new Map(result.requirements.map((item) => [item.field, item]));
+    expect(byField.get('lotCode')?.source?.label).toBe('Lote A-310');
+    expect(byField.get('quantity')?.source).toMatchObject({ label: 'Stock verificado' });
+    expect(byField.get('treatment')?.source).toMatchObject({
+      label: 'Trazabilidad · 18/8/2026',
+      detail: 'Confirmado por el operador',
+    });
+  });
+
+  it('marca la cantidad como dato de la operación cuando excede el stock verificado', () => {
+    const result = validateExport({
+      lot,
+      destinationCountry: 'Brasil',
+      quantity: 30000,
+      verifiedQuantity: 22000,
+      traceabilityEvents: initialTraceabilityEvents,
+      requirements: exportRequirements,
+    });
+
+    expect(result.requirements.find((item) => item.field === 'quantity')?.source?.label).toBe('Operación');
+  });
+
+  it('etiqueta los requisitos estáticos como demo', () => {
+    const result = validateExport({
+      lot,
+      destinationCountry: 'Brasil',
+      quantity: 18000,
+      traceabilityEvents: initialTraceabilityEvents,
+      requirements: exportRequirements,
+    });
+
+    expect(result.requirements.every((item) => item.origin === 'STATIC_DEMO')).toBe(true);
+  });
 });
 

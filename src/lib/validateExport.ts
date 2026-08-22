@@ -1,14 +1,25 @@
 import { formatKg } from './formatters';
+import type { TraceabilityEvent } from '../types/domain';
 import type {
   ExportField,
   ExportValidationInput,
   ExportValidationResult,
+  RequirementSource,
 } from '../types/export';
 
-function getFieldValue(field: ExportField, input: ExportValidationInput): string | undefined {
-  const treatment = input.traceabilityEvents
+function latestTreatment(input: ExportValidationInput): TraceabilityEvent | undefined {
+  return input.traceabilityEvents
     .filter((event) => event.lotId === input.lot?.id && event.type === 'treatment')
     .sort((a, b) => b.date.localeCompare(a.date))[0];
+}
+
+function formatEventDate(date: string): string {
+  return new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC' })
+    .format(new Date(`${date.slice(0, 10)}T12:00:00Z`));
+}
+
+function getFieldValue(field: ExportField, input: ExportValidationInput): string | undefined {
+  const treatment = latestTreatment(input);
 
   switch (field) {
     case 'lotCode':
@@ -21,8 +32,42 @@ function getFieldValue(field: ExportField, input: ExportValidationInput): string
       return input.lot?.origin;
     case 'treatment':
       return treatment && typeof treatment.data.product === 'string'
-        ? `${treatment.data.product} · ${new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC' }).format(new Date(`${treatment.date.slice(0, 10)}T12:00:00Z`))}`
+        ? `${treatment.data.product} · ${formatEventDate(treatment.date)}`
         : undefined;
+  }
+}
+
+/**
+ * Procedencia del dato. Es informativa y no participa de la validez:
+ * el objetivo es poder decir siempre de dónde salió cada valor del documento.
+ */
+function getFieldSource(field: ExportField, input: ExportValidationInput): RequirementSource | undefined {
+  const lotLabel = input.lot ? `Lote ${input.lot.code}` : undefined;
+
+  switch (field) {
+    case 'lotCode':
+    case 'variety':
+    case 'origin':
+      return lotLabel ? { label: lotLabel, detail: 'Ficha de lote' } : undefined;
+    case 'quantity': {
+      if (input.quantity <= 0) return undefined;
+      if (input.verifiedQuantity === undefined) return { label: 'Operación', detail: 'Cantidad declarada en el formulario' };
+      const withinStock = input.quantity <= input.verifiedQuantity;
+      return {
+        label: withinStock ? 'Stock verificado' : 'Operación',
+        detail: withinStock
+          ? `${formatKg(input.verifiedQuantity)} disponibles${input.stockLocationName ? ` en ${input.stockLocationName}` : ''}`
+          : `Excede el stock verificado (${formatKg(input.verifiedQuantity)})`,
+      };
+    }
+    case 'treatment': {
+      const treatment = latestTreatment(input);
+      if (!treatment || typeof treatment.data.product !== 'string') return undefined;
+      const origin = treatment.data.origin === 'operator_confirmation'
+        ? 'Confirmado por el operador'
+        : 'Registro de trazabilidad';
+      return { label: `Trazabilidad · ${formatEventDate(treatment.date)}`, detail: origin };
+    }
   }
 }
 
@@ -38,6 +83,8 @@ export function validateExport(input: ExportValidationInput): ExportValidationRe
       label: requirement.label,
       status: value ? ('complete' as const) : ('missing' as const),
       value,
+      origin: requirement.origin ?? ('STATIC_DEMO' as const),
+      source: value ? getFieldSource(requirement.field, input) : undefined,
     };
   });
 
@@ -55,4 +102,3 @@ export function validateExport(input: ExportValidationInput): ExportValidationRe
     requirements,
   };
 }
-

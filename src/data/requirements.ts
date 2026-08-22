@@ -14,6 +14,7 @@ function forCountry(country: string, prefix: string): ExportRequirement[] {
     ...field,
     id: `${prefix}-${field.field}`,
     country,
+    origin: 'STATIC_DEMO' as const,
   }));
 }
 

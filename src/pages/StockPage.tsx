@@ -11,7 +11,7 @@ import { StockTable } from '../components/stock/StockTable';
 import { WarehouseModelPanel } from '../components/stock/WarehouseModelPanel';
 import { mockDocumentService } from '../services/documentService';
 import { useAppData } from '../state/AppDataContext';
-import type { StockStatus, TraceabilityEvent } from '../types/domain';
+import type { StockStatus } from '../types/domain';
 
 export function StockPage() {
   const {
@@ -25,10 +25,10 @@ export function StockPage() {
     addGeneratedDocument,
     applyStockCorrections,
     addMovement,
-    addTraceabilityEvent,
     addShelfUnit,
     removeShelfUnit,
     assignStockToShelf,
+    refreshData,
   } = useAppData();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -60,12 +60,6 @@ export function StockPage() {
     const document = mockDocumentService.createPlanillaStock(records, scopeLabel);
     addGeneratedDocument(document);
     navigate(`/documents/${document.id}`);
-  }
-
-  async function persistTraceability(events: TraceabilityEvent[]) {
-    for (const event of events) {
-      await addTraceabilityEvent(event);
-    }
   }
 
   const headerActions = activeTab === 'consolidado' ? (
@@ -161,7 +155,7 @@ export function StockPage() {
           stockViews={stockViews}
           onApply={applyStockCorrections}
           onCreateDocument={addGeneratedDocument}
-          onTraceability={persistTraceability}
+          onReset={refreshData}
         />
       )}
     </>

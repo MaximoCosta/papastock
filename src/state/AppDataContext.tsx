@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { insertTraceabilityEvent, loadPapaStockSnapshot, type DataSource } from '../repositories/dataRepository';
+import { loadStoredDocuments, persistDocuments } from '../services/documentService';
 import { getStockViews } from '../services/stockService';
 import type {
   Location,
@@ -56,16 +57,6 @@ interface AppDataContextValue {
 }
 
 const AppDataContext = createContext<AppDataContextValue | undefined>(undefined);
-const documentsStorageKey = 'papastock.documents.v1';
-
-function readSessionValue<T>(key: string, fallback: T): T {
-  try {
-    const raw = sessionStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -80,9 +71,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [dataWarning, setDataWarning] = useState<string>();
   const [actionError, setActionError] = useState<string>();
-  const [generatedDocuments, setGeneratedDocuments] = useState<GeneratedDocument[]>(() =>
-    readSessionValue(documentsStorageKey, []),
-  );
+  const [generatedDocuments, setGeneratedDocuments] = useState<GeneratedDocument[]>(loadStoredDocuments);
 
   const refreshData = useCallback(async () => {
     setIsLoading(true);
@@ -105,7 +94,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, [refreshData]);
 
   useEffect(() => {
-    sessionStorage.setItem(documentsStorageKey, JSON.stringify(generatedDocuments));
+    persistDocuments(generatedDocuments);
   }, [generatedDocuments]);
 
   const stockViews = useMemo(
