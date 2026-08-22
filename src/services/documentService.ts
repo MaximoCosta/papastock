@@ -1,4 +1,5 @@
 import type { Lot, Shelf, StockView, TraceabilityEvent, Transporter } from '../types/domain';
+import { latestTreatment as latestTreatmentEvent, readTreatmentProduct } from '../lib/validateExport';
 import type {
   DocumentSnapshot,
   ExportDocumentItem,
@@ -40,11 +41,9 @@ function nextDocumentId(prefix: string): string {
   return `${prefix}-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
 }
 
-function latestTreatment(events: TraceabilityEvent[], lotId: string): string {
-  const treatment = events
-    .filter((event) => event.lotId === lotId && event.type === 'treatment')
-    .sort((a, b) => b.date.localeCompare(a.date))[0];
-  return typeof treatment?.data.product === 'string' ? treatment.data.product : 'No informado';
+function latestTreatment(events: TraceabilityEvent[], lot: Pick<Lot, 'id' | 'code'>): string {
+  const treatment = latestTreatmentEvent(events, lot);
+  return (treatment && readTreatmentProduct(treatment)) || 'No informado';
 }
 
 /**
@@ -56,19 +55,19 @@ export function buildExportItems(
   lots: Lot[],
   events: TraceabilityEvent[],
 ): ExportDocumentItem[] {
-  const lotById = new Map(lots.map((lot) => [lot.id, lot]));
+  const lotById = new Map(lots.map((lot) => [String(lot.id), lot]));
 
   return lines.flatMap((line) => {
-    const lot = lotById.get(line.lotId);
+    const lot = lotById.get(String(line.lotId)) ?? lots.find((item) => item.code === line.lotId);
     if (!lot) return [];
     return [{
       lotId: lot.id,
       lotCode: lot.code,
       variety: lot.variety,
       campaign: lot.campaign,
-      origin: lot.origin,
+      origin: line.origin?.trim() || lot.origin,
       quantity: line.quantity,
-      treatment: latestTreatment(events, lot.id),
+      treatment: latestTreatment(events, lot),
     }];
   });
 }

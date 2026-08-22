@@ -31,7 +31,8 @@ export function getStockViews(
 }
 
 export function getStockViewByLotId(stock: StockView[], lotId: string): StockView | undefined {
-  return stock.find((record) => record.lotId === lotId);
+  const target = String(lotId);
+  return stock.find((record) => String(record.lotId) === target);
 }
 
 export function getOperationalMetrics(stock: StockView[]) {

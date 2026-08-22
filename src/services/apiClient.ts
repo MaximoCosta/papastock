@@ -151,6 +151,37 @@ function asNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function asId(value: unknown): string {
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function normalizeTraceabilityType(value: unknown): TraceabilityEvent['type'] {
+  const type = String(value ?? '');
+  if (type === 'phytosanitary' || type === 'fitosanitario' || type === 'phytosanitary_treatment') return 'treatment';
+  if (type === 'planting' || type === 'harvest' || type === 'treatment' || type === 'quality_control' || type === 'stock_verification') {
+    return type;
+  }
+  return type as TraceabilityEvent['type'];
+}
+
 function normalizeMovementStatus(status: unknown): MovementStatus {
   if (status === 'pending') return 'pending';
   if (status === 'cancelled' || status === 'canceled') return 'cancelled';
@@ -170,35 +201,61 @@ export function normalizeSnapshot(data: {
   return {
     locations: data.locations.map((location) => ({
       ...location,
+      id: asId(location.id),
       name: location.name || 'Sin nombre',
       type: location.type === 'cold_storage' ? 'cold_storage' : 'warehouse',
     })),
-    lots: data.lots.map((lot) => ({
-      ...lot,
-      variety: lot.variety || 'Sin variedad',
-      campaign: lot.campaign || '',
-      producer: lot.producer || '',
-      origin: lot.origin || '',
-      harvestDate: lot.harvestDate || undefined,
-    })),
+    lots: data.lots.map((lot) => {
+      const raw = lot as Lot & { originName?: string; provenance?: string; lot_id?: string };
+      return {
+        ...lot,
+        id: asId(lot.id ?? raw.lot_id),
+        variety: lot.variety || 'Sin variedad',
+        campaign: lot.campaign || '',
+        producer: lot.producer || '',
+        origin: asText(lot.origin) || asText(raw.originName) || asText(raw.provenance),
+        harvestDate: lot.harvestDate || undefined,
+      };
+    }),
     stockRecords: data.stockRecords.map((record) => ({
       ...record,
+      id: asId(record.id),
+      lotId: asId(record.lotId),
+      locationId: asId(record.locationId),
       declaredQuantity: asNumber(record.declaredQuantity),
       verifiedQuantity: asNumber(record.verifiedQuantity),
       updatedAt: record.updatedAt || new Date().toISOString(),
     })),
     movements: data.movements.map((movement) => ({
       ...movement,
+      id: asId(movement.id),
+      lotId: asId(movement.lotId),
       quantity: asNumber(movement.quantity),
       date: movement.date || '',
       status: normalizeMovementStatus(movement.status),
-      reference: movement.reference || movement.id,
+      reference: movement.reference || asId(movement.id),
     })),
-    traceabilityEvents: (data.traceabilityEvents ?? []).map((event) => ({
-      ...event,
-      date: event.date?.slice(0, 10) ?? event.date,
-      data: event.data ?? {},
-    })),
+    traceabilityEvents: (data.traceabilityEvents ?? []).map((event) => {
+      const raw = event as TraceabilityEvent & {
+        eventType?: string;
+        event_type?: string;
+        lot_id?: string;
+      };
+      const dataRecord = asRecord(event.data);
+      const product = asText(dataRecord.product)
+        || asText(dataRecord.producto)
+        || asText(dataRecord.productName)
+        || asText(dataRecord.activeIngredient)
+        || asText(dataRecord.tratamiento);
+      return {
+        ...event,
+        id: asId(event.id),
+        lotId: asId(event.lotId ?? raw.lot_id),
+        type: normalizeTraceabilityType(event.type ?? raw.eventType ?? raw.event_type),
+        date: String(event.date ?? '').slice(0, 10),
+        data: product && !asText(dataRecord.product) ? { ...dataRecord, product } : dataRecord,
+      };
+    }),
     shelves: Array.isArray(data.shelves) ? data.shelves : [],
     shelfUnits: Array.isArray(data.shelfUnits) ? data.shelfUnits : [],
     transporters: Array.isArray(data.transporters) ? data.transporters : [],

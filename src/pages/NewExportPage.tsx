@@ -66,7 +66,11 @@ export function NewExportPage() {
   useEffect(() => {
     if (exportLines.length > 0 || lots.length === 0) return;
     const firstLot = lots.find((lot) => lot.code === 'A-310') ?? lots[0];
-    setExportLines([{ lotId: firstLot.id, quantity: defaultLineQuantity }]);
+    setExportLines([{
+      lotId: firstLot.id,
+      quantity: defaultLineQuantity,
+      origin: firstLot.origin?.trim() || undefined,
+    }]);
   }, [exportLines.length, lots]);
 
   useEffect(() => {
@@ -78,11 +82,16 @@ export function NewExportPage() {
   const selectedTransporter = transporters.find((item) => item.id === transporterId);
 
   /** Una línea por lote, con su lote y su stock resueltos. Los lotes no se agrupan. */
-  const readinessLines = useMemo(() => exportLines.map((line) => ({
-    ...line,
-    lot: lots.find((lot) => lot.id === line.lotId),
-    stock: getStockViewByLotId(stockViews, line.lotId),
-  })), [exportLines, lots, stockViews]);
+  const readinessLines = useMemo(() => exportLines.map((line) => {
+    const lot = lots.find((item) => String(item.id) === String(line.lotId) || item.code === line.lotId);
+    return {
+      ...line,
+      lotId: lot?.id ?? line.lotId,
+      origin: line.origin?.trim() || lot?.origin,
+      lot,
+      stock: lot ? getStockViewByLotId(stockViews, lot.id) ?? getStockViewByLotId(stockViews, line.lotId) : undefined,
+    };
+  }), [exportLines, lots, stockViews]);
 
   const selectedLots = useMemo(
     () => readinessLines.map((line) => line.lot).filter((lot): lot is Lot => Boolean(lot)),
@@ -104,9 +113,9 @@ export function NewExportPage() {
     const pending = new Set(
       validation.requirements
         .filter((requirement) => requirement.field === 'treatment' && requirement.status === 'missing')
-        .map((requirement) => requirement.lotId),
+        .map((requirement) => String(requirement.lotId)),
     );
-    return selectedLots.filter((lot) => pending.has(lot.id));
+    return selectedLots.filter((lot) => pending.has(String(lot.id)));
   }, [selectedLots, validation]);
 
   function resetAnalysis() {

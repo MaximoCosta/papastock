@@ -159,5 +159,54 @@ describe('validateExport', () => {
     expect(result.missingFields).toEqual([]);
     expect(result.requirements).toHaveLength(10);
   });
+
+  it('completa origen desde la línea cuando la ficha del lote no lo trae', () => {
+    const result = validateExport({
+      destinationCountry: 'Brasil',
+      traceabilityEvents: [
+        ...initialTraceabilityEvents,
+        {
+          id: 'trace-origin-treatment',
+          lotId: 'lot-a310',
+          type: 'treatment',
+          date: '2026-08-18',
+          data: { producto: 'Mancozeb' },
+        },
+      ],
+      requirements: exportRequirements,
+      lines: [{
+        lotId: 'lot-a310',
+        lot: lot ? { ...lot, origin: '' } : undefined,
+        quantity: 18000,
+        origin: 'Balcarce, Buenos Aires, Argentina',
+      }],
+    });
+
+    expect(result.requirements.find((item) => item.field === 'origin')?.status).toBe('complete');
+    expect(result.requirements.find((item) => item.field === 'treatment')?.status).toBe('complete');
+    expect(result.valid).toBe(true);
+  });
+
+  it('encuentra el tratamiento aunque el evento use el código de lote', () => {
+    const result = validateExport({
+      lot,
+      destinationCountry: 'Brasil',
+      quantity: 18000,
+      traceabilityEvents: [
+        ...initialTraceabilityEvents,
+        {
+          id: 'trace-code-ref',
+          lotId: 'A-310',
+          type: 'treatment',
+          date: '2026-08-18',
+          data: { product: 'Mancozeb' },
+        },
+      ],
+      requirements: exportRequirements,
+    });
+
+    expect(result.missingFields).toEqual([]);
+    expect(result.valid).toBe(true);
+  });
 });
 
