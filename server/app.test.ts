@@ -6,8 +6,14 @@ const snapshot = {
   locations: [{ id: 'l', name: 'Sur', type: 'cold_storage' as const }],
   shelfUnits: [{ id: 'u', locationId: 'l', code: 'S-A', label: 'Rack A', gridRow: 0, gridCol: 0 }],
   shelves: [{ id: 'sh', locationId: 'l', shelfUnitId: 'u', code: 'S-A1', label: 'Rack A · N1', level: 1 }],
-  lots: [{ id: 'lot', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O' }],
-  stockRecords: [{ id: 's', lotId: 'lot', locationId: 'l', declaredQuantity: 2, verifiedQuantity: 1, updatedAt: '2026-08-21' }],
+  lots: [
+    { id: 'lot', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O' },
+    { id: 'lot-g', code: 'G-512', variety: 'Spunta', campaign: '25/26', producer: 'P', origin: 'O' },
+  ],
+  stockRecords: [
+    { id: 's', lotId: 'lot', locationId: 'l', declaredQuantity: 2, verifiedQuantity: 1, updatedAt: '2026-08-21' },
+    { id: 's-g', lotId: 'lot-g', locationId: 'l', declaredQuantity: 21000, verifiedQuantity: 0, verificationPending: true, updatedAt: '2026-08-21' },
+  ],
   movements: [],
   transporters: [],
   traceabilityEvents: [],
@@ -24,6 +30,19 @@ const repository = {
   })),
   executePlanillaImport: vi.fn(async () => ({
     createdLocations: 2, createdLots: 1, createdMovements: 1, skippedMovements: 0, upsertedStockRecords: 1,
+  })),
+  executeStockVerification: vi.fn(async (input) => ({
+    persisted: true,
+    correction: {
+      stockRecordId: input.stockRecordId,
+      lotCode: 'G-512',
+      countedQuantity: input.countedQuantity,
+      previousVerified: 0,
+    },
+    event: {
+      id: 'trace-verify', lotId: 'lot-g', type: 'stock_verification' as const,
+      date: input.date, locationId: 'l', data: { verifiedQuantity: input.countedQuantity },
+    },
   })),
 };
 const analyze = vi.fn(async () => ({ engine: 'heuristic' as const, summary: 'x', confidence: 0.2, explainedQuantity: 0, unexplainedQuantity: 1, hypotheses: [], evidence: [], recommendedAction: 'Revisar.' }));
@@ -42,7 +61,9 @@ describe('API PapaStock', () => {
   });
 
   it('entrega snapshot identificando PostgreSQL', async () => {
-    expect((await request(app).get('/api/snapshot').expect(200)).body).toMatchObject({ source: 'database', data: { lots: [{ code: 'A-204' }] } });
+    const payload = (await request(app).get('/api/snapshot').expect(200)).body;
+    expect(payload.source).toBe('database');
+    expect(payload.data.lots.map((lot: { code: string }) => lot.code)).toContain('A-204');
   });
 
   it('rechaza una mutación de trazabilidad fuera del contrato', async () => {
@@ -130,6 +151,23 @@ describe('API PapaStock', () => {
     const confirmed = await request(app).post('/api/stock/intake').send(body).expect(201);
     expect(confirmed.body.data).toMatchObject({ createdMovements: 1, persisted: true });
     expect(repository.executePlanillaImport).toHaveBeenCalledOnce();
+  });
+
+  it('rechaza verificar el lote de demo A-204', async () => {
+    await request(app).post('/api/stock/verify').send({
+      stockRecordId: 's', countedQuantity: 25000, date: '2026-08-22',
+    }).expect(400);
+    expect(repository.executeStockVerification).not.toHaveBeenCalled();
+  });
+
+  it('confirma una verificación de stock sobre un lote operativo', async () => {
+    const body = { stockRecordId: 's-g', countedQuantity: 21000, date: '2026-08-22', bags: 420 };
+    const confirmed = await request(app).post('/api/stock/verify').send(body).expect(201);
+    expect(confirmed.body.data).toMatchObject({
+      persisted: true,
+      correction: { stockRecordId: 's-g', countedQuantity: 21000 },
+    });
+    expect(repository.executeStockVerification).toHaveBeenCalledOnce();
   });
 
   it('interpreta trazabilidad sin escribirla', async () => {

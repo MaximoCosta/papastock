@@ -1,11 +1,19 @@
-import { ArrowRight, PackageX } from 'lucide-react';
+import { ArrowRight, ClipboardCheck, PackageX } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatKg, formatSignedKg } from '../../lib/formatters';
 import type { StockView } from '../../types/domain';
 import { EmptyState } from '../common/EmptyState';
 import { StockStatusBadge } from './StockStatusBadge';
 
-export function StockTable({ records, compact = false }: { records: StockView[]; compact?: boolean }) {
+export function StockTable({
+  records,
+  compact = false,
+  onVerify,
+}: {
+  records: StockView[];
+  compact?: boolean;
+  onVerify?: (record: StockView) => void;
+}) {
   if (records.length === 0) {
     return <EmptyState title="Sin resultados" description="No hay registros que coincidan con los filtros seleccionados." />;
   }
@@ -42,14 +50,25 @@ export function StockTable({ records, compact = false }: { records: StockView[];
                   {record.verificationPending ? '—' : formatSignedKg(record.difference)}
                 </td>
                 <td><StockStatusBadge status={record.status} /></td>
-                <td className="w-12 text-right!">
-                  <Link
-                    to={`/lots/${record.lot.code}`}
-                    aria-label={`Abrir lote ${record.lot.code}`}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-[4px] text-[#667068] hover:bg-[#eef0eb] hover:text-[#234b37]"
-                  >
-                    <ArrowRight size={15} />
-                  </Link>
+                <td className="w-28 text-right!">
+                  <div className="flex items-center justify-end gap-1">
+                    {onVerify && (record.verificationPending || record.status === 'discrepancy') && (
+                      <button
+                        type="button"
+                        onClick={() => onVerify(record)}
+                        className="inline-flex h-8 items-center gap-1 px-2 text-[10px] font-bold uppercase tracking-[0.06em] text-[#4d6a56] hover:bg-[#eef0eb]"
+                      >
+                        <ClipboardCheck size={13} /> Verificar
+                      </button>
+                    )}
+                    <Link
+                      to={`/lots/${record.lot.code}`}
+                      aria-label={`Abrir lote ${record.lot.code}`}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-[4px] text-[#667068] hover:bg-[#eef0eb] hover:text-[#234b37]"
+                    >
+                      <ArrowRight size={15} />
+                    </Link>
+                  </div>
                 </td>
               </tr>
             ))}

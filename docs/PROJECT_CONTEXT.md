@@ -288,6 +288,9 @@ BFF adicional, no hay Supabase, no hay funciones serverless.
 `/` · `/stock` · `/lots` · `/lots/:id` · `/movements/new` · `/exports` (redirige a
 `/exports/new`) · `/exports/new` · `/documents` · `/documents/:id` · `*`
 
+Hay un **login ficticio de demo** (`operador` / `papasud`) que tapa la SPA hasta
+que hay sesión en `sessionStorage`. No es autenticación real ni protege la API.
+
 ---
 
 ## 7. Backend — endpoints reales
@@ -308,7 +311,7 @@ existen hoy.
 | POST | `/api/imports/planilla/preview` | migración | ninguno | Recibe el Excel (`.xls`/`.xlsx`, body binario ≤ 4 MB). Parser determinístico en `server/services/planillaImport.ts`. Devuelve conteos, lotes/ubicaciones a crear, sample y filas omitidas. **Nunca escribe.** |
 | POST | `/api/imports/planilla` | migración | **escribe** | Reparsea el mismo archivo, pide confirmación humana en la UI y persiste lotes, ubicaciones, movimientos y stock de esos lotes en una transacción. No toca A-204 / A-310 / C-102 / F-301. Idempotente por `movements.reference`. |
 | POST | `/api/stock/intake/preview` | operación | ninguno | Formulario de ingreso (lote, variedad, kilos, destino, remito, bolsas, calibre, DTV, etc.). Valida sin escribir. |
-| POST | `/api/stock/intake` | operación | **escribe** | Confirma la carga: crea lote/ubicación si hace falta, acredita stock y registra el movimiento. No toca A-204 / A-310 / C-102 / F-301. |
+| POST | `/api/stock/verify` | operación | **escribe** | Conteo físico: actualiza `verified_quantity`, limpia `verification_pending` y registra `stock_verification`. No toca A-204 / A-310 / C-102 / F-301. |
 | * | `/api/*` (catch-all) | — | ninguno | 404 `{ error: 'Endpoint no encontrado.' }` |
 
 ### Convenciones transversales

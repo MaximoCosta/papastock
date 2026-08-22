@@ -5,10 +5,12 @@ import { shelfUnits as mockShelfUnits } from '../../src/data/shelfUnits';
 import { transporters as mockTransporters } from '../../src/data/transporters';
 import type { PapaStockSnapshot } from '../../src/repositories/dataRepository';
 import type { LocationRow, LotRow, MovementRow, StockRecordRow, TraceabilityEventRow } from '../../src/types/database';
-import type { Movement, MovementIntent, PlanillaImportResult, StockTransferPreview, TraceabilityEvent } from '../../src/types/domain';
+import type { Movement, MovementIntent, PlanillaImportResult, StockTransferPreview, StockVerificationConfirmation, StockVerificationInput, TraceabilityEvent } from '../../src/types/domain';
 import { mapLocation, mapLot, mapMovement, mapStockRecord, mapTraceabilityEvent } from './mappers';
 import { buildStockTransferPreview } from '../services/stockTransfer';
 import { PROTECTED_DEMO_LOT_CODES, fold, type PlanillaImportPlan } from '../services/planillaImport';
+import { getStockViews } from '../../src/services/stockService';
+import { buildStockVerificationPreview, toStockVerificationConfirmation } from '../../src/lib/stockVerification';
 
 export class PapaStockRepository {
   constructor(private readonly database: pg.Pool) {}
@@ -274,6 +276,60 @@ export class PapaStockRepository {
 
       await client.query('commit');
       return { createdLocations, createdLots, createdMovements, skippedMovements, upsertedStockRecords };
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async executeStockVerification(input: StockVerificationInput): Promise<StockVerificationConfirmation> {
+    const snapshot = await this.loadSnapshot();
+    const preview = buildStockVerificationPreview(
+      input,
+      getStockViews(snapshot.stockRecords, snapshot.lots, snapshot.locations),
+    );
+    if (!preview.valid) {
+      throw Object.assign(new Error(preview.issues[0]?.message ?? 'La verificación no es válida.'), { status: 400, details: preview.issues });
+    }
+
+    const client = await this.database.connect();
+    try {
+      await client.query('begin');
+      const updated = await client.query(
+        `update public.stock_records
+            set verified_quantity = $1,
+                verification_pending = false,
+                updated_at = now()
+          where id = $2
+          returning id`,
+        [input.countedQuantity, input.stockRecordId],
+      );
+      if (!updated.rowCount) {
+        throw Object.assign(new Error('Registro de stock no encontrado.'), { status: 404 });
+      }
+      const inserted = await client.query(
+        `insert into public.traceability_events
+          (id, lot_id, event_type, event_date, location_id, data)
+         values ($1, $2, $3, $4, $5, $6::jsonb)
+         returning *`,
+        [
+          `trace-${randomUUID()}`,
+          preview.lotId,
+          'stock_verification',
+          input.date,
+          preview.locationId || null,
+          JSON.stringify({
+            verifiedQuantity: input.countedQuantity,
+            ...(input.bags ? { bags: input.bags } : {}),
+            ...(input.notes ? { notes: input.notes } : {}),
+            origin: 'operator_confirmation',
+          }),
+        ],
+      );
+      await client.query('commit');
+      return toStockVerificationConfirmation(preview, true, inserted.rows[0]?.id);
     } catch (error) {
       await client.query('rollback');
       throw error;

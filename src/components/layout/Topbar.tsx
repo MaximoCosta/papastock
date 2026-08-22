@@ -1,5 +1,6 @@
-import { CircleUserRound } from 'lucide-react';
+import { CircleUserRound, LogOut } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { useDemoSession } from '../../state/DemoSessionContext';
 
 const sectionTitles: Record<string, string> = {
   '/': 'Control operativo',
@@ -11,6 +12,7 @@ const sectionTitles: Record<string, string> = {
 
 export function Topbar() {
   const { pathname } = useLocation();
+  const { session, signOut } = useDemoSession();
   const title = pathname.startsWith('/lots/')
     ? 'Detalle de lote'
     : pathname.startsWith('/documents/')
@@ -26,12 +28,18 @@ export function Topbar() {
       </div>
       <div className="flex items-center gap-3">
         <div className="text-right">
-          <p className="text-[11px] font-semibold text-[#373c36]">Demo Papasud</p>
-          <p className="text-[9px] uppercase tracking-[0.08em] text-[#96552b]">Confianza desde el origen</p>
+          <p className="text-[11px] font-semibold text-[#373c36]">{session?.name ?? 'Demo Papasud'}</p>
+          <p className="text-[9px] uppercase tracking-[0.08em] text-[#96552b]">{session?.role ?? 'Confianza desde el origen'}</p>
         </div>
         <CircleUserRound size={21} className="text-[#526158]" strokeWidth={1.6} />
+        <button
+          type="button"
+          onClick={signOut}
+          className="inline-flex h-8 items-center gap-1.5 border border-[#d7d9d2] px-2.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[#5c635c] hover:bg-[#f4f5f1]"
+        >
+          <LogOut size={12} /> Salir
+        </button>
       </div>
     </header>
   );
 }
-
