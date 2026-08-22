@@ -11,7 +11,7 @@ import { fileURLToPath } from "url";
 
 // server/app.ts
 import express from "express";
-import { z as z3 } from "zod";
+import { z as z5 } from "zod";
 
 // server/repositories/papaStockRepository.ts
 import { randomUUID } from "crypto";
@@ -197,6 +197,204 @@ function buildStockTransferPreview(intent, snapshot) {
 // server/services/planillaImport.ts
 import { createHash } from "crypto";
 import * as XLSX from "xlsx";
+
+// src/data/locations.ts
+var locations = [
+  { id: "loc-north", name: "Frigor\xEDfico Norte", type: "cold_storage", capacityKg: 51e3, temperatureC: 4 },
+  { id: "loc-south", name: "Frigor\xEDfico Sur", type: "cold_storage", capacityKg: 64e3, temperatureC: 3.5 },
+  { id: "loc-central", name: "Frigor\xEDfico Central", type: "cold_storage", capacityKg: 7e4, temperatureC: 4.2 },
+  { id: "loc-warehouse", name: "Galp\xF3n Principal", type: "warehouse", capacityKg: 83e3 }
+];
+
+// src/data/lots.ts
+var lots = [
+  {
+    id: "lot-a204",
+    code: "A-204",
+    variety: "Innovator",
+    campaign: "2025/26",
+    producer: "Establecimiento El Omb\xFA",
+    origin: "Balcarce, Buenos Aires, Argentina",
+    harvestDate: "2026-07-20"
+  },
+  {
+    id: "lot-a310",
+    code: "A-310",
+    variety: "Innovator",
+    campaign: "2025/26",
+    producer: "La Esperanza Agro",
+    origin: "Balcarce, Buenos Aires, Argentina",
+    harvestDate: "2026-07-28"
+  },
+  {
+    id: "lot-b118",
+    code: "B-118",
+    variety: "Spunta",
+    campaign: "2025/26",
+    producer: "Campo San Jos\xE9",
+    origin: "Otamendi, Buenos Aires, Argentina",
+    harvestDate: "2026-08-04"
+  },
+  {
+    id: "lot-c102",
+    code: "C-102",
+    variety: "Atlantic",
+    campaign: "2025/26",
+    producer: "Pampa F\xE9rtil",
+    origin: "Tandil, Buenos Aires, Argentina",
+    harvestDate: "2026-07-15"
+  },
+  {
+    id: "lot-b221",
+    code: "B-221",
+    variety: "Russet",
+    campaign: "2025/26",
+    producer: "Los Aromos",
+    origin: "Balcarce, Buenos Aires, Argentina",
+    harvestDate: "2026-07-31"
+  },
+  {
+    id: "lot-d405",
+    code: "D-405",
+    variety: "Spunta",
+    campaign: "2025/26",
+    producer: "Campo San Jos\xE9",
+    origin: "Otamendi, Buenos Aires, Argentina",
+    harvestDate: "2026-08-02"
+  },
+  {
+    id: "lot-e090",
+    code: "E-090",
+    variety: "Atlantic",
+    campaign: "2025/26",
+    producer: "Pampa F\xE9rtil",
+    origin: "Tandil, Buenos Aires, Argentina",
+    harvestDate: "2026-07-12"
+  },
+  {
+    id: "lot-f301",
+    code: "F-301",
+    variety: "Innovator",
+    campaign: "2025/26",
+    producer: "La Esperanza Agro",
+    origin: "Balcarce, Buenos Aires, Argentina",
+    harvestDate: "2026-08-06"
+  },
+  {
+    id: "lot-g512",
+    code: "G-512",
+    variety: "Russet",
+    campaign: "2025/26",
+    producer: "Establecimiento El Omb\xFA",
+    origin: "Balcarce, Buenos Aires, Argentina",
+    harvestDate: "2026-07-23"
+  },
+  {
+    id: "lot-h118",
+    code: "H-118",
+    variety: "Spunta",
+    campaign: "2025/26",
+    producer: "Los Aromos",
+    origin: "Mar del Plata, Buenos Aires, Argentina",
+    harvestDate: "2026-08-10"
+  }
+];
+
+// src/data/movements.ts
+var movements = [
+  {
+    id: "movement-1032",
+    reference: "MV-1032",
+    lotId: "lot-a204",
+    originLocationId: "loc-north",
+    destinationLocationId: "loc-south",
+    quantity: 1e3,
+    date: "2026-08-20",
+    status: "pending",
+    transporterId: "tr-pampa"
+  },
+  {
+    id: "movement-1028",
+    reference: "MV-1028",
+    lotId: "lot-a204",
+    originLocationId: "loc-warehouse",
+    destinationLocationId: "loc-south",
+    quantity: 8e3,
+    date: "2026-08-18",
+    status: "completed",
+    transporterId: "tr-andina"
+  },
+  {
+    id: "movement-1016",
+    reference: "MV-1016",
+    lotId: "lot-a310",
+    originLocationId: "loc-warehouse",
+    destinationLocationId: "loc-central",
+    quantity: 22e3,
+    date: "2026-08-10",
+    status: "completed",
+    transporterId: "tr-andina"
+  },
+  {
+    id: "movement-1037",
+    reference: "MV-1037",
+    lotId: "lot-c102",
+    originLocationId: "loc-warehouse",
+    destinationLocationId: "loc-central",
+    quantity: 500,
+    date: "2026-08-21",
+    status: "cancelled"
+  },
+  {
+    id: "movement-1041",
+    reference: "MV-1041",
+    lotId: "lot-b118",
+    originLocationId: "loc-warehouse",
+    destinationLocationId: "loc-north",
+    quantity: 4500,
+    date: "2026-08-19",
+    status: "completed",
+    transporterId: "tr-pampa"
+  },
+  {
+    id: "movement-1044",
+    reference: "MV-1044",
+    lotId: "lot-g512",
+    originLocationId: "loc-central",
+    destinationLocationId: "loc-south",
+    quantity: 21e3,
+    date: "2026-08-17",
+    status: "completed",
+    transporterId: "tr-sur"
+  },
+  {
+    id: "movement-1048",
+    reference: "MV-1048",
+    lotId: "lot-f301",
+    originLocationId: "loc-south",
+    destinationLocationId: "loc-warehouse",
+    quantity: 17e3,
+    date: "2026-08-21",
+    status: "pending",
+    transporterId: "tr-pampa"
+  }
+];
+
+// src/data/stock.ts
+var stockRecords = [
+  { id: "stock-a204", lotId: "lot-a204", locationId: "loc-south", shelfId: "shelf-s-a1", declaredQuantity: 25e3, verifiedQuantity: 24e3, updatedAt: "2026-08-21T10:30:00-03:00" },
+  { id: "stock-a310", lotId: "lot-a310", locationId: "loc-central", shelfId: "shelf-c-a1", declaredQuantity: 22e3, verifiedQuantity: 22e3, updatedAt: "2026-08-21T09:15:00-03:00" },
+  { id: "stock-b118", lotId: "lot-b118", locationId: "loc-north", shelfId: "shelf-n-a1", declaredQuantity: 14500, verifiedQuantity: 14500, updatedAt: "2026-08-20T17:20:00-03:00" },
+  { id: "stock-c102", lotId: "lot-c102", locationId: "loc-warehouse", shelfId: "shelf-w-a1", declaredQuantity: 18500, verifiedQuantity: 18e3, updatedAt: "2026-08-21T08:40:00-03:00" },
+  { id: "stock-b221", lotId: "lot-b221", locationId: "loc-south", shelfId: "shelf-s-a2", declaredQuantity: 16e3, verifiedQuantity: 16e3, updatedAt: "2026-08-20T14:05:00-03:00" },
+  { id: "stock-d405", lotId: "lot-d405", locationId: "loc-central", shelfId: "shelf-c-a2", declaredQuantity: 19500, verifiedQuantity: 19500, updatedAt: "2026-08-20T12:10:00-03:00" },
+  { id: "stock-e090", lotId: "lot-e090", locationId: "loc-north", shelfId: "shelf-n-a2", declaredQuantity: 12500, verifiedQuantity: 12500, updatedAt: "2026-08-19T16:55:00-03:00" },
+  { id: "stock-f301", lotId: "lot-f301", locationId: "loc-warehouse", shelfId: "shelf-w-b1", declaredQuantity: 17e3, verifiedQuantity: 0, updatedAt: "2026-08-21T11:45:00-03:00", verificationPending: true },
+  { id: "stock-g512", lotId: "lot-g512", locationId: "loc-south", shelfId: "shelf-s-b1", declaredQuantity: 21e3, verifiedQuantity: 21e3, updatedAt: "2026-08-20T18:00:00-03:00" },
+  { id: "stock-h118", lotId: "lot-h118", locationId: "loc-central", shelfId: "shelf-c-b1", declaredQuantity: 13500, verifiedQuantity: 13500, updatedAt: "2026-08-21T07:50:00-03:00" }
+];
+
+// server/services/planillaImport.ts
 var PROTECTED_DEMO_LOT_CODES = /* @__PURE__ */ new Set(["A-204", "A-310", "C-102", "F-301"]);
 var SAMPLE_SIZE = 25;
 var MAX_ISSUES = 80;
@@ -388,6 +586,7 @@ function defaultDestination(kind) {
   if (kind === "tolvas") return "Planta Santa Ana";
   if (kind === "trevelin") return "Trevelin";
   if (kind === "ret-frio") return "Planta Santa Ana";
+  if (kind === "generic") return "Galp\xF3n Principal";
   return "";
 }
 function movementKind(kind) {
@@ -432,21 +631,21 @@ function movementData(row) {
   if (row.dtv) data.dtv = row.dtv;
   if (row.client) data.client = row.client;
   if (row.variety) data.variety = row.variety;
+  if (row.bagColor) data.bagColor = row.bagColor;
+  if (row.threadColor) data.threadColor = row.threadColor;
+  if (row.averageKg != null) data.averageKg = row.averageKg;
   return data;
 }
 function parseWorkbook(buffer, fileName) {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true, raw: true });
+  const isCsv = /\.csv$/i.test(fileName);
+  const workbook = isCsv ? XLSX.read(buffer.toString("utf8").replace(/^\uFEFF/, ""), { type: "string", raw: true, cellDates: true }) : XLSX.read(buffer, { type: "buffer", cellDates: true, raw: true });
   const issues = [];
   const rows = [];
   const sheets = [];
   const skippedSheets = [];
   for (const sheetName of workbook.SheetNames) {
-    const kind = identifySheet(sheetName);
-    if (!kind) {
-      skippedSheets.push(sheetName);
-      continue;
-    }
-    if (kind === "skip") {
+    const identified = identifySheet(sheetName);
+    if (identified === "skip") {
       skippedSheets.push(sheetName);
       continue;
     }
@@ -458,6 +657,11 @@ function parseWorkbook(buffer, fileName) {
       blankrows: false
     });
     const headerRow = findHeaderRow(matrix);
+    const kind = identified ?? (headerRow >= 0 ? "generic" : void 0);
+    if (!kind) {
+      skippedSheets.push(sheetName);
+      continue;
+    }
     if (headerRow < 0) {
       issues.push({
         sheet: sheetName,
@@ -586,20 +790,20 @@ function parseWorkbook(buffer, fileName) {
   }
   return { fileName, rows, issues: issues.slice(0, MAX_ISSUES), sheets, skippedSheets };
 }
-function matchLocation(name, locations) {
+function matchLocation(name, locations2) {
   const key = fold(name);
-  return locations.find((item) => fold(item.name) === key || fold(item.id) === key);
+  return locations2.find((item) => fold(item.name) === key || fold(item.id) === key);
 }
-function matchLot(code, lots) {
+function matchLot(code, lots2) {
   const key = fold(code);
-  return lots.find((item) => fold(item.code) === key);
+  return lots2.find((item) => fold(item.code) === key);
 }
 function parsePlanillaBuffer(buffer, fileName) {
   if (!buffer.length) {
     throw Object.assign(new Error("El archivo est\xE1 vac\xEDo."), { status: 400 });
   }
-  if (!/\.(xlsx|xls)$/i.test(fileName)) {
-    throw Object.assign(new Error("La planilla debe ser .xls o .xlsx."), { status: 400 });
+  if (!/\.(xlsx|xls|csv)$/i.test(fileName)) {
+    throw Object.assign(new Error("El archivo debe ser .csv, .xls o .xlsx."), { status: 400 });
   }
   try {
     return parseWorkbook(buffer, fileName);
@@ -689,6 +893,208 @@ function buildPlanillaImportPlan(parsed, snapshot) {
 function buildPlanillaImportFromFile(buffer, fileName, snapshot) {
   return buildPlanillaImportPlan(parsePlanillaBuffer(buffer, fileName), snapshot);
 }
+function demoSnapshot() {
+  return {
+    locations: locations.map((item) => ({ ...item })),
+    shelfUnits: [],
+    shelves: [],
+    lots: lots.map((item) => ({ ...item })),
+    stockRecords: stockRecords.map((item) => ({ ...item })),
+    movements: movements.map((item) => ({ ...item })),
+    transporters: [],
+    traceabilityEvents: []
+  };
+}
+function materializePlanillaImport(plan, snapshot) {
+  const locations2 = snapshot.locations.map((item) => ({ ...item }));
+  let createdLocations = 0;
+  for (const location of plan.locationsToCreate) {
+    if (locations2.some((item) => fold(item.name) === fold(location.name))) continue;
+    locations2.push({ id: location.id, name: location.name, type: location.type });
+    createdLocations += 1;
+  }
+  const lots2 = snapshot.lots.map((item) => ({ ...item }));
+  let createdLots = 0;
+  for (const lot of plan.lotsToCreate) {
+    if (PROTECTED_DEMO_LOT_CODES.has(lot.code)) continue;
+    if (lots2.some((item) => fold(item.code) === fold(lot.code))) continue;
+    lots2.push({
+      id: lot.id,
+      code: lot.code,
+      variety: lot.variety,
+      campaign: lot.campaign,
+      producer: lot.producer,
+      origin: lot.origin,
+      harvestDate: lot.harvestDate
+    });
+    createdLots += 1;
+  }
+  const locationIdByName = new Map(locations2.map((item) => [fold(item.name), item.id]));
+  const lotByCode = new Map(lots2.map((item) => [item.code.toLowerCase(), item]));
+  const movements2 = snapshot.movements.map((item) => ({ ...item }));
+  const existingRefs = new Set(movements2.map((item) => item.reference));
+  let createdMovements = 0;
+  let skippedMovements = 0;
+  for (const movement of plan.movementsToInsert) {
+    const lot = lotByCode.get(movement.lotCode.toLowerCase());
+    const originId = locationIdByName.get(fold(movement.originName));
+    const destinationId = locationIdByName.get(fold(movement.destinationName));
+    if (!lot || PROTECTED_DEMO_LOT_CODES.has(lot.code) || !originId || !destinationId || originId === destinationId) {
+      skippedMovements += 1;
+      continue;
+    }
+    if (existingRefs.has(movement.reference)) {
+      skippedMovements += 1;
+      continue;
+    }
+    const next = {
+      id: movement.id,
+      reference: movement.reference,
+      lotId: lot.id,
+      originLocationId: originId,
+      destinationLocationId: destinationId,
+      quantity: movement.quantityKg,
+      date: movement.date,
+      status: "completed",
+      data: movement.data
+    };
+    movements2.unshift(next);
+    existingRefs.add(movement.reference);
+    createdMovements += 1;
+  }
+  const importedLotIds = /* @__PURE__ */ new Set();
+  for (const code of plan.stockLotCodes) {
+    const lot = lotByCode.get(code.toLowerCase());
+    if (lot && !PROTECTED_DEMO_LOT_CODES.has(lot.code)) importedLotIds.add(lot.id);
+  }
+  const stockRecords2 = snapshot.stockRecords.filter((record) => !importedLotIds.has(record.lotId)).map((item) => ({ ...item }));
+  let upsertedStockRecords = 0;
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  for (const lotId of importedLotIds) {
+    const net = /* @__PURE__ */ new Map();
+    for (const movement of movements2) {
+      if (movement.lotId !== lotId || movement.status === "cancelled") continue;
+      if (movement.originLocationId) {
+        net.set(movement.originLocationId, (net.get(movement.originLocationId) ?? 0) - movement.quantity);
+      }
+      if (movement.destinationLocationId) {
+        net.set(movement.destinationLocationId, (net.get(movement.destinationLocationId) ?? 0) + movement.quantity);
+      }
+    }
+    for (const [locationId, raw] of net) {
+      const quantity = Math.max(0, Math.round(raw * 1e3) / 1e3);
+      if (quantity <= 0) continue;
+      stockRecords2.push({
+        id: stableId("stock-imp", `${lotId}|${locationId}`),
+        lotId,
+        locationId,
+        declaredQuantity: quantity,
+        verifiedQuantity: quantity,
+        verificationPending: false,
+        updatedAt: now
+      });
+      upsertedStockRecords += 1;
+    }
+  }
+  return {
+    result: {
+      createdLocations,
+      createdLots,
+      createdMovements,
+      skippedMovements,
+      upsertedStockRecords,
+      persisted: false
+    },
+    applied: {
+      ...snapshot,
+      locations: locations2,
+      lots: lots2,
+      stockRecords: stockRecords2,
+      movements: movements2
+    }
+  };
+}
+function buildStockIntakePlan(input, snapshot) {
+  const lotCode = input.lotCode.trim().toUpperCase();
+  const variety = input.variety.trim();
+  const destinationRaw = input.destination.trim();
+  const originRaw = input.origin?.trim() || "Campo";
+  const issues = [];
+  if (!lotCode) issues.push({ sheet: "Carga de stock", rowNumber: 1, code: "MISSING_LOT", message: "Falta el lote." });
+  if (!variety) issues.push({ sheet: "Carga de stock", rowNumber: 1, code: "MISSING_VARIETY", message: "Falta la variedad." });
+  if (!Number.isFinite(input.quantityKg) || input.quantityKg <= 0) {
+    issues.push({ sheet: "Carga de stock", rowNumber: 1, code: "MISSING_QUANTITY", message: "Los kilos deben ser mayores a cero." });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
+    issues.push({ sheet: "Carga de stock", rowNumber: 1, code: "MISSING_DATE", message: "La fecha debe ser AAAA-MM-DD." });
+  }
+  if (!destinationRaw) issues.push({ sheet: "Carga de stock", rowNumber: 1, code: "MISSING_LOCATION", message: "Falta el destino." });
+  if (PROTECTED_DEMO_LOT_CODES.has(lotCode)) {
+    issues.push({
+      sheet: "Carga de stock",
+      rowNumber: 1,
+      code: "PROTECTED_DEMO_LOT",
+      message: `El lote ${lotCode} es de demo (N02/N03) y no se puede cargar por este formulario.`
+    });
+  }
+  const originName = resolveLocationSpec(originRaw)?.name;
+  const destinationName = resolveLocationSpec(destinationRaw)?.name;
+  if (originName && destinationName && fold(originName) === fold(destinationName)) {
+    issues.push({
+      sheet: "Carga de stock",
+      rowNumber: 1,
+      code: "SAME_LOCATION",
+      message: "El origen y el destino deben ser distintos."
+    });
+  }
+  if (issues.length > 0 || !originName || !destinationName) {
+    return buildPlanillaImportPlan({
+      fileName: "carga-stock",
+      rows: [],
+      issues,
+      sheets: [{ name: "Carga de stock", imported: 0, skipped: 1 }],
+      skippedSheets: []
+    }, snapshot);
+  }
+  const remito = input.remito?.trim().toUpperCase();
+  const row = {
+    sheet: "Carga de stock",
+    rowNumber: 1,
+    remito: remito || void 0,
+    date: input.date,
+    lotCode,
+    variety,
+    quantityKg: input.quantityKg,
+    originName,
+    destinationName,
+    transporter: input.transporter?.trim() || void 0,
+    bags: input.bags,
+    caliber: input.caliber?.trim() || void 0,
+    category: input.category?.trim() || void 0,
+    notes: input.notes?.trim() || void 0,
+    dtv: input.dtv?.trim() || void 0,
+    client: input.client?.trim() || void 0,
+    bagColor: input.bagColor?.trim() || void 0,
+    threadColor: input.threadColor?.trim() || void 0,
+    averageKg: input.averageKg,
+    kind: "inbound",
+    reference: `IMP-${createHash("sha256").update(["intake", input.date, remito ?? "sremito", lotCode, input.quantityKg, originName, destinationName].join("|")).digest("hex").slice(0, 16).toUpperCase()}`
+  };
+  const plan = buildPlanillaImportPlan({
+    fileName: "carga-stock",
+    rows: [row],
+    issues: [],
+    sheets: [{ name: "Carga de stock", imported: 1, skipped: 0 }],
+    skippedSheets: []
+  }, snapshot);
+  const campaign = input.campaign?.trim() || "2026";
+  const producer = input.producer?.trim() || "Papasud";
+  for (const lot of plan.lotsToCreate) {
+    lot.campaign = campaign;
+    lot.producer = producer;
+  }
+  return plan;
+}
 
 // server/repositories/papaStockRepository.ts
 var PapaStockRepository = class {
@@ -697,23 +1103,23 @@ var PapaStockRepository = class {
   }
   database;
   async loadSnapshot() {
-    const [locations, lots, stock, movements, traceability] = await Promise.all([
+    const [locations2, lots2, stock, movements2, traceability] = await Promise.all([
       this.database.query("select * from public.locations order by id"),
       this.database.query("select * from public.lots order by code"),
       this.database.query("select * from public.stock_records order by id"),
       this.database.query("select * from public.movements order by movement_date desc, id"),
       this.database.query("select * from public.traceability_events order by event_date, id")
     ]);
-    if (!locations.rowCount || !lots.rowCount || !stock.rowCount) {
+    if (!locations2.rowCount || !lots2.rowCount || !stock.rowCount) {
       throw new Error("La base existe pero el seed operativo est\xE1 incompleto.");
     }
     return {
-      locations: locations.rows.map(mapLocation),
+      locations: locations2.rows.map(mapLocation),
       shelfUnits: shelfUnits.map((item) => ({ ...item })),
       shelves: shelves.map((item) => ({ ...item })),
-      lots: lots.rows.map(mapLot),
+      lots: lots2.rows.map(mapLot),
       stockRecords: stock.rows.map(mapStockRecord),
-      movements: movements.rows.map(mapMovement),
+      movements: movements2.rows.map(mapMovement),
       transporters: transporters.map((item) => ({ ...item })),
       traceabilityEvents: traceability.rows.map(mapTraceabilityEvent)
     };
@@ -947,15 +1353,15 @@ import { z } from "zod";
 
 // server/services/discrepancyHeuristic.ts
 var byRecent = (a, b) => b.date.localeCompare(a.date) || a.reference.localeCompare(b.reference);
-function movementEvidence(movements) {
-  return movements.map((movement) => ({
+function movementEvidence(movements2) {
+  return movements2.map((movement) => ({
     type: "movement",
     reference: movement.reference,
     description: `${movement.quantity.toLocaleString("es-AR")} kg \xB7 ${movement.status} \xB7 ${movement.date}`
   }));
 }
-function hypothesis(title, explanation, movements) {
-  return { title, explanation, movementReferences: movements.map((item) => item.reference) };
+function hypothesis(title, explanation, movements2) {
+  return { title, explanation, movementReferences: movements2.map((item) => item.reference) };
 }
 function analyzeWithHeuristic(input) {
   const difference = input.stock.verifiedQuantity - input.stock.declaredQuantity;
@@ -1167,16 +1573,186 @@ function createDiscrepancyAnalyzer(options) {
   };
 }
 
-// server/services/groqMovementIntent.ts
+// server/services/groqExportRequirements.ts
 import { z as z2 } from "zod";
-var parsedIntentSchema = z2.object({
-  action: z2.literal("transfer"),
-  lotCode: z2.string().trim().min(1).max(40),
-  quantityKg: z2.number().positive(),
-  origin: z2.string().trim().min(1).max(120),
-  destination: z2.string().trim().min(1).max(120)
+
+// src/types/export.ts
+var EXPORT_FIELD_KEYS = [
+  "lotCode",
+  "variety",
+  "campaign",
+  "producer",
+  "origin",
+  "harvestDate",
+  "quantity",
+  "treatment",
+  "destination",
+  "customer",
+  "incoterm",
+  "departurePort",
+  "destinationPort",
+  "transport"
+];
+
+// server/services/groqStructured.ts
+var GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+async function requestStructuredOutput(options, request) {
+  if (!options.apiKey) throw new Error("GROQ_API_KEY ausente.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
+  try {
+    const response = await (options.fetchImpl ?? fetch)(GROQ_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: { authorization: `Bearer ${options.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: options.model,
+        temperature: 0,
+        messages: [
+          { role: "system", content: request.system.join(" ") },
+          { role: "user", content: JSON.stringify(request.user) }
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: request.schemaName, strict: true, schema: request.jsonSchema }
+        }
+      })
+    });
+    if (!response.ok) throw new Error(`Groq respondi\xF3 HTTP ${response.status}`);
+    const envelope = await response.json();
+    const content = envelope.choices?.[0]?.message?.content;
+    if (!content) throw new Error("Groq no devolvi\xF3 contenido.");
+    return JSON.parse(content);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+function normalizeForMatch(value) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+// server/services/groqExportRequirements.ts
+var canonicalLabels = {
+  lotCode: "N\xFAmero de lote",
+  variety: "Variedad",
+  campaign: "Campa\xF1a",
+  producer: "Productor",
+  origin: "Origen",
+  harvestDate: "Fecha de cosecha",
+  quantity: "Peso neto",
+  treatment: "Tratamiento fitosanitario",
+  destination: "Pa\xEDs de destino",
+  customer: "Comprador / consignatario",
+  incoterm: "Incoterm",
+  departurePort: "Puerto de salida",
+  destinationPort: "Puerto de destino",
+  transport: "Transporte"
+};
+var keywords = {
+  lotCode: ["numero de lote", "n\xFAmero de lote", "nro de lote", "lote", "partida"],
+  variety: ["variedad", "cultivar"],
+  campaign: ["campana", "campa\xF1a", "cosecha 20", "temporada"],
+  producer: ["productor", "establecimiento", "finca"],
+  origin: ["origen", "procedencia", "localidad de origen"],
+  harvestDate: ["fecha de cosecha", "cosechado"],
+  quantity: ["peso neto", "peso", "cantidad", "kilos", "kg"],
+  treatment: ["tratamiento", "fitosanitario", "fumigacion", "fumigaci\xF3n", "principio activo"],
+  destination: ["pais de destino", "pa\xEDs de destino", "destino"],
+  customer: ["comprador", "consignatario", "importador", "cliente"],
+  incoterm: ["incoterm", "fob", "cif", "exw", "dap"],
+  departurePort: ["puerto de salida", "puerto de embarque", "punto de salida"],
+  destinationPort: ["puerto de destino", "puerto de llegada", "puerto de arribo"],
+  transport: ["transporte", "transportista", "camion", "cami\xF3n", "medio de transporte"]
+};
+var requirementsSchema = z2.object({
+  requirements: z2.array(z2.object({
+    key: z2.enum(EXPORT_FIELD_KEYS),
+    label: z2.string().trim().min(1).max(120),
+    required: z2.boolean()
+  })).max(EXPORT_FIELD_KEYS.length)
 });
 var jsonSchema2 = {
+  type: "object",
+  additionalProperties: false,
+  required: ["requirements"],
+  properties: {
+    requirements: {
+      type: "array",
+      maxItems: EXPORT_FIELD_KEYS.length,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["key", "label", "required"],
+        properties: {
+          key: { type: "string", enum: [...EXPORT_FIELD_KEYS] },
+          label: { type: "string" },
+          required: { type: "boolean" }
+        }
+      }
+    }
+  }
+};
+function parseRequirementsWithHeuristic(input) {
+  const text = normalizeForMatch(input.sourceText);
+  const requirements = EXPORT_FIELD_KEYS.filter((key) => keywords[key].some((term) => text.includes(normalizeForMatch(term)))).map((key) => ({ key, label: canonicalLabels[key], required: true }));
+  return { engine: "heuristic", requirements };
+}
+function createExportRequirementsParser(options) {
+  return async function parseExportRequirements(input) {
+    const fallback = () => parseRequirementsWithHeuristic(input);
+    if (!options.apiKey) return fallback();
+    try {
+      const raw = await requestStructuredOutput(options, {
+        schemaName: "papastock_export_requirements",
+        jsonSchema: jsonSchema2,
+        system: [
+          "Convert\xEDs un texto documental de exportaci\xF3n en una lista estructurada de requisitos.",
+          "Solo pod\xE9s usar las claves del cat\xE1logo cerrado provisto; no inventes claves nuevas.",
+          "Inclu\xED \xFAnicamente los campos que el texto menciona expl\xEDcitamente.",
+          "No decidas si la exportaci\xF3n est\xE1 aprobada: eso lo resuelve el sistema de forma determin\xEDstica.",
+          "No repitas la misma clave dos veces.",
+          "Respond\xE9 exclusivamente con el JSON Schema solicitado."
+        ],
+        user: {
+          country: input.country,
+          documentType: input.documentType,
+          sourceText: input.sourceText,
+          allowedKeys: EXPORT_FIELD_KEYS
+        }
+      });
+      const parsed = requirementsSchema.parse(raw);
+      const seen = /* @__PURE__ */ new Set();
+      for (const requirement of parsed.requirements) {
+        if (seen.has(requirement.key)) throw new Error(`Groq repiti\xF3 la clave ${requirement.key}.`);
+        seen.add(requirement.key);
+      }
+      if (parsed.requirements.length === 0) return fallback();
+      return {
+        engine: "llm",
+        // La etiqueta canónica gana: el modelo no define cómo se llama un campo en la UI.
+        requirements: parsed.requirements.map((requirement) => ({
+          key: requirement.key,
+          label: canonicalLabels[requirement.key],
+          required: requirement.required
+        }))
+      };
+    } catch (error) {
+      console.warn("[ai] requisitos \u2192 parser local:", error instanceof Error ? error.message : error);
+      return fallback();
+    }
+  };
+}
+
+// server/services/groqMovementIntent.ts
+import { z as z3 } from "zod";
+var parsedIntentSchema = z3.object({
+  action: z3.literal("transfer"),
+  lotCode: z3.string().trim().min(1).max(40),
+  quantityKg: z3.number().positive(),
+  origin: z3.string().trim().min(1).max(120),
+  destination: z3.string().trim().min(1).max(120)
+});
+var jsonSchema3 = {
   type: "object",
   additionalProperties: false,
   required: ["action", "lotCode", "quantityKg", "origin", "destination"],
@@ -1195,8 +1771,8 @@ function parseWithHeuristic(text, context) {
   const normalizedText = normalize2(text);
   const lot = context.lots.find((item) => normalizedText.includes(normalize2(item.code)));
   const quantityMatch = normalizedText.match(/(\d+(?:[.,]\d+)?)\s*(?:kg|kilos?|kilogramos?)\b/);
-  const locations = context.locations.map((item) => ({ item, index: normalizedText.indexOf(normalize2(item.name)) })).filter((candidate) => candidate.index >= 0).sort((left, right) => left.index - right.index);
-  if (!lot || !quantityMatch || locations.length < 2) {
+  const locations2 = context.locations.map((item) => ({ item, index: normalizedText.indexOf(normalize2(item.name)) })).filter((candidate) => candidate.index >= 0).sort((left, right) => left.index - right.index);
+  if (!lot || !quantityMatch || locations2.length < 2) {
     throw Object.assign(new Error("No pude identificar lote, cantidad, origen y destino. Escrib\xED las ubicaciones completas."), { status: 422 });
   }
   const quantityKg = Number(quantityMatch[1].replace(",", "."));
@@ -1204,8 +1780,8 @@ function parseWithHeuristic(text, context) {
     action: "transfer",
     lotCode: lot.code,
     quantityKg,
-    origin: locations[0].item.name,
-    destination: locations[1].item.name
+    origin: locations2[0].item.name,
+    destination: locations2[1].item.name
   });
 }
 function createMovementIntentParser(options) {
@@ -1237,7 +1813,7 @@ function createMovementIntentParser(options) {
           ],
           response_format: {
             type: "json_schema",
-            json_schema: { name: "papastock_movement_intent", strict: true, schema: jsonSchema2 }
+            json_schema: { name: "papastock_movement_intent", strict: true, schema: jsonSchema3 }
           }
         })
       });
@@ -1254,58 +1830,206 @@ function createMovementIntentParser(options) {
   };
 }
 
+// server/services/groqTraceabilityIntent.ts
+import { z as z4 } from "zod";
+var intentSchema = z4.object({
+  type: z4.literal("treatment"),
+  product: z4.string().trim().min(1).max(120).nullable(),
+  date: z4.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  confidence: z4.number().min(0).max(1)
+});
+var jsonSchema4 = {
+  type: "object",
+  additionalProperties: false,
+  required: ["type", "product", "date", "confidence"],
+  properties: {
+    type: { type: "string", enum: ["treatment"] },
+    product: { type: ["string", "null"] },
+    date: { type: ["string", "null"] },
+    confidence: { type: "number", minimum: 0, maximum: 1 }
+  }
+};
+var monthNumbers = {
+  enero: "01",
+  febrero: "02",
+  marzo: "03",
+  abril: "04",
+  mayo: "05",
+  junio: "06",
+  julio: "07",
+  agosto: "08",
+  septiembre: "09",
+  setiembre: "09",
+  octubre: "10",
+  noviembre: "11",
+  diciembre: "12"
+};
+function isRealCalendarDate(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (year < 2e3 || year > 2100) return false;
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+}
+function extractDate(text, today = /* @__PURE__ */ new Date()) {
+  const isoMatch = text.match(/(20\d{2})[-/]([01]?\d)[-/]([0-3]?\d)/);
+  if (isoMatch) {
+    const candidate = `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+    return isRealCalendarDate(candidate) ? candidate : null;
+  }
+  const spanishMatch = normalizeForMatch(text).match(/([0-3]?\d)\s+de\s+([a-z]+)(?:\s+(?:de|del)\s+(20\d{2}))?/);
+  if (spanishMatch) {
+    const month = monthNumbers[spanishMatch[2]];
+    if (month) {
+      const year = spanishMatch[3] ?? String(today.getUTCFullYear());
+      const candidate = `${year}-${month}-${spanishMatch[1].padStart(2, "0")}`;
+      return isRealCalendarDate(candidate) ? candidate : null;
+    }
+  }
+  return null;
+}
+function extractProduct(text) {
+  const match = text.match(
+    /(?:tratad[oa]s?\s+con|tratamiento\s+(?:con|de)|aplic\w*\s+(?:de\s+)?|producto:?)\s+([\p{L}\d][\p{L}\d .+-]*?)(?:\s+el\s|\s+en\s|\s+durante\s|[,.;]|$)/iu
+  );
+  const candidate = match?.[1]?.trim();
+  if (!candidate) return null;
+  return candidate.length >= 2 && candidate.length <= 120 ? candidate : null;
+}
+function parseTraceabilityWithHeuristic(text, today = /* @__PURE__ */ new Date()) {
+  const product = extractProduct(text);
+  const date = extractDate(text, today);
+  const found = Number(Boolean(product)) + Number(Boolean(date));
+  return {
+    engine: "heuristic",
+    type: "treatment",
+    product,
+    date,
+    confidence: found === 2 ? 0.6 : found === 1 ? 0.4 : 0.15
+  };
+}
+function createTraceabilityIntentParser(options) {
+  return async function parseTraceabilityIntent(text) {
+    const today = /* @__PURE__ */ new Date();
+    const fallback = () => parseTraceabilityWithHeuristic(text, today);
+    if (!options.apiKey) return fallback();
+    try {
+      const raw = await requestStructuredOutput(options, {
+        schemaName: "papastock_traceability_intent",
+        jsonSchema: jsonSchema4,
+        system: [
+          "Extra\xE9s un evento de trazabilidad fitosanitaria desde texto libre de un operador agr\xEDcola.",
+          "Solo extra\xE9s datos: nunca autoriz\xE1s, confirm\xE1s ni ejecut\xE1s nada.",
+          "Si el texto no menciona el producto, devolv\xE9 product = null. Si no menciona la fecha, devolv\xE9 date = null.",
+          "Nunca inventes un producto ni una fecha que no est\xE9n en el texto.",
+          "El producto debe aparecer literalmente en el texto del operador.",
+          "Las fechas van en formato YYYY-MM-DD. Si el texto da d\xEDa y mes sin a\xF1o, us\xE1 el a\xF1o de referencia provisto.",
+          "confidence refleja qu\xE9 tan expl\xEDcito es el texto, entre 0 y 1.",
+          "Respond\xE9 exclusivamente con el JSON Schema solicitado."
+        ],
+        user: { text, referenceYear: today.getUTCFullYear(), today: today.toISOString().slice(0, 10) }
+      });
+      const parsed = intentSchema.parse(raw);
+      if (parsed.product && !normalizeForMatch(text).includes(normalizeForMatch(parsed.product))) {
+        throw new Error(`Groq devolvi\xF3 un producto ausente del texto: ${parsed.product}`);
+      }
+      if (parsed.date && !isRealCalendarDate(parsed.date)) {
+        throw new Error(`Groq devolvi\xF3 una fecha inv\xE1lida: ${parsed.date}`);
+      }
+      if (!parsed.product && !parsed.date) return fallback();
+      return { engine: "llm", ...parsed };
+    } catch (error) {
+      console.warn("[ai] trazabilidad \u2192 parser local:", error instanceof Error ? error.message : error);
+      return fallback();
+    }
+  };
+}
+
 // server/app.ts
-var identifier = z3.string().min(1).max(120);
-var discrepancyInputSchema = z3.object({
-  lot: z3.object({ id: identifier, code: identifier }),
-  stock: z3.object({
+var identifier = z5.string().min(1).max(120);
+var discrepancyInputSchema = z5.object({
+  lot: z5.object({ id: identifier, code: identifier }),
+  stock: z5.object({
     id: identifier,
     lotId: identifier,
     locationId: identifier,
-    declaredQuantity: z3.number().nonnegative(),
-    verifiedQuantity: z3.number().nonnegative(),
-    updatedAt: z3.string(),
-    verificationPending: z3.boolean().optional()
+    declaredQuantity: z5.number().nonnegative(),
+    verifiedQuantity: z5.number().nonnegative(),
+    updatedAt: z5.string(),
+    verificationPending: z5.boolean().optional()
   }),
-  movements: z3.array(z3.object({
+  movements: z5.array(z5.object({
     id: identifier,
     lotId: identifier,
     originLocationId: identifier.optional(),
     destinationLocationId: identifier.optional(),
-    quantity: z3.number().positive(),
-    date: z3.string(),
-    status: z3.enum(["completed", "pending", "cancelled"]),
+    quantity: z5.number().positive(),
+    date: z5.string(),
+    status: z5.enum(["completed", "pending", "cancelled"]),
     reference: identifier
   })).max(100),
-  traceability: z3.array(z3.object({
+  traceability: z5.array(z5.object({
     id: identifier,
     lotId: identifier,
-    type: z3.enum(["planting", "harvest", "treatment", "quality_control", "stock_verification"]),
-    date: z3.string(),
+    type: z5.enum(["planting", "harvest", "treatment", "quality_control", "stock_verification"]),
+    date: z5.string(),
     locationId: identifier.optional(),
-    data: z3.record(z3.string(), z3.unknown())
+    data: z5.record(z5.string(), z5.unknown())
   })).max(100)
 });
-var traceabilityInputSchema = z3.object({
+var traceabilityInputSchema = z5.object({
   lotId: identifier,
-  type: z3.literal("treatment"),
-  date: z3.iso.date(),
+  type: z5.literal("treatment"),
+  date: z5.iso.date(),
   locationId: identifier.optional(),
-  data: z3.object({
-    product: z3.string().trim().min(1).max(120),
-    sourceText: z3.string().trim().max(500).optional(),
-    origin: z3.literal("operator_confirmation").optional()
+  data: z5.object({
+    product: z5.string().trim().min(1).max(120),
+    sourceText: z5.string().trim().max(500).optional(),
+    origin: z5.literal("operator_confirmation").optional()
   })
 });
-var movementTextSchema = z3.object({
-  text: z3.string().trim().min(8).max(500)
+var movementTextSchema = z5.object({
+  text: z5.string().trim().min(8).max(500)
 });
-var movementIntentSchema = z3.object({
-  action: z3.literal("transfer"),
+var movementIntentSchema = z5.object({
+  action: z5.literal("transfer"),
   lotCode: identifier.max(40),
-  quantityKg: z3.number().positive().max(1e6),
+  quantityKg: z5.number().positive().max(1e6),
   origin: identifier,
   destination: identifier
+});
+var optionalText = (max) => z5.preprocess(
+  (value) => typeof value === "string" && value.trim() === "" ? void 0 : value,
+  z5.string().trim().max(max).optional()
+);
+var stockIntakeSchema = z5.object({
+  lotCode: z5.string().trim().min(1).max(40),
+  variety: z5.string().trim().min(1).max(80),
+  quantityKg: z5.number().positive().max(1e6),
+  date: z5.iso.date(),
+  destination: z5.string().trim().min(1).max(120),
+  origin: optionalText(120),
+  remito: optionalText(40),
+  bags: z5.number().positive().max(1e5).optional(),
+  averageKg: z5.number().positive().max(200).optional(),
+  caliber: optionalText(80),
+  category: optionalText(80),
+  bagColor: optionalText(40),
+  threadColor: optionalText(40),
+  transporter: optionalText(120),
+  client: optionalText(120),
+  dtv: optionalText(80),
+  notes: optionalText(500),
+  campaign: optionalText(20),
+  producer: optionalText(120)
+});
+var traceabilityIntentInputSchema = z5.object({
+  text: z5.string().trim().min(8).max(1e3),
+  lotId: identifier
+});
+var exportRequirementsInputSchema = z5.object({
+  country: z5.string().trim().min(2).max(80),
+  documentType: z5.string().trim().min(2).max(40),
+  sourceText: z5.string().trim().min(8).max(2e3)
 });
 function createApp(dependencies = {}) {
   const app2 = express();
@@ -1320,6 +2044,13 @@ function createApp(dependencies = {}) {
     model: config.aiModel,
     timeoutMs: config.groqTimeoutMs
   });
+  const groqOptions = {
+    apiKey: config.groqApiKey,
+    model: config.aiModel,
+    timeoutMs: config.groqTimeoutMs
+  };
+  const parseTraceabilityIntent = dependencies.parseTraceabilityIntent ?? createTraceabilityIntentParser(groqOptions);
+  const parseExportRequirements = dependencies.parseExportRequirements ?? createExportRequirementsParser(groqOptions);
   app2.disable("x-powered-by");
   app2.use(express.json({ limit: "64kb" }));
   app2.get("/health", (_request, response) => response.json({ status: "ok" }));
@@ -1370,6 +2101,22 @@ function createApp(dependencies = {}) {
       next(error);
     }
   });
+  app2.post("/api/ai/traceability-intent", async (request, response, next) => {
+    try {
+      const { text } = traceabilityIntentInputSchema.parse(request.body);
+      response.json({ data: await parseTraceabilityIntent(text) });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app2.post("/api/ai/export-requirements", async (request, response, next) => {
+    try {
+      const input = exportRequirementsInputSchema.parse(request.body);
+      response.json({ data: await parseExportRequirements(input) });
+    } catch (error) {
+      next(error);
+    }
+  });
   app2.post("/api/movements/preview", async (request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error("Base de datos no configurada."), { status: 503 });
@@ -1391,7 +2138,7 @@ function createApp(dependencies = {}) {
   function readWorkbookUpload(request) {
     const body = request.body;
     if (!Buffer.isBuffer(body) || body.length === 0) {
-      throw Object.assign(new Error("Adjunt\xE1 un archivo .xls o .xlsx."), { status: 400 });
+      throw Object.assign(new Error("Adjunt\xE1 un archivo .csv, .xls o .xlsx."), { status: 400 });
     }
     const headerName = request.header("x-filename");
     const fileName = headerName ? decodeURIComponent(headerName) : "planilla.xls";
@@ -1399,9 +2146,8 @@ function createApp(dependencies = {}) {
   }
   app2.post("/api/imports/planilla/preview", excelBody, async (request, response, next) => {
     try {
-      if (!repository) throw Object.assign(new Error("Base de datos no configurada."), { status: 503 });
       const { buffer, fileName } = readWorkbookUpload(request);
-      const snapshot = await repository.loadSnapshot();
+      const snapshot = repository ? await repository.loadSnapshot() : demoSnapshot();
       const plan = buildPlanillaImportFromFile(buffer, fileName, snapshot);
       response.json({ data: plan.preview });
     } catch (error) {
@@ -1410,18 +2156,68 @@ function createApp(dependencies = {}) {
   });
   app2.post("/api/imports/planilla", excelBody, async (request, response, next) => {
     try {
-      if (!repository) throw Object.assign(new Error("Base de datos no configurada."), { status: 503 });
       const { buffer, fileName } = readWorkbookUpload(request);
-      const snapshot = await repository.loadSnapshot();
+      const snapshot = repository ? await repository.loadSnapshot() : demoSnapshot();
       const plan = buildPlanillaImportFromFile(buffer, fileName, snapshot);
-      response.status(201).json({ data: await repository.executePlanillaImport(plan) });
+      const materialized = materializePlanillaImport(plan, snapshot);
+      const persisted = repository ? await repository.executePlanillaImport(plan) : materialized.result;
+      response.status(201).json({
+        data: {
+          ...persisted,
+          persisted: Boolean(repository),
+          applied: {
+            locations: materialized.applied.locations,
+            lots: materialized.applied.lots,
+            stockRecords: materialized.applied.stockRecords,
+            movements: materialized.applied.movements
+          }
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+  async function snapshotForImport() {
+    return repository ? repository.loadSnapshot() : demoSnapshot();
+  }
+  app2.post("/api/stock/intake/preview", async (request, response, next) => {
+    try {
+      const input = stockIntakeSchema.parse(request.body);
+      const plan = buildStockIntakePlan(input, await snapshotForImport());
+      response.json({ data: plan.preview });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app2.post("/api/stock/intake", async (request, response, next) => {
+    try {
+      const input = stockIntakeSchema.parse(request.body);
+      const snapshot = await snapshotForImport();
+      const plan = buildStockIntakePlan(input, snapshot);
+      if (!plan.preview.valid) {
+        throw Object.assign(new Error(plan.preview.issues[0]?.message ?? "La carga de stock no es v\xE1lida."), { status: 400, details: plan.preview.issues });
+      }
+      const materialized = materializePlanillaImport(plan, snapshot);
+      const persisted = repository ? await repository.executePlanillaImport(plan) : materialized.result;
+      response.status(201).json({
+        data: {
+          ...persisted,
+          persisted: Boolean(repository),
+          applied: {
+            locations: materialized.applied.locations,
+            lots: materialized.applied.lots,
+            stockRecords: materialized.applied.stockRecords,
+            movements: materialized.applied.movements
+          }
+        }
+      });
     } catch (error) {
       next(error);
     }
   });
   app2.use("/api", (_request, response) => response.status(404).json({ error: "Endpoint no encontrado." }));
   app2.use((error, _request, response, _next) => {
-    if (error instanceof z3.ZodError) return response.status(400).json({ error: "Solicitud inv\xE1lida.", details: z3.treeifyError(error) });
+    if (error instanceof z5.ZodError) return response.status(400).json({ error: "Solicitud inv\xE1lida.", details: z5.treeifyError(error) });
     const candidate = error;
     const status = candidate.status ?? (candidate.code === "23505" ? 409 : 500);
     if (status >= 500) console.error("[api]", error);

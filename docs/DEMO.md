@@ -216,8 +216,9 @@ Elegí uno de estos dos caminos **antes** de presentar.
 Cualquier lote sin evento de tratamiento arranca en 4/5 con “Tratamiento
 fitosanitario” faltante. Sirven **H-118, B-221, D-405, E-090, G-512** y **C-102**.
 
-1. Lote **H-118**, destino **Brasil**, cantidad **13.000**.
-2. “Analizar requisitos” → **4 de 5**, falta el tratamiento.
+1. Lote **H-118**, destino **Brasil**, peso neto **13.000 kg**. Se pueden agregar
+   más lotes con “Agregar lote”; cada uno lleva su propio peso.
+2. “Analizar documentación” → **4 de 5**, falta el tratamiento.
 3. En “Información faltante”, escribir:
    `El lote fue tratado con Mancozeb el 18 de agosto.`
 4. “Interpretar información” → revisar producto y fecha extraídos.
@@ -262,7 +263,8 @@ registrado como pendiente en `docs/PROJECT_CONTEXT.md` §20. Hasta que exista,
   contra datos reales del lote y de su trazabilidad. No la decide un modelo.
 - El texto libre sólo **propone** un dato estructurado; el operador lo confirma
   antes de que se persista.
-- La proforma se arma exclusivamente con datos trazables del lote.
+- La proforma se arma exclusivamente con datos trazables de cada lote. Si hay
+  varios, el documento lista una fila por lote y el total de la operación.
 - Aclarar que los requisitos son simulados para la demo (la propia pantalla lo
   dice) y que la proforma es un documento no fiscal.
 

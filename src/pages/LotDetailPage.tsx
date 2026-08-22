@@ -11,7 +11,7 @@ import { StockVerificationForm } from '../components/stock/StockVerificationForm
 import { formatDate, formatKg, formatSignedKg } from '../lib/formatters';
 import { validateDispatch } from '../lib/validateDispatch';
 import { aiService } from '../services/aiService';
-import { mockDocumentService } from '../services/documentService';
+import { buildExportItems, mockDocumentService } from '../services/documentService';
 import { getStockViewByLotId } from '../services/stockService';
 import { useAppData } from '../state/AppDataContext';
 import type { ValidationResult } from '../types/domain';
@@ -63,8 +63,11 @@ export function LotDetailPage() {
   function generateRemito() {
     if (!dispatchResult?.valid) return;
     const document = mockDocumentService.createRemito({
-      lot: currentLot,
-      quantity: dispatchQuantity,
+      items: buildExportItems(
+        [{ lotId: currentLot.id, quantity: dispatchQuantity }],
+        [currentLot],
+        lotEvents,
+      ),
       originLocation: currentStock.location.name,
       destinationLocation: dispatchDestination || 'No informado',
       transporter: dispatchTransporter,

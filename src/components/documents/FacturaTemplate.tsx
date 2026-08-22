@@ -1,8 +1,9 @@
 import { formatCurrency, formatKg } from '../../lib/formatters';
 import type { FacturaDocument } from '../../types/export';
-import { DocumentArticle, DocumentFooter, DocumentLetterhead } from './DocumentChrome';
+import { DocumentArticle, DocumentFooter, DocumentLetterhead, exportItemsOf } from './DocumentChrome';
 
 export function FacturaTemplate({ document }: { document: FacturaDocument }) {
+  const items = exportItemsOf(document);
   const subtotal = document.quantity * document.unitPrice;
 
   return (
@@ -32,19 +33,25 @@ export function FacturaTemplate({ document }: { document: FacturaDocument }) {
           <div className="grid grid-cols-[1fr_1fr_0.9fr_0.9fr_0.9fr] border-b border-[#dfe1da] bg-[#f6f7f3] px-4 py-3 text-[9px] font-bold uppercase tracking-[0.08em] text-[#70766e]">
             <span>Lote</span><span>Variedad</span><span className="text-right">Cantidad</span><span className="text-right">Precio unit.</span><span className="text-right">Subtotal</span>
           </div>
-          <div className="grid grid-cols-[1fr_1fr_0.9fr_0.9fr_0.9fr] px-4 py-5 text-[13px] font-semibold text-[#2d332e]">
-            <span>{document.lotCode}</span>
-            <span>{document.variety}</span>
-            <span className="tabular text-right">{formatKg(document.quantity)}</span>
-            <span className="tabular text-right">{document.currency} {formatCurrency(document.unitPrice)}</span>
-            <span className="tabular text-right">{document.currency} {formatCurrency(subtotal)}</span>
-          </div>
+          {items.map((item) => (
+            <div key={item.lotId} className="grid grid-cols-[1fr_1fr_0.9fr_0.9fr_0.9fr] border-b border-[#eceee8] px-4 py-4 text-[13px] font-semibold text-[#2d332e] last:border-b-0">
+              <span>{item.lotCode}</span>
+              <span>{item.variety}</span>
+              <span className="tabular text-right">{formatKg(item.quantity)}</span>
+              <span className="tabular text-right">{document.currency} {formatCurrency(document.unitPrice)}</span>
+              <span className="tabular text-right">{document.currency} {formatCurrency(item.quantity * document.unitPrice)}</span>
+            </div>
+          ))}
         </div>
 
         <div className="mt-6 flex justify-end">
           <div className="w-[260px] border border-[#cfd2ca]">
             <div className="flex items-center justify-between border-b border-[#e4e6e0] px-4 py-2.5 text-[11px] text-[#5f645d]">
               <span>Campaña</span><span className="font-semibold">{document.campaign}</span>
+            </div>
+            <div className="flex items-center justify-between border-b border-[#e4e6e0] px-4 py-2.5 text-[11px] text-[#5f645d]">
+              <span>Cantidad total{items.length > 1 ? ` (${items.length} lotes)` : ''}</span>
+              <span className="tabular font-semibold">{formatKg(document.quantity)}</span>
             </div>
             <div className="flex items-center justify-between bg-[#f1f4ef] px-4 py-3 text-[13px] font-bold text-[#25412f]">
               <span>Total</span><span className="tabular">{document.currency} {formatCurrency(subtotal)}</span>

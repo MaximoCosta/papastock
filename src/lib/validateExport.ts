@@ -77,12 +77,12 @@ export function validateExport(input: ExportValidationInput): ExportValidationRe
     (requirement) => requirement.country === input.destinationCountry && requirement.required,
   );
 
-  const lines = input.lines?.length
+  const lines: ExportValidationLine[] = input.lines?.length
     ? input.lines
     : [{
       lotId: input.lot?.id ?? '',
       lot: input.lot,
-      quantity: input.quantity,
+      quantity: input.quantity ?? 0,
       verifiedQuantity: input.verifiedQuantity,
       stockLocationName: input.stockLocationName,
     }];
@@ -93,7 +93,7 @@ export function validateExport(input: ExportValidationInput): ExportValidationRe
     return {
       lotId: line.lotId,
       field: requirement.field,
-      label: lines.length > 1 && line.lot ? `${requirement.label} · ${line.lot.code}` : requirement.label,
+      label: requirement.label,
       status: value ? ('complete' as const) : ('missing' as const),
       value,
       origin: requirement.origin ?? ('STATIC_DEMO' as const),

@@ -96,5 +96,68 @@ describe('validateExport', () => {
 
     expect(result.requirements.every((item) => item.origin === 'STATIC_DEMO')).toBe(true);
   });
+
+  it('valida cada lote por separado en una operación de varios lotes', () => {
+    const secondLot = lots.find((item) => item.code === 'B-118');
+    const treatment: TraceabilityEvent = {
+      id: 'trace-test-treatment-a310',
+      lotId: 'lot-a310',
+      type: 'treatment',
+      date: '2026-08-18',
+      data: { product: 'Mancozeb' },
+    };
+    const result = validateExport({
+      destinationCountry: 'Brasil',
+      traceabilityEvents: [...initialTraceabilityEvents, treatment],
+      requirements: exportRequirements,
+      lines: [
+        { lotId: 'lot-a310', lot, quantity: 18000, verifiedQuantity: 22000 },
+        { lotId: 'lot-b118', lot: secondLot, quantity: 5000, verifiedQuantity: 14400 },
+      ],
+    });
+
+    const a310 = result.requirements.filter((item) => item.lotId === 'lot-a310');
+    const b118 = result.requirements.filter((item) => item.lotId === 'lot-b118');
+
+    expect(result.valid).toBe(false);
+    expect(result.missingFields).toEqual(['treatment']);
+    expect(a310.every((item) => item.status === 'complete')).toBe(true);
+    expect(b118.find((item) => item.field === 'treatment')?.status).toBe('missing');
+    expect(b118.find((item) => item.field === 'quantity')?.value).toBe('5.000 kg');
+    expect(result.requirements.every((item) => !item.label.includes('·'))).toBe(true);
+  });
+
+  it('queda lista cuando todos los lotes tienen tratamiento y peso', () => {
+    const secondLot = lots.find((item) => item.code === 'B-118');
+    const result = validateExport({
+      destinationCountry: 'Brasil',
+      traceabilityEvents: [
+        ...initialTraceabilityEvents,
+        {
+          id: 'trace-a310-treatment',
+          lotId: 'lot-a310',
+          type: 'treatment',
+          date: '2026-08-18',
+          data: { product: 'Mancozeb' },
+        },
+        {
+          id: 'trace-b118-treatment',
+          lotId: 'lot-b118',
+          type: 'treatment',
+          date: '2026-08-10',
+          data: { product: 'Metalaxil' },
+        },
+      ],
+      requirements: exportRequirements,
+      lines: [
+        { lotId: 'lot-a310', lot, quantity: 18000 },
+        { lotId: 'lot-b118', lot: secondLot, quantity: 5000 },
+      ],
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.missingFields).toEqual([]);
+    expect(result.requirements).toHaveLength(10);
+  });
 });
 
