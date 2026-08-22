@@ -1,15 +1,41 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { insertTraceabilityEvent, loadPapaStockSnapshot, type DataSource } from '../repositories/dataRepository';
 import { getStockViews } from '../services/stockService';
-import type { Location, Lot, Movement, StockRecord, StockView, TraceabilityEvent } from '../types/domain';
+import type {
+  Location,
+  Lot,
+  Movement,
+  Shelf,
+  ShelfUnit,
+  StockControlCorrection,
+  StockRecord,
+  StockView,
+  TraceabilityEvent,
+  Transporter,
+} from '../types/domain';
 import type { GeneratedDocument } from '../types/export';
+
+export interface AddShelfUnitInput {
+  locationId: string;
+  code: string;
+  label: string;
+  gridRow: number;
+  gridCol: number;
+  levelCount: number;
+  capacityKgPerLevel?: number;
+}
+
+export type TransporterInput = Omit<Transporter, 'id'>;
 
 interface AppDataContextValue {
   locations: Location[];
+  shelfUnits: ShelfUnit[];
+  shelves: Shelf[];
   lots: Lot[];
   stockRecords: StockRecord[];
   stockViews: StockView[];
   movements: Movement[];
+  transporters: Transporter[];
   traceabilityEvents: TraceabilityEvent[];
   generatedDocuments: GeneratedDocument[];
   dataSource: DataSource;
@@ -18,6 +44,13 @@ interface AppDataContextValue {
   actionError?: string;
   addTraceabilityEvent: (event: TraceabilityEvent) => Promise<TraceabilityEvent>;
   addGeneratedDocument: (document: GeneratedDocument) => void;
+  applyStockCorrections: (corrections: StockControlCorrection[]) => void;
+  addMovement: (movement: Movement) => void;
+  addShelfUnit: (input: AddShelfUnitInput) => ShelfUnit;
+  removeShelfUnit: (unitId: string) => void;
+  assignStockToShelf: (stockRecordId: string, shelfId: string | undefined) => void;
+  addTransporter: (input: TransporterInput) => Transporter;
+  updateTransporter: (id: string, input: TransporterInput) => void;
   clearActionError: () => void;
   refreshData: () => Promise<void>;
 }
@@ -36,9 +69,12 @@ function readSessionValue<T>(key: string, fallback: T): T {
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const [locations, setLocations] = useState<Location[]>([]);
+  const [shelfUnits, setShelfUnits] = useState<ShelfUnit[]>([]);
+  const [shelves, setShelves] = useState<Shelf[]>([]);
   const [lots, setLots] = useState<Lot[]>([]);
   const [stockRecords, setStockRecords] = useState<StockRecord[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [transporters, setTransporters] = useState<Transporter[]>([]);
   const [traceabilityEvents, setTraceabilityEvents] = useState<TraceabilityEvent[]>([]);
   const [dataSource, setDataSource] = useState<DataSource>('mock');
   const [isLoading, setIsLoading] = useState(true);
@@ -52,9 +88,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     const result = await loadPapaStockSnapshot();
     setLocations(result.data.locations);
+    setShelfUnits(result.data.shelfUnits);
+    setShelves(result.data.shelves);
     setLots(result.data.lots);
     setStockRecords(result.data.stockRecords);
     setMovements(result.data.movements);
+    setTransporters(result.data.transporters);
     setTraceabilityEvents(result.data.traceabilityEvents);
     setDataSource(result.source);
     setDataWarning(result.warning);
@@ -76,10 +115,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppDataContextValue>(() => ({
     locations,
+    shelfUnits,
+    shelves,
     lots,
     stockRecords,
     stockViews,
     movements,
+    transporters,
     traceabilityEvents,
     generatedDocuments,
     dataSource,
@@ -96,9 +138,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       try {
         const saved = dataSource === 'database' ? await insertTraceabilityEvent(event) : event;
         setTraceabilityEvents((current) => {
-        const withoutEquivalentEvent = current.filter(
+          const withoutEquivalentEvent = current.filter(
             (item) => !(item.lotId === saved.lotId && item.type === saved.type && item.date === saved.date),
-        );
+          );
           return [...withoutEquivalentEvent, saved];
         });
         return saved;
@@ -111,9 +153,107 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     addGeneratedDocument: (document) => {
       setGeneratedDocuments((current) => [document, ...current]);
     },
+    applyStockCorrections: (corrections) => {
+      if (corrections.length === 0) return;
+      const now = new Date().toISOString();
+      const byId = new Map(corrections.map((item) => [item.stockRecordId, item]));
+      setStockRecords((current) => current.map((record) => {
+        const correction = byId.get(record.id);
+        if (!correction) return record;
+        return {
+          ...record,
+          verifiedQuantity: correction.countedQuantity,
+          verificationPending: false,
+          updatedAt: now,
+        };
+      }));
+    },
+    addMovement: (movement) => {
+      setMovements((current) => [movement, ...current]);
+    },
+    addShelfUnit: (input) => {
+      const levels = Math.max(1, Math.min(6, Math.round(input.levelCount) || 1));
+      const unitId = `unit-${Date.now()}`;
+      const unit: ShelfUnit = {
+        id: unitId,
+        locationId: input.locationId,
+        code: input.code.trim().toUpperCase(),
+        label: input.label.trim() || `Estantería ${input.code}`,
+        gridRow: input.gridRow,
+        gridCol: input.gridCol,
+      };
+      const capacity = input.capacityKgPerLevel ?? 20000;
+      const newShelves: Shelf[] = Array.from({ length: levels }, (_, index) => {
+        const level = index + 1;
+        return {
+          id: `${unitId}-L${level}`,
+          locationId: input.locationId,
+          shelfUnitId: unitId,
+          code: `${unit.code}${level}`,
+          label: `${unit.label} · Nivel ${level}`,
+          level,
+          capacityKg: capacity,
+        };
+      });
+      setShelfUnits((current) => [...current, unit]);
+      setShelves((current) => [...current, ...newShelves]);
+      return unit;
+    },
+    removeShelfUnit: (unitId) => {
+      setShelves((currentShelves) => {
+        const levelIds = new Set(currentShelves.filter((shelf) => shelf.shelfUnitId === unitId).map((shelf) => shelf.id));
+        setStockRecords((current) => current.map((record) => (
+          record.shelfId && levelIds.has(record.shelfId)
+            ? { ...record, shelfId: undefined }
+            : record
+        )));
+        return currentShelves.filter((shelf) => shelf.shelfUnitId !== unitId);
+      });
+      setShelfUnits((current) => current.filter((unit) => unit.id !== unitId));
+    },
+    assignStockToShelf: (stockRecordId, shelfId) => {
+      setStockRecords((current) => {
+        const shelf = shelfId
+          ? shelves.find((item) => item.id === shelfId)
+          : undefined;
+        return current.map((record) => {
+          if (record.id !== stockRecordId) return record;
+          return {
+            ...record,
+            shelfId: shelf?.id,
+            locationId: shelf?.locationId ?? record.locationId,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+      });
+    },
+    addTransporter: (input) => {
+      const transporter: Transporter = { ...input, id: `tr-${Date.now()}` };
+      setTransporters((current) => [transporter, ...current]);
+      return transporter;
+    },
+    updateTransporter: (id, input) => {
+      setTransporters((current) => current.map((item) => (item.id === id ? { ...input, id } : item)));
+    },
     clearActionError: () => setActionError(undefined),
     refreshData,
-  }), [actionError, dataSource, dataWarning, generatedDocuments, isLoading, locations, lots, movements, refreshData, stockRecords, stockViews, traceabilityEvents]);
+  }), [
+    actionError,
+    dataSource,
+    dataWarning,
+    generatedDocuments,
+    isLoading,
+    locations,
+    lots,
+    movements,
+    refreshData,
+    shelfUnits,
+    shelves,
+    stockRecords,
+    stockViews,
+    traceabilityEvents,
+    transporters,
+  ]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }

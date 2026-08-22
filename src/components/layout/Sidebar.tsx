@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   PackageSearch,
   Sprout,
+  Truck,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAppData } from '../../state/AppDataContext';
@@ -13,6 +14,7 @@ const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/stock', label: 'Stock', icon: Boxes },
   { to: '/lots', label: 'Lotes', icon: PackageSearch },
+  { to: '/transporters', label: 'Transportistas', icon: Truck },
   { to: '/exports/new', label: 'Exportaciones', icon: ClipboardList },
   { to: '/documents', label: 'Documentos', icon: FileText },
 ];

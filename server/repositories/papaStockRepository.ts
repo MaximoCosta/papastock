@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import type { TraceabilityEvent } from '../../src/types/domain';
+import { shelves as mockShelves } from '../../src/data/shelves';
+import { shelfUnits as mockShelfUnits } from '../../src/data/shelfUnits';
+import { transporters as mockTransporters } from '../../src/data/transporters';
 import type { PapaStockSnapshot } from '../../src/repositories/dataRepository';
 import type { LocationRow, LotRow, MovementRow, StockRecordRow, TraceabilityEventRow } from '../../src/types/database';
+import type { TraceabilityEvent } from '../../src/types/domain';
 import { mapLocation, mapLot, mapMovement, mapStockRecord, mapTraceabilityEvent } from './mappers';
 
 export class PapaStockRepository {
@@ -23,9 +26,12 @@ export class PapaStockRepository {
 
     return {
       locations: locations.rows.map(mapLocation),
+      shelfUnits: mockShelfUnits.map((item) => ({ ...item })),
+      shelves: mockShelves.map((item) => ({ ...item })),
       lots: lots.rows.map(mapLot),
       stockRecords: stock.rows.map(mapStockRecord),
       movements: movements.rows.map(mapMovement),
+      transporters: mockTransporters.map((item) => ({ ...item })),
       traceabilityEvents: traceability.rows.map(mapTraceabilityEvent),
     };
   }
@@ -34,11 +40,17 @@ export class PapaStockRepository {
     const snapshot = await this.loadSnapshot();
     const lot = snapshot.lots.find((item) => item.id === idOrCode || item.code.toLowerCase() === idOrCode.toLowerCase());
     if (!lot) throw Object.assign(new Error('Lote no encontrado.'), { status: 404 });
+    const lotLocationIds = new Set(
+      snapshot.stockRecords.filter((item) => item.lotId === lot.id).map((item) => item.locationId),
+    );
     return {
       locations: snapshot.locations,
+      shelfUnits: snapshot.shelfUnits.filter((unit) => lotLocationIds.has(unit.locationId)),
+      shelves: snapshot.shelves.filter((shelf) => lotLocationIds.has(shelf.locationId)),
       lots: [lot],
       stockRecords: snapshot.stockRecords.filter((item) => item.lotId === lot.id),
       movements: snapshot.movements.filter((item) => item.lotId === lot.id),
+      transporters: snapshot.transporters,
       traceabilityEvents: snapshot.traceabilityEvents.filter((item) => item.lotId === lot.id),
     };
   }

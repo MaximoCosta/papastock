@@ -1,4 +1,5 @@
 const numberFormatter = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
+const currencyFormatter = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const shortDateFormatter = new Intl.DateTimeFormat('es-AR', {
   day: '2-digit',
   month: '2-digit',
@@ -22,6 +23,10 @@ export function formatSignedKg(value: number): string {
 
 export function formatNumber(value: number): string {
   return numberFormatter.format(value);
+}
+
+export function formatCurrency(value: number): string {
+  return currencyFormatter.format(value);
 }
 
 export function formatDate(value: string): string {
