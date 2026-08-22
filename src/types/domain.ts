@@ -39,8 +39,6 @@ export interface Lot {
   harvestDate?: string;
 }
 
-export type QuantityUnit = 'kg' | 'bags';
-
 export interface StockRecord {
   id: string;
   lotId: string;
@@ -50,80 +48,21 @@ export interface StockRecord {
   verifiedQuantity: number;
   updatedAt: string;
   verificationPending?: boolean;
-  unit?: QuantityUnit;
 }
 
 export type MovementStatus = 'completed' | 'pending' | 'cancelled';
-export type MovementKind = 'transfer' | 'correction' | 'import';
-export type ReceptionStatus = 'not_applicable' | 'pending' | 'received' | 'needs_reconciliation';
-export type DiscrepancyStatus = 'open' | 'investigating' | 'resolved';
-export type DiscrepancyType = 'reception_shortfall' | 'reception_unallocated' | 'physical_count';
-export type StockAlertKind = 'discrepancy' | 'low_stock' | 'depleted' | 'insufficient_for_movement';
-
-export interface MovementItem {
-  id: string;
-  movementId: string;
-  lotId: string;
-  dispatchedQuantity: number;
-  receivedQuantity?: number;
-  receivedAt?: string;
-  unit: QuantityUnit;
-  sortOrder: number;
-}
 
 export interface Movement {
   id: string;
-  /** Legacy: first item lot, kept so existing N02/UI readers keep working. */
-  lotId?: string;
+  lotId: string;
   originLocationId?: string;
   destinationLocationId?: string;
-  /** Legacy header quantity. Prefer items[]. */
-  quantity?: number;
+  quantity: number;
   date: string;
   status: MovementStatus;
   reference: string;
-  remitoNumber?: string;
-  kind?: MovementKind;
-  correctsMovementId?: string;
-  receptionStatus?: ReceptionStatus;
-  receivedTotal?: number;
-  receivedUnit?: QuantityUnit;
-  receivedAt?: string;
   transporterId?: string;
   data?: Record<string, unknown>;
-  items?: MovementItem[];
-}
-
-export interface Discrepancy {
-  id: string;
-  movementId?: string;
-  movementItemId?: string;
-  stockRecordId?: string;
-  lotId?: string;
-  locationId?: string;
-  type: DiscrepancyType;
-  expectedQuantity: number;
-  observedQuantity: number;
-  unit: QuantityUnit;
-  difference: number;
-  status: DiscrepancyStatus;
-  cause?: string;
-  resolution?: string;
-  createdAt: string;
-  resolvedAt?: string;
-}
-
-export interface StockCount {
-  id: string;
-  locationId: string;
-  lotId: string;
-  expectedQuantity: number;
-  observedQuantity: number;
-  unit: QuantityUnit;
-  difference: number;
-  countedAt: string;
-  notes?: string;
-  discrepancyId?: string;
 }
 
 export type PlanillaMovementKind = 'inbound' | 'transfer' | 'outbound';
@@ -278,11 +217,7 @@ export type TraceabilityEventType =
   | 'harvest'
   | 'treatment'
   | 'quality_control'
-  | 'stock_verification'
-  | 'reception'
-  | 'correction'
-  | 'physical_count'
-  | 'discrepancy';
+  | 'stock_verification';
 
 export interface TraceabilityEvent {
   id: string;
@@ -320,72 +255,22 @@ export interface ValidationResult {
   errors: ValidationError[];
 }
 
-export interface MovementIntentItem {
-  lotCode: string;
-  quantity: number;
-  unit: QuantityUnit;
-}
-
 export interface MovementIntent {
   action: 'transfer';
-  remitoNumber?: string;
+  lotCode: string;
+  quantityKg: number;
   origin: string;
   destination: string;
-  items: MovementIntentItem[];
-  /** Convenience for single-item kg transfers / legacy clients. */
-  lotCode?: string;
-  quantityKg?: number;
 }
 
 export interface MovementInterpretation extends MovementIntent {
   engine: 'llm' | 'heuristic';
 }
 
-export interface StockTransferLinePreview {
-  lotCode: string;
-  quantity: number;
-  unit: QuantityUnit;
-  lot?: Lot;
-  originStock?: Pick<StockRecord, 'declaredQuantity' | 'verifiedQuantity'>;
-  destinationStock?: Pick<StockRecord, 'declaredQuantity' | 'verifiedQuantity'>;
-  originAfter?: Pick<StockRecord, 'declaredQuantity' | 'verifiedQuantity'>;
-  destinationAfter?: Pick<StockRecord, 'declaredQuantity' | 'verifiedQuantity'>;
-}
-
 export interface StockTransferPreview extends ValidationResult {
   intent: MovementIntent;
-  remitoNumber?: string;
+  lot?: Lot;
   origin?: Location;
   destination?: Location;
-  lines: StockTransferLinePreview[];
-  lot?: Lot;
   originStock?: Pick<StockRecord, 'declaredQuantity' | 'verifiedQuantity'>;
-}
-
-export interface MovementReceptionInput {
-  movementId: string;
-  date: string;
-  items?: Array<{ movementItemId: string; receivedQuantity: number }>;
-  receivedTotal?: number;
-  unit?: QuantityUnit;
-}
-
-export interface LotReallocationInput {
-  originalMovementId: string;
-  locationId: string;
-  fromLotCode: string;
-  toLotCode: string;
-  quantity: number;
-  unit: QuantityUnit;
-}
-
-export interface StockCountInput {
-  locationId?: string;
-  location?: string;
-  lotId?: string;
-  lotCode?: string;
-  observedQuantity: number;
-  unit: QuantityUnit;
-  date: string;
-  notes?: string;
 }

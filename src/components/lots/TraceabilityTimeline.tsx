@@ -7,10 +7,6 @@ const eventLabels: Record<TraceabilityEventType, string> = {
   treatment: 'Tratamiento fitosanitario',
   quality_control: 'Control de calidad',
   stock_verification: 'Verificación de stock',
-  reception: 'Recepción',
-  correction: 'Corrección',
-  physical_count: 'Conteo físico',
-  discrepancy: 'Discrepancia',
 };
 
 function getDetail(event: TraceabilityEvent): string {
@@ -19,10 +15,6 @@ function getDetail(event: TraceabilityEvent): string {
   if (event.type === 'harvest') return event.data.netWeight ? `${Number(event.data.netWeight).toLocaleString('es-AR')} kg ingresados` : 'Cosecha registrada';
   if (event.type === 'quality_control') return String(event.data.result ?? 'Control registrado');
   if (event.type === 'stock_verification') return event.data.verifiedQuantity ? `${Number(event.data.verifiedQuantity).toLocaleString('es-AR')} kg verificados` : 'Control registrado';
-  if (event.type === 'reception') return `Recibido ${String(event.data.observedQuantity ?? '—')} · remito ${String(event.data.remitoNumber ?? '—')}`;
-  if (event.type === 'correction') return `Corrige ${String(event.data.corrects ?? 'movimiento original')}`;
-  if (event.type === 'physical_count') return `Sistema ${String(event.data.expectedQuantity ?? '—')} / conteo ${String(event.data.observedQuantity ?? '—')}`;
-  if (event.type === 'discrepancy') return String(event.data.cause ?? 'Discrepancia abierta');
   return 'Evento registrado';
 }
 

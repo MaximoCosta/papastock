@@ -45,7 +45,6 @@ interface AppDataContextValue {
   actionError?: string;
   addTraceabilityEvent: (event: TraceabilityEvent) => Promise<TraceabilityEvent>;
   addGeneratedDocument: (document: GeneratedDocument) => void;
-  addGeneratedDocuments: (documents: GeneratedDocument[]) => void;
   applyStockCorrections: (corrections: StockControlCorrection[]) => void;
   applyStockVerification: (correction: StockControlCorrection, event?: TraceabilityEvent) => void;
   addMovement: (movement: Movement) => void;
@@ -149,10 +148,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     },
     addGeneratedDocument: (document) => {
       setGeneratedDocuments((current) => [document, ...current]);
-    },
-    addGeneratedDocuments: (documents) => {
-      if (documents.length === 0) return;
-      setGeneratedDocuments((current) => [...documents, ...current]);
     },
     applyStockCorrections: (corrections) => {
       if (corrections.length === 0) return;

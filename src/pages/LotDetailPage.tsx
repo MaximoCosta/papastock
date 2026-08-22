@@ -8,10 +8,7 @@ import { MovementList } from '../components/lots/MovementList';
 import { TraceabilityTimeline } from '../components/lots/TraceabilityTimeline';
 import { DiscrepancyPanel } from '../components/stock/DiscrepancyPanel';
 import { StockVerificationForm } from '../components/stock/StockVerificationForm';
-import { formatDate, formatKg, formatQuantity, formatSignedKg } from '../lib/formatters';
-import { buildLotHistory } from '../lib/lotHistory';
-import { movementTouchesLot } from '../lib/movements';
-import { stockUnit } from '../lib/quantity';
+import { formatDate, formatKg, formatSignedKg } from '../lib/formatters';
 import { validateDispatch } from '../lib/validateDispatch';
 import { aiService } from '../services/aiService';
 import { buildExportItems, mockDocumentService } from '../services/documentService';
@@ -26,7 +23,7 @@ export function LotDetailPage() {
   const { locations, lots, movements, stockViews, traceabilityEvents, addGeneratedDocument, applyStockVerification } = useAppData();
   const lot = lots.find((item) => item.code.toLowerCase() === id?.toLowerCase());
   const stock = lot ? getStockViewByLotId(stockViews, lot.id) : undefined;
-  const lotMovements = lot ? movements.filter((movement) => movementTouchesLot(movement, lot.id)) : [];
+  const lotMovements = lot ? movements.filter((movement) => movement.lotId === lot.id) : [];
   const lotEvents = lot ? traceabilityEvents.filter((event) => event.lotId === lot.id) : [];
   const [analysis, setAnalysis] = useState<DiscrepancyAnalysis>();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -127,8 +124,8 @@ export function LotDetailPage() {
             </div>
           </div>
           <div className="grid grid-cols-3 divide-x divide-[#e2e4de] px-2 py-5">
-            <div className="px-4"><p className="label">Declarado</p><p className="tabular text-[22px] font-semibold tracking-[-0.03em]">{formatQuantity(stock.declaredQuantity, stockUnit(stock))}</p></div>
-            <div className="px-4"><p className="label">Verificado</p><p className="tabular text-[22px] font-semibold tracking-[-0.03em]">{formatQuantity(stock.verifiedQuantity, stockUnit(stock))}</p></div>
+            <div className="px-4"><p className="label">Declarado</p><p className="tabular text-[22px] font-semibold tracking-[-0.03em]">{formatKg(stock.declaredQuantity)}</p></div>
+            <div className="px-4"><p className="label">Verificado</p><p className="tabular text-[22px] font-semibold tracking-[-0.03em]">{formatKg(stock.verifiedQuantity)}</p></div>
             <div className="px-4"><p className="label">Diferencia</p><p className={`tabular text-[22px] font-semibold tracking-[-0.03em] ${stock.difference ? 'text-[#a33e37]' : 'text-[#356247]'}`}>{formatSignedKg(stock.difference)}</p></div>
           </div>
           <div className="border-t border-[#e4e6e0] bg-[#fafaf7] px-5 py-2.5 text-[10px] text-[#777c74]">Última verificación · {formatDate(stock.updatedAt)}</div>
@@ -160,31 +157,13 @@ export function LotDetailPage() {
         <TraceabilityTimeline events={lotEvents} />
       </div>
 
-      <section className="mb-5 border border-[#d8dad3] bg-white">
-        <div className="border-b border-[#e0e2dc] px-5 py-4">
-          <h2 className="text-sm font-semibold">Historia operativa</h2>
-          <p className="mt-1 text-[11px] text-[#747a72]">Remito, despacho, recepción, conteo y correcciones del lote.</p>
-        </div>
-        <div className="divide-y divide-[#e8e9e4]">
-          {buildLotHistory({ lot: currentLot, events: lotEvents, movements: lotMovements, locations }).map((entry) => (
-            <div key={entry.id} className="flex items-start justify-between gap-4 px-5 py-3">
-              <div>
-                <p className="text-[12px] font-semibold text-[#323732]">{entry.title}</p>
-                <p className="mt-1 text-[11px] text-[#777c74]">{entry.detail}</p>
-              </div>
-              <p className="tabular text-[10px] font-bold text-[#777d74]">{formatDate(entry.date)}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <section className="border border-[#d8dad3] bg-white">
         <div className="flex items-center justify-between border-b border-[#e2e4de] px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold">Emitir despacho</h2>
-            <p className="mt-1 text-[11px] text-[#747970]">DEMO: valida en cliente y genera un remito en sessionStorage. No escribe stock en PostgreSQL. Para un movimiento real usá /movements/new.</p>
+            <p className="mt-1 text-[11px] text-[#747970]">La operación se valida contra stock verificado y discrepancias abiertas.</p>
           </div>
-          <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-[#96552b]">DEMO · no persistente</span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-[#81867e]">Control de seguridad</span>
         </div>
         <div className="grid grid-cols-[200px_1fr_1fr_auto] items-end gap-4 p-5">
           <label>

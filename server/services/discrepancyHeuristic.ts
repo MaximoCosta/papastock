@@ -1,4 +1,3 @@
-import { movementQuantityForLot } from '../../src/lib/movements';
 import type { Movement, StockRecord, TraceabilityEvent } from '../../src/types/domain';
 import type { DiscrepancyAnalysis, DiscrepancyEvidence, DiscrepancyHypothesis } from '../../src/types/export';
 
@@ -15,7 +14,7 @@ function movementEvidence(movements: Movement[]): DiscrepancyEvidence[] {
   return movements.map((movement) => ({
     type: 'movement',
     reference: movement.reference,
-    description: `${movementQuantityForLot(movement).toLocaleString('es-AR')} kg · ${movement.status} · ${movement.date}`,
+    description: `${movement.quantity.toLocaleString('es-AR')} kg · ${movement.status} · ${movement.date}`,
   }));
 }
 
@@ -44,7 +43,7 @@ export function analyzeWithHeuristic(input: DiscrepancyInput): DiscrepancyAnalys
     .filter((movement) => movement.originLocationId === input.stock.locationId || movement.destinationLocationId === input.stock.locationId)
     .sort(byRecent);
 
-  const exact = pending.find((movement) => movementQuantityForLot(movement, input.lot.id) === target);
+  const exact = pending.find((movement) => movement.quantity === target);
   if (exact) {
     return {
       engine: 'heuristic',
@@ -62,7 +61,7 @@ export function analyzeWithHeuristic(input: DiscrepancyInput): DiscrepancyAnalys
 
   for (let left = 0; left < pending.length; left += 1) {
     for (let right = left + 1; right < pending.length; right += 1) {
-      if (movementQuantityForLot(pending[left], input.lot.id) + movementQuantityForLot(pending[right], input.lot.id) === target) {
+      if (pending[left].quantity + pending[right].quantity === target) {
         const matches = [pending[left], pending[right]];
         return {
           engine: 'heuristic',
@@ -80,8 +79,8 @@ export function analyzeWithHeuristic(input: DiscrepancyInput): DiscrepancyAnalys
     }
   }
 
-  const partial = pending.filter((movement) => movementQuantityForLot(movement, input.lot.id) < target).slice(0, 4);
-  const explained = Math.min(target, partial.reduce((sum, movement) => sum + movementQuantityForLot(movement, input.lot.id), 0));
+  const partial = pending.filter((movement) => movement.quantity < target).slice(0, 4);
+  const explained = Math.min(target, partial.reduce((sum, movement) => sum + movement.quantity, 0));
   if (partial.length && explained > 0) {
     return {
       engine: 'heuristic',

@@ -49,16 +49,12 @@ export async function previewMovement(intent: MovementIntent): Promise<StockTran
   return normalizeTransferPreview(await readApiData(response, 'No se pudo validar el movimiento.'));
 }
 
-<<<<<<< HEAD
 export async function confirmMovement(intent: MovementIntent): Promise<{ reference: string }> {
   if (isDemoMovementIntent(intent)) {
     await delay(600);
     return demoMovementReference();
   }
 
-=======
-export async function confirmMovement(intent: MovementIntent): Promise<{ reference: string; remitoNumber?: string; id?: string }> {
->>>>>>> 49b6fb5abf5343428dd513818e4a7aad8fd388d7
   const response = await fetch(apiUrl('/api/movements'), {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -66,60 +62,8 @@ export async function confirmMovement(intent: MovementIntent): Promise<{ referen
   });
   const payload = await readApiData<Record<string, unknown>>(response, 'No se pudo registrar el movimiento.');
   if (typeof payload.reference === 'string' && payload.reference) {
-    return {
-      reference: payload.reference,
-      remitoNumber: typeof payload.remitoNumber === 'string' ? payload.remitoNumber : undefined,
-      id: typeof payload.id === 'string' ? payload.id : undefined,
-    };
+    return { reference: payload.reference };
   }
   if (payload.status === 'success') return { reference: 'Confirmado' };
   throw new Error('No se pudo registrar el movimiento.');
-}
-
-export async function receiveMovement(movementId: string, body: {
-  date: string;
-  items?: Array<{ movementItemId: string; receivedQuantity: number }>;
-  receivedTotal?: number;
-  unit?: 'bags' | 'kg';
-}) {
-  const response = await fetch(apiUrl(`/api/movements/${movementId}/reception`), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return readApiData(response, 'No se pudo registrar la recepción.');
-}
-
-export async function correctMovement(body: {
-  originalMovementId: string;
-  locationId: string;
-  fromLotCode: string;
-  toLotCode: string;
-  quantity: number;
-  unit: 'bags' | 'kg';
-}) {
-  const response = await fetch(apiUrl('/api/movements/corrections'), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return readApiData(response, 'No se pudo registrar la corrección.');
-}
-
-export async function createStockCount(body: {
-  locationId?: string;
-  location?: string;
-  lotId?: string;
-  lotCode?: string;
-  observedQuantity: number;
-  unit: 'bags' | 'kg';
-  date: string;
-  notes?: string;
-}) {
-  const response = await fetch(apiUrl('/api/stock-counts'), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return readApiData(response, 'No se pudo registrar el conteo.');
 }

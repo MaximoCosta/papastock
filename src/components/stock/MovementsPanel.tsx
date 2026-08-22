@@ -72,15 +72,14 @@ export function MovementsPanel({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] text-[#747970]">{movements.length} movimientos · el alta local es DEMO y no escribe PostgreSQL</p>
+        <p className="text-[11px] text-[#747970]">{movements.length} movimientos registrados (demo local)</p>
         <Button variant="secondary" onClick={() => setOpen((value) => !value)}>
-          <Plus size={14} /> {open ? 'Cerrar' : 'Nuevo movimiento DEMO'}
+          <Plus size={14} /> {open ? 'Cerrar' : 'Nuevo movimiento'}
         </Button>
       </div>
 
       {open && (
-        <div className="space-y-3 border border-[#e4c38a] bg-[#fff8ea] p-4">
-          <p className="text-[11px] font-semibold text-[#7b5a19]">DEMO: esto solo altera la sesión. El stock real se mueve en /movements/new.</p>
+        <div className="space-y-3 border border-[#d8dad3] bg-white p-4">
           <form onSubmit={submit} className="grid grid-cols-[1.1fr_1fr_1fr_1.2fr_120px_130px_auto] items-end gap-3 max-[1200px]:grid-cols-2">
             <label>
               <span className="label">Lote</span>
@@ -134,7 +133,6 @@ export function MovementsPanel({
           <thead>
             <tr>
               <th>Referencia</th>
-              <th>Remito</th>
               <th>Lote</th>
               <th>Ruta</th>
               <th>Transportista</th>
@@ -149,8 +147,7 @@ export function MovementsPanel({
               return (
                 <tr key={movement.id}>
                   <td className="font-bold text-[#284332]">{movement.reference}</td>
-                  <td className="tabular">{movement.remitoNumber ?? '—'}</td>
-                  <td>{movement.items?.length ? movement.items.map((item) => lotCode(item.lotId)).join(', ') : lotCode(movement.lotId ?? '')}</td>
+                  <td>{lotCode(movement.lotId)}</td>
                   <td>
                     <span className="inline-flex items-center gap-1.5 text-[#5a6059]">
                       <span className="truncate">{locationName(movement.originLocationId)}</span>
@@ -159,7 +156,7 @@ export function MovementsPanel({
                     </span>
                   </td>
                   <td className="text-[11px]">{transporterLabel(movement)}</td>
-                  <td className="tabular text-right! font-semibold">{formatKg(movement.quantity ?? movement.items?.reduce((total, item) => total + item.dispatchedQuantity, 0) ?? 0)}</td>
+                  <td className="tabular text-right! font-semibold">{formatKg(movement.quantity)}</td>
                   <td className="tabular">{formatDate(movement.date)}</td>
                   <td><StatusBadge tone={meta.tone}>{meta.label}</StatusBadge></td>
                 </tr>

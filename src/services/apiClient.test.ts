@@ -16,12 +16,10 @@ describe('backend adapters', () => {
       confidence: 0.95,
     })).toEqual({
       action: 'transfer',
-      remitoNumber: undefined,
       lotCode: 'A-204',
       origin: 'Planta',
       destination: 'Puerto',
       quantityKg: 25000,
-      items: [{ lotCode: 'A-204', quantity: 25000, unit: 'kg' }],
       engine: 'llm',
     });
   });

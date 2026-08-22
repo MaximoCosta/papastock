@@ -92,23 +92,5 @@ export const lots: Lot[] = [
     origin: 'Mar del Plata, Buenos Aires, Argentina',
     harvestDate: '2026-08-10',
   },
-  {
-    id: 'lot-300',
-    code: '300',
-    variety: 'Spunta',
-    campaign: '2025/26',
-    producer: 'Papasud',
-    origin: 'Balcarce, Buenos Aires, Argentina',
-    harvestDate: '2026-07-30',
-  },
-  {
-    id: 'lot-301',
-    code: '301',
-    variety: 'Spunta',
-    campaign: '2025/26',
-    producer: 'Papasud',
-    origin: 'Balcarce, Buenos Aires, Argentina',
-    harvestDate: '2026-07-30',
-  },
 ];
 

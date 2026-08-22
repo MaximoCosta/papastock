@@ -8,7 +8,7 @@ import { stockRecords as mockStockRecords } from '../data/stock';
 import { transporters as mockTransporters } from '../data/transporters';
 import { apiUrl, normalizeSnapshot, readApiData, traceabilityBody } from '../services/apiClient';
 import { presentStockForOralDemo } from '../lib/demoStockPresentation';
-import type { Discrepancy, Location, Lot, Movement, Shelf, ShelfUnit, StockCount, StockRecord, TraceabilityEvent, Transporter } from '../types/domain';
+import type { Location, Lot, Movement, Shelf, ShelfUnit, StockRecord, TraceabilityEvent, Transporter } from '../types/domain';
 
 export type DataSource = 'database' | 'mock';
 
@@ -21,8 +21,6 @@ export interface PapaStockSnapshot {
   movements: Movement[];
   transporters: Transporter[];
   traceabilityEvents: TraceabilityEvent[];
-  discrepancies?: Discrepancy[];
-  stockCounts?: StockCount[];
 }
 
 export interface SnapshotResult {
@@ -45,11 +43,9 @@ function mockSnapshot(): PapaStockSnapshot {
     shelves: mockShelves.map((item) => ({ ...item })),
     lots: mockLots.map((item) => ({ ...item })),
     stockRecords: mockStockRecords.map((item) => ({ ...item })),
-    movements: mockMovements.map((item) => ({ ...item, items: item.items ? item.items.map((line) => ({ ...line })) : undefined })),
+    movements: mockMovements.map((item) => ({ ...item })),
     transporters: mockTransporters.map((item) => ({ ...item })),
     traceabilityEvents: initialTraceabilityEvents.map((item) => ({ ...item, data: { ...item.data } })),
-    discrepancies: [],
-    stockCounts: [],
   });
 }
 

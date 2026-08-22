@@ -1,93 +1,68 @@
-import { formatDate, formatKg, formatMoney } from '../../lib/formatters';
+import { formatCurrency, formatKg } from '../../lib/formatters';
 import type { FacturaDocument } from '../../types/export';
-import { DocumentArticle, DocumentFooter, DocumentLetterhead } from './DocumentChrome';
-import {
-  CommercialTerms,
-  DocumentItemsTable,
-  DocumentNotice,
-  PackingFacts,
-  PartyBlock,
-  SignatureRow,
-  TraceabilityFacts,
-  fallbackItems,
-} from './DocumentSections';
+import { DocumentArticle, DocumentFooter, DocumentLetterhead, exportItemsOf } from './DocumentChrome';
 
 export function FacturaTemplate({ document }: { document: FacturaDocument }) {
-  const items = fallbackItems({ ...document, origin: document.origin, treatment: document.treatment });
-  const subtotal = items.reduce((sum, item) => sum + (item.lineTotal ?? item.quantity * document.unitPrice), 0);
+  const items = exportItemsOf(document);
+  const subtotal = document.quantity * document.unitPrice;
 
   return (
     <DocumentArticle>
-      <DocumentLetterhead kicker="Factura comercial" documentId={document.id} createdAt={document.createdAt} />
+      <DocumentLetterhead kicker="Factura" documentId={document.id} createdAt={document.createdAt} />
 
       <div className="px-12 py-10">
         <div className="mb-9 grid grid-cols-2 gap-12">
-          <PartyBlock
-            title="Vendedor"
-            name={document.exporter}
-            lines={[
-              document.exporterAddress,
-              document.exporterCity || 'Balcarce, Buenos Aires',
-              document.exporterTaxId ? `CUIT ${document.exporterTaxId}` : undefined,
-              document.exporterSenasa,
-            ]}
-          />
-          <PartyBlock
-            title="Comprador"
-            name={document.buyerName || document.destinationCountry}
-            lines={[
-              document.buyerAddress,
-              document.buyerCity,
-              document.destinationCountry,
-              document.buyerTaxId,
-              document.incoterm ? `Incoterm ${document.incoterm}` : undefined,
-            ]}
-          />
+          <div>
+            <p className="label">Vendedor</p>
+            <p className="text-[14px] font-semibold">{document.exporter}</p>
+            <p className="mt-1 text-[11px] leading-5 text-[#737970]">Balcarce, Buenos Aires<br />República Argentina</p>
+          </div>
+          <div>
+            <p className="label">Comprador / destino</p>
+            <p className="text-[14px] font-semibold">{document.buyerName || document.destinationCountry}</p>
+            <p className="mt-1 text-[11px] leading-5 text-[#737970]">
+              {document.destinationCountry}
+              {document.incoterm ? ` · ${document.incoterm}` : ''}
+              <br />
+              {document.transporterName ? `Transportista: ${document.transporterName}` : 'Operación comercial de demostración'}
+            </p>
+          </div>
         </div>
 
-        <DocumentItemsTable items={items} showPrice currency={document.currency} formatMoney={formatMoney} />
+        <div className="border-y border-[#cfd2ca]">
+          <div className="grid grid-cols-[1fr_1fr_0.9fr_0.9fr_0.9fr] border-b border-[#dfe1da] bg-[#f6f7f3] px-4 py-3 text-[9px] font-bold uppercase tracking-[0.08em] text-[#70766e]">
+            <span>Lote</span><span>Variedad</span><span className="text-right">Cantidad</span><span className="text-right">Precio unit.</span><span className="text-right">Subtotal</span>
+          </div>
+          {items.map((item) => (
+            <div key={item.lotId} className="grid grid-cols-[1fr_1fr_0.9fr_0.9fr_0.9fr] border-b border-[#eceee8] px-4 py-4 text-[13px] font-semibold text-[#2d332e] last:border-b-0">
+              <span>{item.lotCode}</span>
+              <span>{item.variety}</span>
+              <span className="tabular text-right">{formatKg(item.quantity)}</span>
+              <span className="tabular text-right">{document.currency} {formatCurrency(document.unitPrice)}</span>
+              <span className="tabular text-right">{document.currency} {formatCurrency(item.quantity * document.unitPrice)}</span>
+            </div>
+          ))}
+        </div>
 
         <div className="mt-6 flex justify-end">
-          <div className="w-[280px] border border-[#cfd2ca]">
+          <div className="w-[260px] border border-[#cfd2ca]">
             <div className="flex items-center justify-between border-b border-[#e4e6e0] px-4 py-2.5 text-[11px] text-[#5f645d]">
               <span>Campaña</span><span className="font-semibold">{document.campaign}</span>
             </div>
             <div className="flex items-center justify-between border-b border-[#e4e6e0] px-4 py-2.5 text-[11px] text-[#5f645d]">
-              <span>Peso neto</span><span className="tabular font-semibold">{formatKg(document.quantity)}</span>
+              <span>Cantidad total{items.length > 1 ? ` (${items.length} lotes)` : ''}</span>
+              <span className="tabular font-semibold">{formatKg(document.quantity)}</span>
             </div>
             <div className="flex items-center justify-between bg-[#f1f4ef] px-4 py-3 text-[13px] font-bold text-[#25412f]">
-              <span>Total</span><span className="tabular">{formatMoney(subtotal, document.currency)}</span>
+              <span>Total</span><span className="tabular">{document.currency} {formatCurrency(subtotal)}</span>
             </div>
           </div>
         </div>
 
-        <PackingFacts document={document} />
-        <TraceabilityFacts
-          origin={document.origin}
-          producer={document.producer}
-          harvestDate={document.harvestDate}
-          treatment={document.treatment}
-          qualityResult={document.qualityResult}
-        />
-        <CommercialTerms
-          incoterm={document.incoterm}
-          paymentTerms={document.paymentTerms}
-          departurePort={document.departurePort}
-          arrivalPort={document.arrivalPort}
-          departureDate={document.departureDate}
-          notes={document.notes}
-        />
-
-        {document.transporterName && (
-          <p className="mt-6 text-[11px] text-[#5f645d]">Transportista: {document.transporterName}</p>
-        )}
-
-        <SignatureRow left="Emisor" right="Receptor" />
-
-        <DocumentNotice title="Aclaración">
-          Comprobante generado el {formatDate(document.createdAt)} para la demostración del flujo operativo.
-          No constituye un documento fiscal válido.
-        </DocumentNotice>
+        <div className="mt-12 border-l-[3px] border-[#607c67] bg-[#f1f4ef] px-5 py-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#657068]">Aclaración</p>
+          <p className="mt-1.5 text-[11px] leading-5 text-[#5f665f]">Comprobante generado para la demostración del flujo operativo. No constituye un documento fiscal válido.</p>
+        </div>
       </div>
 
       <DocumentFooter />

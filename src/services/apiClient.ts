@@ -57,19 +57,12 @@ export function toIsoDateTime(date: string): string {
 }
 
 export function movementIntentBody(intent: MovementIntent): MovementIntent {
-  const items = intent.items?.length
-    ? intent.items
-    : intent.lotCode && intent.quantityKg
-      ? [{ lotCode: intent.lotCode, quantity: intent.quantityKg, unit: 'kg' as const }]
-      : [];
   return {
     action: 'transfer',
-    remitoNumber: intent.remitoNumber,
+    lotCode: intent.lotCode,
     origin: intent.origin,
     destination: intent.destination,
-    items,
-    lotCode: items[0]?.lotCode,
-    quantityKg: items.length === 1 && items[0]?.unit === 'kg' ? items[0].quantity : undefined,
+    quantityKg: intent.quantityKg,
   };
 }
 
@@ -88,23 +81,12 @@ export function traceabilityBody(event: TraceabilityEvent): Record<string, unkno
 
 export function normalizeMovementInterpretation(data: unknown): MovementInterpretation {
   const candidate = (data ?? {}) as Partial<MovementInterpretation> & { confidence?: number };
-  const items = Array.isArray(candidate.items) && candidate.items.length
-    ? candidate.items.map((item) => ({
-      lotCode: String(item.lotCode ?? ''),
-      quantity: Number(item.quantity ?? 0),
-      unit: item.unit === 'bags' ? 'bags' as const : 'kg' as const,
-    }))
-    : candidate.lotCode
-      ? [{ lotCode: String(candidate.lotCode), quantity: Number(candidate.quantityKg ?? 0), unit: 'kg' as const }]
-      : [];
   return {
     action: 'transfer',
-    remitoNumber: candidate.remitoNumber || undefined,
+    lotCode: String(candidate.lotCode ?? ''),
     origin: String(candidate.origin ?? ''),
     destination: String(candidate.destination ?? ''),
-    items,
-    lotCode: items[0]?.lotCode,
-    quantityKg: items.length === 1 && items[0]?.unit === 'kg' ? items[0].quantity : undefined,
+    quantityKg: Number(candidate.quantityKg ?? 0),
     engine: candidate.engine === 'heuristic' ? 'heuristic' : 'llm',
   };
 }
@@ -127,13 +109,12 @@ export function normalizeTransferPreview(data: unknown): StockTransferPreview {
     ...preview,
     valid: Boolean(preview.valid),
     errors: asValidationErrors(preview.errors),
-    lines: Array.isArray(preview.lines) ? preview.lines : [],
-    remitoNumber: preview.remitoNumber,
     intent: preview.intent ?? movementIntentBody({
       action: 'transfer',
+      lotCode: '',
       origin: '',
       destination: '',
-      items: [],
+      quantityKg: 0,
     }),
     originStock: preview.originStock
       ? {
@@ -251,13 +232,11 @@ export function normalizeSnapshot(data: {
     movements: data.movements.map((movement) => ({
       ...movement,
       id: asId(movement.id),
-      lotId: movement.lotId ? asId(movement.lotId) : movement.items?.[0]?.lotId,
-      quantity: movement.quantity == null && !movement.items?.length ? asNumber(movement.quantity) : movement.quantity == null ? undefined : asNumber(movement.quantity),
+      lotId: asId(movement.lotId),
+      quantity: asNumber(movement.quantity),
       date: movement.date || '',
       status: normalizeMovementStatus(movement.status),
       reference: movement.reference || asId(movement.id),
-      remitoNumber: movement.remitoNumber || undefined,
-      items: Array.isArray(movement.items) ? movement.items : undefined,
     })),
     traceabilityEvents: (data.traceabilityEvents ?? []).map((event) => {
       const raw = event as TraceabilityEvent & {

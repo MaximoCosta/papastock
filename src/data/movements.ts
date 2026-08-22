@@ -1,10 +1,6 @@
 import type { Movement } from '../types/domain';
 
 // Datos mock. MV-1032 explica exactamente la diferencia de A-204.
-function item(movementId: string, lotId: string, quantity: number): Movement['items'] {
-  return [{ id: `${movementId}-item`, movementId, lotId, dispatchedQuantity: quantity, unit: 'kg', sortOrder: 0 }];
-}
-
 export const movements: Movement[] = [
   {
     id: 'movement-1032',
@@ -15,9 +11,7 @@ export const movements: Movement[] = [
     quantity: 1000,
     date: '2026-08-20',
     status: 'pending',
-    receptionStatus: 'pending',
     transporterId: 'tr-pampa',
-    items: item('movement-1032', 'lot-a204', 1000),
   },
   {
     id: 'movement-1028',

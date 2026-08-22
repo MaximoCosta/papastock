@@ -2,9 +2,7 @@ insert into public.locations (id, name, type) values
   ('loc-north', 'Frigorífico Norte', 'cold_storage'),
   ('loc-south', 'Frigorífico Sur', 'cold_storage'),
   ('loc-central', 'Frigorífico Central', 'cold_storage'),
-  ('loc-warehouse', 'Galpón Principal', 'warehouse'),
-  ('loc-oriente', 'Campo Oriente', 'warehouse'),
-  ('loc-frig-a', 'Frigorífico A', 'cold_storage')
+  ('loc-warehouse', 'Galpón Principal', 'warehouse')
 on conflict (id) do update set name = excluded.name, type = excluded.type;
 
 insert into public.lots (id, code, variety, campaign, producer, origin, harvest_date) values
@@ -17,9 +15,7 @@ insert into public.lots (id, code, variety, campaign, producer, origin, harvest_
   ('lot-e090', 'E-090', 'Atlantic', '2025/26', 'Pampa Fértil', 'Tandil, Buenos Aires, Argentina', '2026-07-12'),
   ('lot-f301', 'F-301', 'Innovator', '2025/26', 'La Esperanza Agro', 'Balcarce, Buenos Aires, Argentina', '2026-08-06'),
   ('lot-g512', 'G-512', 'Russet', '2025/26', 'Establecimiento El Ombú', 'Balcarce, Buenos Aires, Argentina', '2026-07-23'),
-  ('lot-h118', 'H-118', 'Spunta', '2025/26', 'Los Aromos', 'Mar del Plata, Buenos Aires, Argentina', '2026-08-10'),
-  ('lot-300', '300', 'Spunta', '2025/26', 'Papasud', 'Balcarce, Buenos Aires, Argentina', '2026-07-30'),
-  ('lot-301', '301', 'Spunta', '2025/26', 'Papasud', 'Balcarce, Buenos Aires, Argentina', '2026-07-30')
+  ('lot-h118', 'H-118', 'Spunta', '2025/26', 'Los Aromos', 'Mar del Plata, Buenos Aires, Argentina', '2026-08-10')
 on conflict (id) do update set
   code = excluded.code,
   variety = excluded.variety,
@@ -48,20 +44,6 @@ on conflict (id) do update set
   verified_quantity = excluded.verified_quantity,
   verification_pending = excluded.verification_pending,
   updated_at = excluded.updated_at;
-
-insert into public.stock_records (
-  id, lot_id, location_id, declared_quantity, verified_quantity, verification_pending, updated_at, unit
-) values
-  ('stock-300-oriente', 'lot-300', 'loc-oriente', 500, 500, false, '2026-08-22T12:00:00-03:00', 'bags'),
-  ('stock-301-oriente', 'lot-301', 'loc-oriente', 300, 300, false, '2026-08-22T12:00:00-03:00', 'bags')
-on conflict (id) do update set
-  lot_id = excluded.lot_id,
-  location_id = excluded.location_id,
-  declared_quantity = excluded.declared_quantity,
-  verified_quantity = excluded.verified_quantity,
-  verification_pending = excluded.verification_pending,
-  updated_at = excluded.updated_at,
-  unit = excluded.unit;
 
 insert into public.movements (
   id, reference, lot_id, origin_location_id, destination_location_id, quantity, movement_date, status

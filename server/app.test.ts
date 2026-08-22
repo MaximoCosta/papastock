@@ -22,30 +22,11 @@ const repository = {
   loadSnapshot: vi.fn(async () => snapshot),
   loadLot: vi.fn(async () => snapshot),
   insertTraceabilityEvent: vi.fn(async (event) => ({ id: 'generated', ...event })),
-  previewStockTransfer: vi.fn(async (intent) => ({ valid: true, errors: [], intent, lines: [] })),
+  previewStockTransfer: vi.fn(async (intent) => ({ valid: true, errors: [], intent })),
   executeStockTransfer: vi.fn(async (intent) => ({
     id: 'movement-new', reference: 'MV-N01-TEST', lotId: 'lot',
-    originLocationId: 'l', destinationLocationId: 'other',
-    quantity: intent.items?.[0]?.quantity ?? intent.quantityKg,
+    originLocationId: 'l', destinationLocationId: 'other', quantity: intent.quantityKg,
     date: '2026-08-22', status: 'completed' as const,
-    items: intent.items?.map((item: { lotCode: string; quantity: number; unit: 'kg' | 'bags' }, index: number) => ({
-      id: `item-${index}`, movementId: 'movement-new', lotId: 'lot', dispatchedQuantity: item.quantity, unit: item.unit, sortOrder: index,
-    })),
-  })),
-  executeReception: vi.fn(async () => ({
-    movement: {
-      id: 'movement-new', reference: 'MV-N01-TEST', date: '2026-08-22', status: 'completed' as const,
-    },
-    discrepancies: [],
-  })),
-  executeLotCorrection: vi.fn(async () => ({
-    id: 'movement-cor', reference: 'MV-COR-TEST', date: '2026-08-22', status: 'completed' as const,
-  })),
-  executeStockCount: vi.fn(async () => ({
-    count: {
-      id: 'count-1', locationId: 'l', lotId: 'lot', expectedQuantity: 900,
-      observedQuantity: 880, unit: 'bags' as const, difference: -20, countedAt: '2026-08-22',
-    },
   })),
   executePlanillaImport: vi.fn(async () => ({
     createdLocations: 2, createdLots: 1, createdMovements: 1, skippedMovements: 0, upsertedStockRecords: 1,
@@ -65,15 +46,7 @@ const repository = {
   })),
 };
 const analyze = vi.fn(async () => ({ engine: 'heuristic' as const, summary: 'x', confidence: 0.2, explainedQuantity: 0, unexplainedQuantity: 1, hypotheses: [], evidence: [], recommendedAction: 'Revisar.' }));
-const parseMovementIntent = vi.fn(async () => ({
-  action: 'transfer' as const,
-  lotCode: 'A-204',
-  quantityKg: 500,
-  origin: 'Sur',
-  destination: 'Norte',
-  items: [{ lotCode: 'A-204', quantity: 500, unit: 'kg' as const }],
-  engine: 'llm' as const,
-}));
+const parseMovementIntent = vi.fn(async () => ({ action: 'transfer' as const, lotCode: 'A-204', quantityKg: 500, origin: 'Sur', destination: 'Norte', engine: 'llm' as const }));
 const parseTraceabilityIntent = vi.fn(async () => ({
   engine: 'llm' as const, type: 'treatment' as const, product: 'Mancozeb', date: '2026-08-18', confidence: 0.94,
 }));
@@ -104,7 +77,7 @@ describe('API PapaStock', () => {
 
   it('interpreta, previsualiza y confirma un movimiento en endpoints separados', async () => {
     const parsed = (await request(app).post('/api/ai/movement-intent').send({ text: 'Mové 500 kg del lote A-204 de Sur a Norte.' }).expect(200)).body.data;
-    expect(parsed).toMatchObject({ engine: 'llm', items: [{ lotCode: 'A-204', quantity: 500, unit: 'kg' }] });
+    expect(parsed).toMatchObject({ engine: 'llm', lotCode: 'A-204', quantityKg: 500 });
 
     expect((await request(app).post('/api/movements/preview').send(parsed).expect(200)).body.data.valid).toBe(true);
     expect(repository.executeStockTransfer).not.toHaveBeenCalled();
