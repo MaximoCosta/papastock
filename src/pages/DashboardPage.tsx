@@ -57,7 +57,7 @@ export function DashboardPage() {
       />
 
       <section className="grid grid-cols-4 gap-3 max-[1100px]:grid-cols-2" aria-label="Métricas operativas">
-        <StatCard icon={Boxes} label="Stock total" value={formatKg(metrics.totalStock)} note="Cantidad verificada consolidada" />
+        <StatCard icon={Boxes} label="Stock total" value={formatKg(metrics.totalStock)} note="Cantidad operativa consolidada" />
         <StatCard icon={PackageCheck} label="Lotes activos" value={String(metrics.activeLots)} note="Campaña 2025/26" />
         <StatCard icon={TriangleAlert} label="Discrepancias" value={String(metrics.discrepancies)} note="Requieren revisión" tone="danger" />
         <StatCard icon={ClipboardClock} label="Exportaciones pendientes" value={String(metrics.pendingExports)} note="Preparación documental" tone="warning" />
@@ -101,11 +101,19 @@ export function DashboardPage() {
         <div className="border border-[#d8dad3] bg-white p-5">
           <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#777c74]">Próxima acción sugerida</p>
           <div className="mt-3 flex items-center justify-between gap-6">
-            <div>
-              <h3 className="text-sm font-semibold text-[#2d332e]">Resolver diferencia del lote A-204</h3>
-              <p className="mt-1 text-[11px] leading-5 text-[#747970]">Hay un movimiento pendiente de 1.000 kg que puede explicar la diferencia detectada.</p>
-            </div>
-            <Link to="/lots/A-204"><Button variant="secondary">Revisar lote</Button></Link>
+            {alerts[0] ? (
+              <>
+                <div>
+                  <h3 className="text-sm font-semibold text-[#2d332e]">Revisar discrepancia del lote {alerts[0].lot.code}</h3>
+                  <p className="mt-1 text-[11px] leading-5 text-[#747970]">
+                    {formatKg(alerts[0].declaredQuantity)} declarados vs {formatKg(alerts[0].verifiedQuantity)} verificados en {alerts[0].location.name}.
+                  </p>
+                </div>
+                <Link to={`/lots/${alerts[0].lot.code}`}><Button variant="secondary">Revisar lote</Button></Link>
+              </>
+            ) : (
+              <p className="text-[12px] text-[#747970]">No hay discrepancias abiertas.</p>
+            )}
           </div>
         </div>
         <div className="border border-[#d8dad3] bg-[#eceee8] p-5">

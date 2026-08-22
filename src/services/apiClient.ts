@@ -26,14 +26,17 @@ export interface NormalizedSnapshot {
   transporters: Transporter[];
 }
 
+const PRODUCTION_API = 'https://papasudbackend.onrender.com';
+
 export function apiUrl(path: string): string {
-  const base = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+  const envBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+  const base = envBase || (import.meta.env.PROD ? PRODUCTION_API : '');
   const normalized = path.startsWith('/') ? path : `/${path}`;
   return `${base}${normalized}`;
 }
 
 export function usesRemoteApi(): boolean {
-  return Boolean(import.meta.env.VITE_API_BASE_URL?.trim());
+  return Boolean((import.meta.env.VITE_API_BASE_URL ?? '').trim() || import.meta.env.PROD);
 }
 
 export async function readApiData<T>(response: Response, fallback: string): Promise<T> {
