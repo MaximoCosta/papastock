@@ -1,0 +1,82 @@
+---
+description: Reglas globales de PapaStock (stock, trazabilidad y exportación para Papasud)
+alwaysApply: true
+---
+
+# PapaStock
+
+Leé `AGENTS.md` antes de trabajar en este repositorio.
+
+- **Contexto maestro**: `docs/PROJECT_CONTEXT.md`. Consultalo antes de cualquier
+  cambio importante (arquitectura, endpoints reales, schema, estado de N01/N02/N03,
+  pendientes).
+- **Cambios que afecten la demo o los datos de demostración**: leé también
+  `docs/DEMO.md`.
+
+## Arquitectura
+
+React/Vite → Express/TypeScript → Render PostgreSQL, con Groq para IA. Un único
+Web Service en Render sirve la SPA y la API.
+
+- **No agregues Supabase** ni lo documentes como arquitectura actual.
+- **No crees infraestructura Render adicional** (servicios, bases, workers, cron).
+
+## IA vs código determinístico
+
+- La IA interpreta y analiza. El código determinístico valida y escribe.
+- **No reemplaces validaciones determinísticas por IA**: `validateDispatch`,
+  `validateExport` y `buildStockTransferPreview` son la autoridad.
+- La IA nunca autoriza un despacho ni modifica stock. Toda escritura de stock
+  requiere validación server-side y confirmación humana explícita.
+- **No dupliques la heurística.** La heurística canónica de discrepancias vive
+  sólo en `server/services/discrepancyHeuristic.ts`; el parser de respaldo de N01
+  sólo en `server/services/groqMovementIntent.ts`. Nada de heurísticas en el
+  cliente.
+- Cuando el LLM falla, el resultado se marca `engine: 'heuristic'` y se muestra
+  como tal. No oculten el fallback.
+
+## Datos y flujos protegidos
+
+- **A-204 / N02**: 25.000 declarado vs 24.000 verificado, `MV-1032` pendiente de
+  1.000 kg, despacho bloqueado. No tocar.
+- **A-310 / N03**: escenario de exportación a Brasil. No tocar sus eventos base.
+- **N01 movimiento por texto**: texto → interpretación → preview → validación →
+  confirmación humana → transacción. No agregar caminos de escritura paralelos.
+- Los datos de demo viven en una base real: cada corrida de N01 o N03 la modifica
+  de forma permanente.
+
+## Base de datos
+
+- Queries siempre parametrizadas.
+- **Nunca edites una migración ya aplicada** (`migrations/001_initial_schema.sql`):
+  el runner valida checksum SHA-256 y el deploy falla. Para cambios de schema,
+  agregá una migración nueva numerada.
+- `migrations/seed.sql` no es una migración; se aplica a mano con `npm run db:seed`.
+- Nada de `DELETE`/`UPDATE` masivos ni scripts destructivos automáticos.
+
+## Secretos
+
+`DATABASE_URL` y `GROQ_API_KEY` son server-side. Nunca en variables `VITE_*`,
+nunca en Git, nunca en el bundle del navegador.
+
+## Render
+
+`render.yaml` declara planes pagos (`starter` / `basic-256mb`) mientras los
+recursos reales están reportados en Free. **Revisá esa discrepancia antes de
+aplicar el Blueprint**: puede generar costos. Detalle en
+`docs/PROJECT_CONTEXT.md` §9.
+
+## UI
+
+Diseño industrial, premium y operativo. No es un chatbot. No rediseñar sin pedido
+explícito; las features nuevas adoptan los patrones visuales existentes.
+
+## Verificación
+
+Después de cambios importantes:
+
+```bash
+npm run check
+npm test
+npm run build
+```

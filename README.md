@@ -53,6 +53,9 @@ El seed es idempotente pero deliberadamente manual. Conserva A-204 con 25.000/24
 - `src/services/aiService.ts`: adaptador browser a `/api/ai/discrepancy` y helpers locales N03.
 - `src/services/movementService.ts`: interpretación, preview y confirmación separada del flujo N01.
 - `render.yaml`: Web Service + Managed PostgreSQL.
+- `AGENTS.md`: reglas globales del proyecto para agentes y contribuciones.
+- `docs/PROJECT_CONTEXT.md`: documento maestro (arquitectura, endpoints, schema, estado real de N01/N02/N03, pendientes).
+- `docs/DEMO.md`: guía de presentación y plan B.
 - `docs/render-deploy.md`: despliegue y operación.
 
 ## Persistencia actual
