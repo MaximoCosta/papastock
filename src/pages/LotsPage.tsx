@@ -1,13 +1,19 @@
 import { ArrowRight, PackageSearch } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/common/PageHeader';
+import { PaginationBar } from '../components/common/PaginationBar';
 import { formatDate } from '../lib/formatters';
+import { paginate } from '../lib/pagination';
 import { getStockViewByLotId } from '../services/stockService';
 import { StockStatusBadge } from '../components/stock/StockStatusBadge';
 import { useAppData } from '../state/AppDataContext';
 
 export function LotsPage() {
   const { lots, stockViews } = useAppData();
+  const [page, setPage] = useState(1);
+  const pageWindow = useMemo(() => paginate(lots, page), [lots, page]);
+
   return (
     <>
       <PageHeader eyebrow="Trazabilidad" title="Lotes productivos" description="Origen, campaña y situación operativa de cada unidad trazable." />
@@ -17,7 +23,7 @@ export function LotsPage() {
             <tr><th>Lote</th><th>Variedad</th><th>Productor</th><th>Origen</th><th>Cosecha</th><th>Estado</th><th aria-label="Acciones" /></tr>
           </thead>
           <tbody>
-            {lots.map((lot) => {
+            {pageWindow.items.map((lot) => {
               const stock = getStockViewByLotId(stockViews, lot.id);
               return (
                 <tr key={lot.id}>
@@ -33,7 +39,13 @@ export function LotsPage() {
             })}
           </tbody>
         </table>
-        <div className="flex h-10 items-center gap-2 border-t border-[#e2e4de] bg-[#fafaf7] px-4 text-[10px] text-[#747970]"><PackageSearch size={13} /> {lots.length} lotes activos · Campaña 2025/26</div>
+        {pageWindow.total === 0 ? (
+          <div className="flex h-10 items-center gap-2 border-t border-[#e2e4de] bg-[#fafaf7] px-4 text-[10px] text-[#747970]">
+            <PackageSearch size={13} /> Sin lotes activos
+          </div>
+        ) : (
+          <PaginationBar window={pageWindow} onPageChange={setPage} noun="lotes" />
+        )}
       </div>
     </>
   );

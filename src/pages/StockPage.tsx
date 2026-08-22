@@ -1,8 +1,9 @@
 import { ClipboardCheck, ClipboardList, Filter, PackagePlus, Search, Upload } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/common/Button';
 import { PageHeader } from '../components/common/PageHeader';
+import { PaginationBar } from '../components/common/PaginationBar';
 import { LocationsPanel } from '../components/stock/LocationsPanel';
 import { MovementsPanel } from '../components/stock/MovementsPanel';
 import { PlanillaImportPanel } from '../components/stock/PlanillaImportPanel';
@@ -15,6 +16,7 @@ import { WarehouseModelPanel } from '../components/stock/WarehouseModelPanel';
 import { mockDocumentService } from '../services/documentService';
 import { useAppData } from '../state/AppDataContext';
 import type { StockStatus } from '../types/domain';
+import { paginate } from '../lib/pagination';
 
 export function StockPage() {
   const {
@@ -44,6 +46,7 @@ export function StockPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [locationId, setLocationId] = useState('all');
+  const [page, setPage] = useState(1);
   const [status, setStatus] = useState<StockStatus | 'all'>(() => {
     const initial = searchParams.get('status');
     return initial === 'verified' || initial === 'discrepancy' || initial === 'pending' ? initial : 'all';
@@ -64,6 +67,12 @@ export function StockPage() {
     const matchesStatus = status === 'all' || record.status === status;
     return matchesQuery && matchesLocation && matchesStatus;
   }), [locationId, query, status, stockViews]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, locationId, status]);
+
+  const pageWindow = paginate(records, page);
 
   function generatePlanilla() {
     const scopeLabel = locationId === 'all' ? 'Todas las ubicaciones' : locations.find((location) => location.id === locationId)?.name ?? 'Ubicación filtrada';
@@ -177,7 +186,8 @@ export function StockPage() {
             </div>
           </section>
           <StockTable
-            records={records}
+            records={pageWindow.items}
+            footer={<PaginationBar window={pageWindow} onPageChange={setPage} noun="registros" />}
             onVerify={(record) => {
               setVerifyRecordId(record.id);
               setVerifyOpen(true);
