@@ -1,3 +1,5 @@
+import { DEFAULT_PACKING } from '../data/exporter';
+import { derivePacking, shippingMarks } from '../lib/documentPacking';
 import { exportRequirements } from '../data/requirements';
 import { validateExport } from '../lib/validateExport';
 import type { Lot, StockView, TraceabilityEvent, Transporter } from '../types/domain';
@@ -17,12 +19,24 @@ const VALIDATABLE_FIELDS: ExportField[] = ['lotCode', 'variety', 'quantity', 'or
 
 export interface ExportLogistics {
   buyerName?: string;
+  buyerTaxId?: string;
+  buyerAddress?: string;
+  buyerCity?: string;
   incoterm?: string;
   departurePort?: string;
   arrivalPort?: string;
   departureDate?: string;
   notes?: string;
   transporterId?: string;
+  paymentTerms?: string;
+  validityDays?: number;
+  unitPrice?: number;
+  currency?: string;
+  bagWeightKg?: number;
+  packaging?: string;
+  caliber?: string;
+  category?: string;
+  hsCode?: string;
 }
 
 export interface ExportReadinessInput {
@@ -89,11 +103,23 @@ export function buildExportOperation(
     createdAt: new Date().toISOString(),
     transporterId: logistics.transporterId,
     buyerName: logistics.buyerName,
+    buyerTaxId: logistics.buyerTaxId,
+    buyerAddress: logistics.buyerAddress,
+    buyerCity: logistics.buyerCity,
     incoterm: logistics.incoterm,
     departurePort: logistics.departurePort,
     arrivalPort: logistics.arrivalPort,
     departureDate: logistics.departureDate,
     notes: logistics.notes,
+    paymentTerms: logistics.paymentTerms,
+    validityDays: logistics.validityDays,
+    unitPrice: logistics.unitPrice,
+    currency: logistics.currency,
+    bagWeightKg: logistics.bagWeightKg,
+    packaging: logistics.packaging,
+    caliber: logistics.caliber,
+    category: logistics.category,
+    hsCode: logistics.hsCode,
   };
 }
 
@@ -105,12 +131,21 @@ export function toCreateExportOperationRequest(
     items: operation.items.map((item) => ({ lotId: item.lotId, quantityKg: item.quantity })),
     destinationCountry: operation.destinationCountry,
     customer: operation.buyerName,
+    customerTaxId: operation.buyerTaxId,
     incoterm: operation.incoterm,
     departurePort: operation.departurePort,
     destinationPort: operation.arrivalPort,
     departureDate: operation.departureDate,
     transporterId: operation.transporterId,
     notes: operation.notes,
+    paymentTerms: operation.paymentTerms,
+    unitPrice: operation.unitPrice,
+    currency: operation.currency,
+    bagWeightKg: operation.bagWeightKg,
+    packaging: operation.packaging,
+    caliber: operation.caliber,
+    category: operation.category,
+    hsCode: operation.hsCode,
   };
 }
 
@@ -137,6 +172,8 @@ export interface DocumentSnapshotInput {
  */
 export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSnapshot {
   const { operation, validation, transporter } = input;
+  const packing = derivePacking(operation.quantity, operation.bagWeightKg ?? DEFAULT_PACKING.bagWeightKg);
+  const marksLot = input.lots.length === 1 ? input.lots[0].code : operation.id;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -153,6 +190,9 @@ export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSna
     })),
     logistics: {
       buyerName: operation.buyerName,
+      buyerTaxId: operation.buyerTaxId,
+      buyerAddress: operation.buyerAddress,
+      buyerCity: operation.buyerCity,
       incoterm: operation.incoterm,
       departurePort: operation.departurePort,
       arrivalPort: operation.arrivalPort,
@@ -163,6 +203,19 @@ export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSna
       transporterCuit: transporter?.cuit,
       transporterPlate: transporter?.licensePlate,
       originLocation: input.originLocation,
+      paymentTerms: operation.paymentTerms,
+      validityDays: operation.validityDays,
+      unitPrice: operation.unitPrice,
+      currency: operation.currency,
+      bagCount: packing.bagCount,
+      bagWeightKg: packing.bagWeightKg,
+      packaging: operation.packaging,
+      caliber: operation.caliber,
+      category: operation.category,
+      hsCode: operation.hsCode,
+      netWeightKg: packing.netWeightKg,
+      grossWeightKg: packing.grossWeightKg,
+      shippingMarks: shippingMarks(marksLot, operation.destinationCountry),
     },
     requirements: validation.requirements.map((requirement) => ({
       field: requirement.field,

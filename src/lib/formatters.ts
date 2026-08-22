@@ -29,6 +29,10 @@ export function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
 }
 
+export function formatMoney(value: number, currency = 'USD'): string {
+  return `${currency} ${currencyFormatter.format(value)}`;
+}
+
 export function formatDate(value: string): string {
   return shortDateFormatter.format(new Date(`${value.slice(0, 10)}T12:00:00Z`));
 }

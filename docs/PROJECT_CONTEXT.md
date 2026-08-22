@@ -182,12 +182,14 @@ incompleta y el escenario de demo está consumido.**
 
 ```text
 /exports/new
-  → elegir lote (default A-310), país (default Brasil), cantidad (default 18.000)
-  → validateExport determinístico contra src/data/requirements.ts
-  → si falta el tratamiento: MissingDataPanel (texto libre → parser local → confirmar)
+  → uno o más lotes (default A-310), país (default Brasil), kilos, empaque y
+    condiciones comerciales
+  → validateExport determinístico contra src/data/requirements.ts (por lote)
+  → si falta el tratamiento: MissingDataPanel (texto libre → parser → confirmar)
   → POST /api/traceability  (persiste el evento treatment en PostgreSQL)
-  → revalidación → 5/5
-  → generar proforma (mockDocumentService) → sessionStorage → /documents/:id
+  → revalidación → requisitos completos
+  → emitir paquete (proforma, factura, lista de empaque, remito) o cada uno
+    por separado → sessionStorage → /documents/:id
 ```
 
 ### Estado real de A-310 en la base de producción
@@ -238,9 +240,12 @@ pendiente (§20). Ver `docs/DEMO.md` para la alternativa no destructiva.
   Groq sólo se usa en N01 (intent) y N02 (discrepancias).
 - `POST /api/traceability` acepta **únicamente** `type: 'treatment'`
   (`z.literal('treatment')`). Cualquier otro tipo devuelve 400.
-- La proforma generada vive en `sessionStorage`, no en PostgreSQL.
+- La proforma, factura, lista de empaque y remito viven en `sessionStorage`, no
+  en PostgreSQL.
 - La `ExportOperation` se construye en memoria en `NewExportPage` y no se guarda
   en ningún lado.
+- Los documentos de exportación incluyen empaque, precios, comprador fiscal y
+  trazabilidad del lote, pero siguen siendo de demostración (no fiscales).
 
 ---
 
@@ -280,8 +285,13 @@ BFF adicional, no hay Supabase, no hay funciones serverless.
 
 ### Rutas de la SPA (`src/App.tsx`)
 
-`/` · `/stock` · `/lots` · `/lots/:id` · `/movements/new` · `/exports` (redirige a
+`/` · `/stock` · `/stock/control` · `/locations` · `/warehouse` · `/lots` ·
+`/lots/:id` · `/movements` · `/movements/new` · `/exports` (redirige a
 `/exports/new`) · `/exports/new` · `/documents` · `/documents/:id` · `*`
+
+Las pestañas internas de stock se reemplazaron por páginas. Las URLs viejas
+`/stock?tab=ubicaciones|modelo|movimientos|control` redirigen a la página
+correspondiente.
 
 ---
 
@@ -672,7 +682,7 @@ Leyenda: ✅ implementado · 🟡 parcial · 🧪 demo/mock · 🔴 falta
 | N03 catálogo de requisitos | 🧪 | `src/data/requirements.ts`, mock, sólo Brasil |
 | N03 dato faltante por texto libre | 🟡 | Funciona, pero el parser es local (regex + delay), no Groq |
 | N03 persistencia del tratamiento | ✅ | `POST /api/traceability` → `traceability_events` |
-| N03 proforma | 🧪 | `mockDocumentService`, documento no fiscal |
+| N03 proforma / factura / remito / lista de empaque | 🧪 | `mockDocumentService`; paquete documental no fiscal, con empaque y precios |
 | Documentos generados | 🟡 | Sólo `sessionStorage` (`papastock.documents.v1`); se pierden al cerrar la pestaña |
 | `ExportOperation` | 🔴 | Se construye en memoria y nunca se guarda |
 | Snapshot con fallback mock | ✅ | Atómico, identificado en la UI |
@@ -706,8 +716,8 @@ Leyenda: ✅ implementado · 🟡 parcial · 🧪 demo/mock · 🔴 falta
 - **Despachos.** `validateDispatch` es una función cliente que devuelve un
   `ValidationResult` renderizado en pantalla. No hay tabla, ni endpoint, ni
   registro de auditoría de intentos de despacho.
-- **`ExportOperation`.** Se arma inline en `NewExportPage.generateDocument`
-  (`id: EXP-<timestamp>`) sólo para alimentar la proforma.
+- **`ExportOperation`.** Se arma en `NewExportPage` (`id: EXP-<timestamp>`)
+  sólo para alimentar el paquete documental.
 - **Análisis de discrepancia.** Los resultados de Groq/heurística viven en el
   estado del componente. No se guardan ni se auditan.
 
@@ -765,7 +775,7 @@ patrones visuales existentes.
 Runner: **Vitest** (`npm test` → `vitest run`). Sin configuración propia de
 Vitest: usa `vite.config.ts`.
 
-**Resultado real al 2026-08-22: 9 archivos, 35 tests, 35 pasando.**
+**Resultado real al 2026-08-22: 15 archivos, 80 tests pasando, 1 skipped.**
 
 | Archivo | Tests | Qué cubre |
 | --- | --- | --- |
@@ -776,7 +786,9 @@ Vitest: usa `vite.config.ts`.
 | `server/services/groqMovementIntent.test.ts` | 3 | Intención estructurada de Groq, parser local ante HTTP 429, y rechazo de texto incompleto sin inventar ubicaciones |
 | `server/services/stockTransfer.test.ts` | 4 | Aprobación sin escritura, bloqueo de A-204 por discrepancia, stock insuficiente y ubicaciones iguales, tolerancia a nombres sin acentos |
 | `src/lib/validateDispatch.test.ts` | 3 | Bloqueo por discrepancia, bloqueo por stock verificado insuficiente, despacho seguro |
-| `src/lib/validateExport.test.ts` | 2 | A-310 en 4/5 con `treatment` faltante, y 5/5 tras confirmar el tratamiento |
+| `src/lib/validateExport.test.ts` | 5 | A-310 en 4/5 con `treatment` faltante, 5/5 tras confirmar, y procedencia de cada dato |
+| `src/lib/documentPacking.test.ts` | 3 | Bultos homogéneos, remanente en el último bulto, marcas de embarque y vigencia UTC |
+| `src/services/documentService.test.ts` | 2 | Proforma completa (precio, empaque, trazabilidad) y paquete multi-lote |
 | `src/repositories/mappers.test.ts` | 4 | Mapeo de filas `snake_case`, mapeo de `data` jsonb, discrepancia de A-204 y métricas agregadas, determinismo de `getStockStatus` |
 
 Notas:

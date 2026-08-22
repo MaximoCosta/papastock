@@ -38,7 +38,7 @@ export function RequirementChecklist({
               ? 'border-[#e2bbb6] bg-[#fdf0ee] text-[#a23d36]'
               : 'border-[#ead5a2] bg-[#fff6df] text-[#946218]';
           return (
-            <div key={requirement.field} className={`grid grid-cols-[34px_1fr_auto] items-start gap-3 px-5 py-3.5 ${requirement.status === 'missing' ? 'bg-[#fffaf9]' : ''}`}>
+            <div key={`${requirement.lotId ?? 'op'}-${requirement.field}-${requirement.label}`} className={`grid grid-cols-[34px_1fr_auto] items-start gap-3 px-5 py-3.5 ${requirement.status === 'missing' ? 'bg-[#fffaf9]' : ''}`}>
               <span className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-[4px] border ${iconClass}`}>
                 <Icon size={14} strokeWidth={2.4} />
               </span>

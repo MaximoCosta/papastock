@@ -1,69 +1,112 @@
-import { formatKg } from '../../lib/formatters';
+import { formatDate, formatKg, formatMoney } from '../../lib/formatters';
 import type { ProformaDocument } from '../../types/export';
 import { DocumentArticle, DocumentFooter, DocumentLetterhead } from './DocumentChrome';
+import {
+  CommercialTerms,
+  DocumentItemsTable,
+  DocumentNotice,
+  PackingFacts,
+  PartyBlock,
+  SignatureRow,
+  TraceabilityFacts,
+  fallbackItems,
+} from './DocumentSections';
 
 export function ProformaTemplate({ document }: { document: ProformaDocument }) {
+  const items = fallbackItems(document);
+  const currency = document.currency || 'USD';
+  const unitPrice = document.unitPrice ?? 0;
+  const total = items.reduce((sum, item) => sum + (item.lineTotal ?? item.quantity * unitPrice), 0);
+
   return (
     <DocumentArticle>
       <DocumentLetterhead kicker="Proforma invoice" documentId={document.id} createdAt={document.createdAt} />
 
       <div className="px-12 py-10">
         <div className="mb-9 grid grid-cols-2 gap-12">
-          <div>
-            <p className="label">Exportador</p>
-            <p className="text-[14px] font-semibold">{document.exporter}</p>
-            <p className="mt-1 text-[11px] leading-5 text-[#737970]">Balcarce, Buenos Aires<br />República Argentina</p>
-          </div>
-          <div>
-            <p className="label">Destino / comprador</p>
-            <p className="text-[14px] font-semibold">{document.buyerName || document.destinationCountry}</p>
-            <p className="mt-1 text-[11px] leading-5 text-[#737970]">
-              {document.destinationCountry}
-              {document.arrivalPort ? ` · ${document.arrivalPort}` : ''}
-              <br />
-              {document.incoterm ? `Incoterm ${document.incoterm}` : 'Operación comercial de demostración'}
-            </p>
-          </div>
+          <PartyBlock
+            title="Exportador"
+            name={document.exporter}
+            lines={[
+              document.exporterAddress,
+              document.exporterCity || 'Balcarce, Buenos Aires',
+              document.exporterTaxId ? `CUIT ${document.exporterTaxId}` : undefined,
+              document.exporterSenasa,
+              document.exporterPhone,
+            ]}
+          />
+          <PartyBlock
+            title="Comprador / consignatario"
+            name={document.buyerName || document.destinationCountry}
+            lines={[
+              document.buyerAddress,
+              document.buyerCity,
+              document.destinationCountry,
+              document.buyerTaxId,
+              document.arrivalPort ? `Destino: ${document.arrivalPort}` : undefined,
+            ]}
+          />
         </div>
 
-        <div className="border-y border-[#cfd2ca]">
-          <div className="grid grid-cols-[1fr_1.2fr_1fr_1fr] border-b border-[#dfe1da] bg-[#f6f7f3] px-4 py-3 text-[9px] font-bold uppercase tracking-[0.08em] text-[#70766e]">
-            <span>Lote</span><span>Variedad</span><span>Campaña</span><span className="text-right">Cantidad neta</span>
-          </div>
-          <div className="grid grid-cols-[1fr_1.2fr_1fr_1fr] px-4 py-5 text-[13px] font-semibold text-[#2d332e]">
-            <span>{document.lotCode}</span><span>{document.variety}</span><span>{document.campaign}</span><span className="tabular text-right">{formatKg(document.quantity)}</span>
-          </div>
-        </div>
+        <DocumentItemsTable items={items} showPrice={unitPrice > 0} currency={currency} formatMoney={formatMoney} />
 
-        <dl className="mt-9 grid grid-cols-2 gap-x-12 gap-y-7">
-          <div className="border-l-2 border-[#dbb488] pl-3"><dt className="label text-[#96552b]!">Origen</dt><dd className="text-[12px] leading-5 text-[#333832]">{document.origin}</dd></div>
-          <div><dt className="label">Tratamiento fitosanitario</dt><dd className="text-[12px] leading-5 text-[#333832]">{document.treatment}</dd></div>
-          <div><dt className="label">Puerto de salida</dt><dd className="text-[12px] leading-5 text-[#333832]">{document.departurePort || '—'}</dd></div>
-          <div><dt className="label">Fecha de despacho</dt><dd className="text-[12px] leading-5 text-[#333832]">{document.departureDate || '—'}</dd></div>
-          {document.transporterName && (
-            <>
-              <div>
-                <dt className="label">Transportista</dt>
-                <dd className="text-[12px] leading-5 text-[#333832]">
-                  {document.transporterName}
-                  {document.transporterCuit ? ` · ${document.transporterCuit}` : ''}
-                </dd>
+        {unitPrice > 0 && (
+          <div className="mt-6 flex justify-end">
+            <div className="w-[280px] border border-[#cfd2ca]">
+              <div className="flex items-center justify-between border-b border-[#e4e6e0] px-4 py-2.5 text-[11px] text-[#5f645d]">
+                <span>Peso neto</span><span className="tabular font-semibold">{formatKg(document.quantity)}</span>
               </div>
-              <div>
-                <dt className="label">Vehículo</dt>
-                <dd className="text-[12px] leading-5 text-[#333832]">
-                  {document.transporterVehicle || '—'}
-                  {document.transporterPlate ? ` · ${document.transporterPlate}` : ''}
-                </dd>
+              <div className="flex items-center justify-between bg-[#f1f4ef] px-4 py-3 text-[13px] font-bold text-[#25412f]">
+                <span>Total proforma</span><span className="tabular">{formatMoney(total, currency)}</span>
               </div>
-            </>
-          )}
-        </dl>
+            </div>
+          </div>
+        )}
 
-        <div className="mt-12 border-l-[3px] border-[#607c67] bg-[#f1f4ef] px-5 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#657068]">Origen de datos</p>
-          <p className="mt-1.5 text-[11px] leading-5 text-[#5f665f]">Datos generados a partir de la trazabilidad registrada del lote {document.lotCode} y el perfil del transportista seleccionado.</p>
-        </div>
+        <PackingFacts document={document} />
+        <TraceabilityFacts
+          origin={document.origin}
+          producer={document.producer}
+          harvestDate={document.harvestDate}
+          treatment={document.treatment}
+          qualityResult={document.qualityResult}
+        />
+        <CommercialTerms
+          incoterm={document.incoterm}
+          paymentTerms={document.paymentTerms}
+          validUntil={document.validUntil}
+          departurePort={document.departurePort}
+          arrivalPort={document.arrivalPort}
+          departureDate={document.departureDate}
+          notes={document.notes}
+        />
+
+        {document.transporterName && (
+          <dl className="mt-8 grid grid-cols-2 gap-x-12 gap-y-4">
+            <div>
+              <dt className="label">Transportista</dt>
+              <dd className="text-[12px] leading-5 text-[#333832]">
+                {document.transporterName}
+                {document.transporterCuit ? ` · ${document.transporterCuit}` : ''}
+              </dd>
+            </div>
+            <div>
+              <dt className="label">Vehículo</dt>
+              <dd className="text-[12px] leading-5 text-[#333832]">
+                {document.transporterVehicle || '—'}
+                {document.transporterPlate ? ` · ${document.transporterPlate}` : ''}
+              </dd>
+            </div>
+          </dl>
+        )}
+
+        <SignatureRow left="Exportador" right="Aceptación del comprador" />
+
+        <DocumentNotice title="Documento no fiscal">
+          Proforma armada el {formatDate(document.createdAt)} con la trazabilidad registrada
+          {items.length === 1 ? ` del lote ${document.lotCode}` : ` de ${items.length} lotes`} y el perfil del transportista.
+          No constituye factura ni compromiso de embarque.
+        </DocumentNotice>
       </div>
 
       <DocumentFooter />

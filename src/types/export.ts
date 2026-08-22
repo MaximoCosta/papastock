@@ -51,11 +51,23 @@ export interface ExportOperation {
   createdAt: string;
   transporterId?: string;
   buyerName?: string;
+  buyerTaxId?: string;
+  buyerAddress?: string;
+  buyerCity?: string;
   incoterm?: string;
   departurePort?: string;
   arrivalPort?: string;
   departureDate?: string;
   notes?: string;
+  paymentTerms?: string;
+  validityDays?: number;
+  unitPrice?: number;
+  currency?: string;
+  bagWeightKg?: number;
+  packaging?: string;
+  caliber?: string;
+  category?: string;
+  hsCode?: string;
 }
 
 /** Una línea trazable dentro de una exportación. No se agrupan lotes distintos. */
@@ -76,7 +88,7 @@ export interface ExportValidationInput {
   /** Campos heredados para consumidores de una exportación de un solo lote. */
   lot?: Lot;
   destinationCountry: string;
-  quantity: number;
+  quantity?: number;
   traceabilityEvents: TraceabilityEvent[];
   requirements: ExportRequirement[];
   /** Opcional: habilita la procedencia "Stock verificado" en el checklist. */
@@ -177,7 +189,42 @@ export interface DiscrepancyAnalysis {
   relatedMovementReference?: string;
 }
 
-export type DocumentType = 'proforma' | 'factura' | 'remito' | 'planilla_stock' | 'planilla_conteo';
+export type DocumentType = 'proforma' | 'factura' | 'remito' | 'lista_empaque' | 'planilla_stock' | 'planilla_conteo';
+
+/** Campos comerciales y de carga compartidos por los documentos de una operación. */
+export interface DocumentCommercialFields {
+  producer?: string;
+  harvestDate?: string;
+  qualityResult?: string;
+  bagCount?: number;
+  bagWeightKg?: number;
+  packaging?: string;
+  caliber?: string;
+  category?: string;
+  hsCode?: string;
+  netWeightKg?: number;
+  grossWeightKg?: number;
+  tareKg?: number;
+  lastBagKg?: number;
+  packingHomogeneous?: boolean;
+  unitPrice?: number;
+  currency?: string;
+  paymentTerms?: string;
+  validityDays?: number;
+  validUntil?: string;
+  buyerTaxId?: string;
+  buyerAddress?: string;
+  buyerCity?: string;
+  notes?: string;
+  originLocation?: string;
+  exporterTaxId?: string;
+  exporterAddress?: string;
+  exporterCity?: string;
+  exporterPhone?: string;
+  exporterSenasa?: string;
+  shippingMarks?: string;
+  treatmentDate?: string;
+}
 
 export interface DocumentSnapshotRequirement {
   field: string;
@@ -215,6 +262,9 @@ export interface DocumentSnapshot {
   }>;
   logistics: {
     buyerName?: string;
+    buyerTaxId?: string;
+    buyerAddress?: string;
+    buyerCity?: string;
     incoterm?: string;
     departurePort?: string;
     arrivalPort?: string;
@@ -225,6 +275,19 @@ export interface DocumentSnapshot {
     transporterCuit?: string;
     transporterPlate?: string;
     originLocation?: string;
+    paymentTerms?: string;
+    validityDays?: number;
+    unitPrice?: number;
+    currency?: string;
+    bagCount?: number;
+    bagWeightKg?: number;
+    packaging?: string;
+    caliber?: string;
+    category?: string;
+    hsCode?: string;
+    netWeightKg?: number;
+    grossWeightKg?: number;
+    shippingMarks?: string;
   };
   requirements: DocumentSnapshotRequirement[];
   traceability: DocumentSnapshotTraceability[];
@@ -235,7 +298,7 @@ interface GeneratedDocumentBase {
   createdAt: string;
 }
 
-export interface ProformaDocument extends GeneratedDocumentBase {
+export interface ProformaDocument extends GeneratedDocumentBase, DocumentCommercialFields {
   type: 'proforma';
   operationId: string;
   exporter: string;
@@ -259,7 +322,7 @@ export interface ProformaDocument extends GeneratedDocumentBase {
   snapshot?: DocumentSnapshot;
 }
 
-export interface FacturaDocument extends GeneratedDocumentBase {
+export interface FacturaDocument extends GeneratedDocumentBase, DocumentCommercialFields {
   type: 'factura';
   operationId: string;
   exporter: string;
@@ -274,11 +337,17 @@ export interface FacturaDocument extends GeneratedDocumentBase {
   buyerName?: string;
   incoterm?: string;
   transporterName?: string;
+  departurePort?: string;
+  arrivalPort?: string;
+  departureDate?: string;
+  origin?: string;
+  treatment?: string;
   snapshot?: DocumentSnapshot;
 }
 
-export interface RemitoDocument extends GeneratedDocumentBase {
+export interface RemitoDocument extends GeneratedDocumentBase, DocumentCommercialFields {
   type: 'remito';
+  operationId?: string;
   lotCode: string;
   variety: string;
   quantity: number;
@@ -292,6 +361,28 @@ export interface RemitoDocument extends GeneratedDocumentBase {
   transporterVehicle?: string;
   transporterContact?: string;
   transporterPhone?: string;
+  campaign?: string;
+  origin?: string;
+  destinationCountry?: string;
+  snapshot?: DocumentSnapshot;
+}
+
+export interface ListaEmpaqueDocument extends GeneratedDocumentBase, DocumentCommercialFields {
+  type: 'lista_empaque';
+  operationId: string;
+  exporter: string;
+  lotCode: string;
+  variety: string;
+  quantity: number;
+  origin: string;
+  destinationCountry: string;
+  campaign: string;
+  items: ExportDocumentItem[];
+  buyerName?: string;
+  destinationLocation?: string;
+  transporterName?: string;
+  transporterPlate?: string;
+  transporterVehicle?: string;
   snapshot?: DocumentSnapshot;
 }
 
@@ -301,8 +392,17 @@ export interface ExportDocumentItem {
   variety: string;
   campaign: string;
   origin: string;
+  producer?: string;
+  harvestDate?: string;
   quantity: number;
   treatment?: string;
+  treatmentDate?: string;
+  qualityResult?: string;
+  bagCount?: number;
+  lastBagKg?: number;
+  packingHomogeneous?: boolean;
+  unitPrice?: number;
+  lineTotal?: number;
 }
 
 export interface PlanillaStockRow {
@@ -343,8 +443,13 @@ export type GeneratedDocument =
   | ProformaDocument
   | FacturaDocument
   | RemitoDocument
+  | ListaEmpaqueDocument
   | PlanillaStockDocument
   | PlanillaConteoDocument;
+
+export function documentOperationId(document: GeneratedDocument): string | undefined {
+  return 'operationId' in document ? document.operationId : undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Contratos previstos para el backend. Todavía no existe ningún endpoint que
@@ -356,12 +461,21 @@ export interface CreateExportOperationRequest {
   items: Array<{ lotId: string; quantityKg: number }>;
   destinationCountry: string;
   customer?: string;
+  customerTaxId?: string;
   incoterm?: string;
   departurePort?: string;
   destinationPort?: string;
   departureDate?: string;
   transporterId?: string;
   notes?: string;
+  paymentTerms?: string;
+  unitPrice?: number;
+  currency?: string;
+  bagWeightKg?: number;
+  packaging?: string;
+  caliber?: string;
+  category?: string;
+  hsCode?: string;
 }
 
 export interface ExportOperationResponse {

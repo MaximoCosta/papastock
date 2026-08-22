@@ -1,10 +1,27 @@
 import { Plus, SearchCheck, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { DEFAULT_PACKING } from '../../data/exporter';
+import { derivePacking } from '../../lib/documentPacking';
+import { formatKg } from '../../lib/formatters';
 import type { Lot, Transporter } from '../../types/domain';
 import type { ExportLotLine } from '../../types/export';
 import { Button } from '../common/Button';
 import { LoadingLabel } from '../common/LoadingLabel';
 import { TransporterProfileCard } from '../transporters/TransporterProfileCard';
+
+export interface ExportCommercialValues {
+  buyerTaxId: string;
+  buyerAddress: string;
+  buyerCity: string;
+  bagWeightKg: number;
+  packaging: string;
+  caliber: string;
+  category: string;
+  hsCode: string;
+  unitPrice: number;
+  paymentTerms: string;
+  validityDays: number;
+}
 
 function FieldGroup({ step, title, description, children }: {
   step: string;
@@ -40,6 +57,7 @@ export function ExportForm({
   transporterId,
   transporters,
   notes,
+  commercial,
   requirementsSourceText,
   useAiRequirements,
   isLoading,
@@ -52,6 +70,7 @@ export function ExportForm({
   onDepartureDateChange,
   onTransporterChange,
   onNotesChange,
+  onCommercialChange,
   onRequirementsSourceTextChange,
   onUseAiRequirementsChange,
   onAnalyze,
@@ -68,6 +87,7 @@ export function ExportForm({
   transporterId: string;
   transporters: Transporter[];
   notes: string;
+  commercial: ExportCommercialValues;
   requirementsSourceText: string;
   useAiRequirements: boolean;
   isLoading: boolean;
@@ -80,6 +100,7 @@ export function ExportForm({
   onDepartureDateChange: (value: string) => void;
   onTransporterChange: (value: string) => void;
   onNotesChange: (value: string) => void;
+  onCommercialChange: (patch: Partial<ExportCommercialValues>) => void;
   onRequirementsSourceTextChange: (value: string) => void;
   onUseAiRequirementsChange: (value: boolean) => void;
   onAnalyze: () => void;
@@ -89,6 +110,7 @@ export function ExportForm({
   const missing = new Set(lotsMissingTreatment);
   const usedLotIds = new Set(exportLines.map((line) => line.lotId));
   const totalQuantity = exportLines.reduce((total, line) => total + line.quantity, 0);
+  const packing = derivePacking(totalQuantity, commercial.bagWeightKg || DEFAULT_PACKING.bagWeightKg);
 
   function updateLine(index: number, change: Partial<ExportLotLine>) {
     onExportLinesChange(exportLines.map((line, lineIndex) => lineIndex === index ? { ...line, ...change } : line));
@@ -99,7 +121,7 @@ export function ExportForm({
       <div className="flex items-center justify-between border-b border-[#e0e2dc] px-5 py-3.5">
         <div>
           <h2 className="text-[13px] font-semibold text-[#2a2f2a]">Datos de la operación</h2>
-          <p className="mt-0.5 text-[10px] text-[#7b8078]">Operación, logística y base documental para la validación.</p>
+          <p className="mt-0.5 text-[10px] text-[#7b8078]">Lotes, logística, empaque y condiciones comerciales para armar el paquete documental.</p>
         </div>
         <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#7a8078]">Paso 01</span>
       </div>
@@ -139,7 +161,7 @@ export function ExportForm({
             }} disabled={usedLotIds.size >= lots.length}>
               <Plus size={15} /> Agregar lote
             </Button>
-            <span className="text-[11px] font-semibold text-[#4e5b50]">Total: {new Intl.NumberFormat('es-AR').format(totalQuantity)} kg</span>
+            <span className="text-[11px] font-semibold text-[#4e5b50]">Total: {formatKg(totalQuantity)}</span>
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-4 max-[1080px]:grid-cols-2">
@@ -163,11 +185,23 @@ export function ExportForm({
           </div>
         </FieldGroup>
 
-        <FieldGroup step="02" title="Logística" description="Comprador, puertos, fecha de despacho y transportista.">
+        <FieldGroup step="02" title="Logística" description="Comprador, identificación fiscal, puertos, fecha de despacho y transportista.">
           <div className="grid grid-cols-4 gap-4 max-[1080px]:grid-cols-2">
             <label>
               <span className="label">Comprador / consignatario</span>
               <input className="field" value={buyerName} onChange={(event) => onBuyerChange(event.target.value)} placeholder="Ej. Distribuidora Sul Ltda." />
+            </label>
+            <label>
+              <span className="label">CUIT / CNPJ / RUT</span>
+              <input className="field" value={commercial.buyerTaxId} onChange={(event) => onCommercialChange({ buyerTaxId: event.target.value })} placeholder="Identificación fiscal" />
+            </label>
+            <label>
+              <span className="label">Dirección</span>
+              <input className="field" value={commercial.buyerAddress} onChange={(event) => onCommercialChange({ buyerAddress: event.target.value })} placeholder="Calle y número" />
+            </label>
+            <label>
+              <span className="label">Ciudad</span>
+              <input className="field" value={commercial.buyerCity} onChange={(event) => onCommercialChange({ buyerCity: event.target.value })} placeholder="Ciudad / estado" />
             </label>
             <label>
               <span className="label">Puerto / punto de salida</span>
@@ -218,8 +252,71 @@ export function ExportForm({
           </div>
         </FieldGroup>
 
+        <FieldGroup step="03" title="Carga y empaque" description="Bultos, calibre y posición arancelaria que van a la proforma y a la lista de empaque.">
+          <div className="grid grid-cols-4 gap-4 max-[1080px]:grid-cols-2">
+            <label>
+              <span className="label">Kg por bulto</span>
+              <input className="field tabular" type="number" min="1" step="5" value={commercial.bagWeightKg || ''} onChange={(event) => onCommercialChange({ bagWeightKg: Number(event.target.value) })} />
+            </label>
+            <label>
+              <span className="label">Envase</span>
+              <input className="field" value={commercial.packaging} onChange={(event) => onCommercialChange({ packaging: event.target.value })} />
+            </label>
+            <label>
+              <span className="label">Calibre</span>
+              <input className="field" value={commercial.caliber} onChange={(event) => onCommercialChange({ caliber: event.target.value })} />
+            </label>
+            <label>
+              <span className="label">Categoría</span>
+              <input className="field" value={commercial.category} onChange={(event) => onCommercialChange({ category: event.target.value })} />
+            </label>
+            <label>
+              <span className="label">NCM / HS</span>
+              <input className="field tabular" value={commercial.hsCode} onChange={(event) => onCommercialChange({ hsCode: event.target.value })} />
+            </label>
+          </div>
+          <div className="mt-4 grid grid-cols-4 gap-3 border border-[#dfe1da] bg-[#f6f7f3] px-4 py-3 text-[11px]">
+            <div>
+              <p className="label">Bultos</p>
+              <p className="mt-0.5 font-semibold tabular">{packing.bagCount}</p>
+            </div>
+            <div>
+              <p className="label">Peso neto</p>
+              <p className="mt-0.5 font-semibold">{formatKg(packing.netWeightKg)}</p>
+            </div>
+            <div>
+              <p className="label">Tara est.</p>
+              <p className="mt-0.5 font-semibold">{formatKg(packing.tareKg)}</p>
+            </div>
+            <div>
+              <p className="label">Peso bruto</p>
+              <p className="mt-0.5 font-semibold">{formatKg(packing.grossWeightKg)}</p>
+            </div>
+          </div>
+          {!packing.homogeneous && packing.bagCount > 0 && (
+            <p className="mt-2 text-[10px] text-[#7b8078]">El último bulto lleva {formatKg(packing.lastBagKg)} porque el neto no es múltiplo del envase.</p>
+          )}
+        </FieldGroup>
+
+        <FieldGroup step="04" title="Condiciones comerciales" description="Precio, vigencia y forma de pago que se imprimen en la proforma y la factura.">
+          <div className="grid grid-cols-4 gap-4 max-[1080px]:grid-cols-2">
+            <label>
+              <span className="label">Precio unitario (USD/kg)</span>
+              <input className="field tabular" type="number" min="0" step="0.01" value={commercial.unitPrice || ''} onChange={(event) => onCommercialChange({ unitPrice: Number(event.target.value) })} />
+            </label>
+            <label>
+              <span className="label">Vigencia (días)</span>
+              <input className="field tabular" type="number" min="1" step="1" value={commercial.validityDays || ''} onChange={(event) => onCommercialChange({ validityDays: Number(event.target.value) })} />
+            </label>
+            <label className="col-span-2 max-[1080px]:col-span-2">
+              <span className="label">Condición de pago</span>
+              <input className="field" value={commercial.paymentTerms} onChange={(event) => onCommercialChange({ paymentTerms: event.target.value })} />
+            </label>
+          </div>
+        </FieldGroup>
+
         <FieldGroup
-          step="03"
+          step="05"
           title="Documentación"
           description="Origen de los requisitos a verificar contra los datos del lote."
         >

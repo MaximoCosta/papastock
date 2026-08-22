@@ -1,24 +1,74 @@
 import {
+  ArrowLeftRight,
   Boxes,
+  ClipboardCheck,
   ClipboardList,
   FileText,
   LayoutDashboard,
+  LayoutGrid,
   PackageSearch,
   Route,
   Truck,
+  Warehouse,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAppData } from '../../state/AppDataContext';
 
-const navItems = [
+interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  end?: boolean;
+}
+
+const overview: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/stock', label: 'Stock', icon: Boxes },
+];
+
+const inventory: NavItem[] = [
+  { to: '/stock', label: 'Stock', icon: Boxes, end: true },
   { to: '/lots', label: 'Lotes', icon: PackageSearch },
+  { to: '/locations', label: 'Ubicaciones', icon: Warehouse },
+  { to: '/warehouse', label: 'Depósito', icon: LayoutGrid },
+  { to: '/movements', label: 'Movimientos', icon: ArrowLeftRight, end: true },
+  { to: '/stock/control', label: 'Control', icon: ClipboardCheck },
+];
+
+const operations: NavItem[] = [
   { to: '/movements/new', label: 'Mover stock', icon: Route },
   { to: '/transporters', label: 'Transportistas', icon: Truck },
   { to: '/exports/new', label: 'Exportaciones', icon: ClipboardList },
   { to: '/documents', label: 'Documentos', icon: FileText },
 ];
+
+function NavGroup({ label, items }: { label?: string; items: NavItem[] }) {
+  return (
+    <div className="space-y-1">
+      {label && (
+        <p className="mb-3 px-3 text-[9px] font-bold uppercase tracking-[0.16em] text-[#91aa98] max-[900px]:hidden">{label}</p>
+      )}
+      {items.map(({ to, label: itemLabel, icon: Icon, end }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={end}
+          title={itemLabel}
+          className={({ isActive }) =>
+            `relative flex h-10 items-center gap-3 rounded-[4px] border-l-2 px-3 text-[12px] font-medium transition-colors max-[900px]:justify-center max-[900px]:px-2 ${
+              isActive
+                ? 'border-[#b5cfb8] bg-white/[0.11] text-white'
+                : 'border-transparent text-[#c2d0c5] hover:bg-white/[0.06] hover:text-white'
+            }`
+          }
+        >
+          <Icon size={17} strokeWidth={1.8} />
+          <span className="max-[900px]:hidden">{itemLabel}</span>
+        </NavLink>
+      ))}
+    </div>
+  );
+}
 
 export function Sidebar() {
   const { dataSource, isLoading } = useAppData();
@@ -35,28 +85,10 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 px-3 py-5" aria-label="Navegación principal">
-        <p className="mb-3 px-3 text-[9px] font-bold uppercase tracking-[0.16em] text-[#91aa98] max-[900px]:hidden">Operaciones</p>
-        <div className="space-y-1">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              title={label}
-              className={({ isActive }) =>
-                `relative flex h-10 items-center gap-3 rounded-[4px] border-l-2 px-3 text-[12px] font-medium transition-colors max-[900px]:justify-center max-[900px]:px-2 ${
-                  isActive
-                    ? 'border-[#b5cfb8] bg-white/[0.11] text-white'
-                    : 'border-transparent text-[#c2d0c5] hover:bg-white/[0.06] hover:text-white'
-                }`
-              }
-            >
-              <Icon size={17} strokeWidth={1.8} />
-              <span className="max-[900px]:hidden">{label}</span>
-            </NavLink>
-          ))}
-        </div>
+      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5" aria-label="Navegación principal">
+        <NavGroup items={overview} />
+        <NavGroup label="Inventario" items={inventory} />
+        <NavGroup label="Operaciones" items={operations} />
       </nav>
 
       <div className="border-t border-white/10 px-5 py-4 max-[900px]:px-2">
