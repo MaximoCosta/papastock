@@ -12,12 +12,13 @@ import {
 import { useState } from 'react';
 import { Button } from '../components/common/Button';
 import { PageHeader } from '../components/common/PageHeader';
+import { DEMO_MOVEMENT_EXAMPLE } from '../lib/demoMovementInterpretation';
 import { formatKg } from '../lib/formatters';
 import { confirmMovement, interpretMovement, previewMovement } from '../services/movementService';
 import { useAppData } from '../state/AppDataContext';
 import type { MovementInterpretation, StockTransferPreview } from '../types/domain';
 
-const example = 'Mové 500 kg del lote A-310 del Frigorífico Central al Galpón Principal.';
+const example = DEMO_MOVEMENT_EXAMPLE;
 
 export function NewMovementPage() {
   const { dataSource, refreshData } = useAppData();
