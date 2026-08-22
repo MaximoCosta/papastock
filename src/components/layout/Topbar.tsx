@@ -27,7 +27,7 @@ export function Topbar() {
       <div className="flex items-center gap-3">
         <div className="text-right">
           <p className="text-[11px] font-semibold text-[#373c36]">Demo Papasud</p>
-          <p className="text-[9px] uppercase tracking-[0.08em] text-[#898d86]">Mar del Plata · 2026</p>
+          <p className="text-[9px] uppercase tracking-[0.08em] text-[#96552b]">Confianza desde el origen</p>
         </div>
         <CircleUserRound size={21} className="text-[#526158]" strokeWidth={1.6} />
       </div>

@@ -17,7 +17,7 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode; variant?: ButtonVariant }) {
   return (
     <button
-      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-[5px] border px-4 text-[12px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${variants[variant]} ${className}`}
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-[5px] border px-4 text-[12px] font-bold transition duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55 disabled:active:scale-100 ${variants[variant]} ${className}`}
       {...props}
     >
       {children}

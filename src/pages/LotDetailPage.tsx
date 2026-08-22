@@ -95,8 +95,8 @@ export function LotDetailPage() {
               ['Cosecha', lot.harvestDate ? formatDate(lot.harvestDate) : 'No informada'],
               ['Origen', lot.origin],
             ].map(([label, value], index) => (
-              <div key={label} className={index === 4 ? 'col-span-2' : ''}>
-                <dt className="label">{label}</dt>
+              <div key={label} className={index === 4 ? 'col-span-2 border-l-2 border-[#dbb488] pl-3' : ''}>
+                <dt className={`label ${index === 4 ? 'text-[#96552b]!' : ''}`}>{label}</dt>
                 <dd className="text-[12px] font-medium text-[#333832]">{value}</dd>
               </div>
             ))}

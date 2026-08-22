@@ -12,6 +12,7 @@
   --canvas: #f3f3ee;
   --line: #dfe1da;
   --line-strong: #c6cac0;
+  /* Confianza / Sanidad — pilar principal de marca (ver auditoría Papasud) */
   --green-900: #173a2a;
   --green-800: #234b37;
   --green-100: #e7eee8;
@@ -19,6 +20,10 @@
   --amber-100: #fff4d8;
   --red-700: #a23b35;
   --red-100: #fce9e6;
+  /* Origen — pilar de trazabilidad/procedencia. Reservado para el dato de
+     origen del lote (no para logística ni para estados de alerta). */
+  --terra-700: #96552b;
+  --terra-100: #f6ece0;
 }
 
 * {
@@ -139,6 +144,39 @@ textarea:focus-visible {
 @keyframes loading-pulse {
   from { opacity: 0.3; transform: scale(0.85); }
   to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Animaciones sobrias: entrada breve, sin rebote. Se anulan automáticamente
+   con prefers-reduced-motion (ver bloque más abajo). */
+.anim-fade-up {
+  animation: fade-up 260ms ease-out both;
+}
+
+.anim-fade-in {
+  animation: fade-in 200ms ease-out both;
+}
+
+.anim-scale-in {
+  animation: scale-in 180ms ease-out both;
+}
+
+.anim-row {
+  animation: fade-up 220ms ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {

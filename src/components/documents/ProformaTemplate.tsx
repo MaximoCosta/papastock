@@ -36,7 +36,7 @@ export function ProformaTemplate({ document }: { document: ProformaDocument }) {
         </div>
 
         <dl className="mt-9 grid grid-cols-2 gap-x-12 gap-y-7">
-          <div><dt className="label">Origen</dt><dd className="text-[12px] leading-5 text-[#333832]">{document.origin}</dd></div>
+          <div className="border-l-2 border-[#dbb488] pl-3"><dt className="label text-[#96552b]!">Origen</dt><dd className="text-[12px] leading-5 text-[#333832]">{document.origin}</dd></div>
           <div><dt className="label">Tratamiento fitosanitario</dt><dd className="text-[12px] leading-5 text-[#333832]">{document.treatment}</dd></div>
           <div><dt className="label">Puerto de salida</dt><dd className="text-[12px] leading-5 text-[#333832]">{document.departurePort || '—'}</dd></div>
           <div><dt className="label">Fecha de despacho</dt><dd className="text-[12px] leading-5 text-[#333832]">{document.departureDate || '—'}</dd></div>

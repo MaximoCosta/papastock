@@ -27,8 +27,8 @@ export function StockTable({ records, compact = false }: { records: StockView[];
             </tr>
           </thead>
           <tbody>
-            {records.map((record) => (
-              <tr key={record.id} className="relative">
+            {records.map((record, index) => (
+              <tr key={record.id} className="anim-row relative" style={{ animationDelay: `${Math.min(index * 25, 300)}ms` }}>
                 <td className={record.status === 'discrepancy' ? 'border-l-[3px]! border-l-[#b64b43]!' : 'border-l-[3px]! border-l-transparent!'}>
                   <Link className="font-bold text-[#243a2d] hover:underline" to={`/lots/${record.lot.code}`}>
                     {record.lot.code}

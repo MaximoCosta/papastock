@@ -15,7 +15,7 @@ export function ConfirmDialog({
   isSaving?: boolean;
 }) {
   return (
-    <div className="mt-4 border border-[#bfd0c2] bg-[#f4f8f4] p-4" role="region" aria-label="Confirmar información interpretada">
+    <div className="anim-scale-in mt-4 border border-[#bfd0c2] bg-[#f4f8f4] p-4" role="region" aria-label="Confirmar información interpretada">
       <p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#607265]">Detectamos</p>
       <div className="mt-3 grid grid-cols-2 gap-3">
         <div className="flex items-start gap-2.5 border-r border-[#d8e2da] pr-3">

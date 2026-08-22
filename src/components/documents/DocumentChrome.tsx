@@ -16,6 +16,7 @@ export function DocumentLetterhead({ kicker, documentId, createdAt }: { kicker: 
       <div>
         <p className="text-[26px] font-bold tracking-[-0.035em] text-[#193c2b]">PAPASUD</p>
         <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#7a8179]">Producción y comercialización</p>
+        <p className="mt-1.5 text-[9px] italic text-[#96552b]">Confianza desde el origen.</p>
       </div>
       <div className="text-right">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7a8078]">{kicker}</p>

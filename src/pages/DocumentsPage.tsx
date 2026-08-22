@@ -51,11 +51,11 @@ export function DocumentsPage() {
           <table className="operational-table">
             <thead><tr><th>Documento</th><th>Tipo</th><th>Lote</th><th>Detalle</th><th>Fecha</th><th>Estado</th><th aria-label="Acciones" /></tr></thead>
             <tbody>
-              {generatedDocuments.map((document) => {
+              {generatedDocuments.map((document, index) => {
                 const meta = typeMeta[document.type];
                 const summary = summarize(document);
                 return (
-                  <tr key={document.id}>
+                  <tr key={document.id} className="anim-row" style={{ animationDelay: `${Math.min(index * 25, 300)}ms` }}>
                     <td><Link to={`/documents/${document.id}`} className="flex items-center gap-2 font-bold text-[#284332] hover:underline">{meta.icon}{document.id}</Link></td>
                     <td>{meta.label}</td>
                     <td>{summary.lot}</td>
