@@ -6,6 +6,7 @@ import type {
   CreateExportOperationRequest,
   DocumentSnapshot,
   ExportField,
+  ExportLotLine,
   ExportOperation,
   ExportRequirement,
   ExportValidationResult,
@@ -25,11 +26,9 @@ export interface ExportLogistics {
 }
 
 export interface ExportReadinessInput {
-  lot?: Lot;
+  lines: Array<ExportLotLine & { lot?: Lot; stock?: StockView }>;
   destinationCountry: string;
-  quantity: number;
   traceabilityEvents: TraceabilityEvent[];
-  stock?: StockView;
   /** Requisitos interpretados por IA. Si no vienen, se usan los estáticos de demo. */
   aiRequirements?: AiExportRequirement[];
 }
@@ -63,27 +62,29 @@ export function analyzeExportReadiness(input: ExportReadinessInput): ExportValid
     : [];
 
   return validateExport({
-    lot: input.lot,
     destinationCountry: input.destinationCountry,
-    quantity: input.quantity,
     traceabilityEvents: input.traceabilityEvents,
     requirements: aiParsed.length ? aiParsed : exportRequirements,
-    verifiedQuantity: input.stock?.verifiedQuantity,
-    stockLocationName: input.stock?.location.name,
+    lines: input.lines.map((line) => ({
+      lotId: line.lotId,
+      lot: line.lot,
+      quantity: line.quantity,
+      verifiedQuantity: line.stock?.verifiedQuantity,
+      stockLocationName: line.stock?.location.name,
+    })),
   });
 }
 
 export function buildExportOperation(
-  lot: Lot,
+  items: ExportLotLine[],
   destinationCountry: string,
-  quantity: number,
   logistics: ExportLogistics,
 ): ExportOperation {
   return {
     id: `EXP-${Date.now()}`,
-    lotId: lot.id,
+    items,
     destinationCountry,
-    quantity,
+    quantity: items.reduce((total, item) => total + item.quantity, 0),
     status: 'generated',
     createdAt: new Date().toISOString(),
     transporterId: logistics.transporterId,
@@ -101,9 +102,8 @@ export function toCreateExportOperationRequest(
   operation: ExportOperation,
 ): CreateExportOperationRequest {
   return {
-    lotId: operation.lotId,
+    items: operation.items.map((item) => ({ lotId: item.lotId, quantityKg: item.quantity })),
     destinationCountry: operation.destinationCountry,
-    quantityKg: operation.quantity,
     customer: operation.buyerName,
     incoterm: operation.incoterm,
     departurePort: operation.departurePort,
@@ -123,7 +123,7 @@ function summarizeEvent(event: TraceabilityEvent): string {
 
 export interface DocumentSnapshotInput {
   operation: ExportOperation;
-  lot: Lot;
+  lots: Lot[];
   validation: ExportValidationResult;
   traceabilityEvents: TraceabilityEvent[];
   sourceOfTruth: 'database' | 'mock';
@@ -136,13 +136,13 @@ export interface DocumentSnapshotInput {
  * documento no vuelve a leer datos que pudieron cambiar después.
  */
 export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSnapshot {
-  const { operation, lot, validation, transporter } = input;
+  const { operation, validation, transporter } = input;
 
   return {
     generatedAt: new Date().toISOString(),
     sourceOfTruth: input.sourceOfTruth,
     exportOperation: operation,
-    lot: {
+    lots: input.lots.map((lot) => ({
       id: lot.id,
       code: lot.code,
       variety: lot.variety,
@@ -150,7 +150,7 @@ export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSna
       producer: lot.producer,
       origin: lot.origin,
       harvestDate: lot.harvestDate,
-    },
+    })),
     logistics: {
       buyerName: operation.buyerName,
       incoterm: operation.incoterm,
@@ -173,7 +173,7 @@ export function buildDocumentSnapshot(input: DocumentSnapshotInput): DocumentSna
       origin: requirement.origin,
     })),
     traceability: input.traceabilityEvents
-      .filter((event) => event.lotId === lot.id)
+      .filter((event) => operation.items.some((item) => item.lotId === event.lotId))
       .map((event) => ({
         id: event.id,
         type: event.type,

@@ -44,7 +44,7 @@ export interface ExportRequirement {
 
 export interface ExportOperation {
   id: string;
-  lotId: string;
+  items: ExportLotLine[];
   destinationCountry: string;
   quantity: number;
   status: ExportStatus;
@@ -58,7 +58,22 @@ export interface ExportOperation {
   notes?: string;
 }
 
+/** Una línea trazable dentro de una exportación. No se agrupan lotes distintos. */
+export interface ExportLotLine {
+  lotId: string;
+  quantity: number;
+}
+
+export interface ExportValidationLine extends ExportLotLine {
+  lot?: Lot;
+  verifiedQuantity?: number;
+  stockLocationName?: string;
+}
+
 export interface ExportValidationInput {
+  /** Forma canónica para exportaciones con uno o más lotes. */
+  lines?: ExportValidationLine[];
+  /** Campos heredados para consumidores de una exportación de un solo lote. */
   lot?: Lot;
   destinationCountry: string;
   quantity: number;
@@ -77,6 +92,7 @@ export interface RequirementSource {
 }
 
 export interface RequirementResult {
+  lotId?: string;
   field: ExportField;
   label: string;
   status: RequirementStatus;
@@ -188,7 +204,7 @@ export interface DocumentSnapshot {
   generatedAt: string;
   sourceOfTruth: 'database' | 'mock';
   exportOperation: ExportOperation;
-  lot: {
+  lots: Array<{
     id: string;
     code: string;
     variety: string;
@@ -196,7 +212,7 @@ export interface DocumentSnapshot {
     producer: string;
     origin: string;
     harvestDate?: string;
-  };
+  }>;
   logistics: {
     buyerName?: string;
     incoterm?: string;
@@ -230,6 +246,7 @@ export interface ProformaDocument extends GeneratedDocumentBase {
   destinationCountry: string;
   treatment: string;
   campaign: string;
+  items: ExportDocumentItem[];
   buyerName?: string;
   incoterm?: string;
   departurePort?: string;
@@ -253,6 +270,7 @@ export interface FacturaDocument extends GeneratedDocumentBase {
   unitPrice: number;
   currency: string;
   campaign: string;
+  items: ExportDocumentItem[];
   buyerName?: string;
   incoterm?: string;
   transporterName?: string;
@@ -264,6 +282,7 @@ export interface RemitoDocument extends GeneratedDocumentBase {
   lotCode: string;
   variety: string;
   quantity: number;
+  items: ExportDocumentItem[];
   originLocation: string;
   destinationLocation: string;
   transporter: string;
@@ -274,6 +293,16 @@ export interface RemitoDocument extends GeneratedDocumentBase {
   transporterContact?: string;
   transporterPhone?: string;
   snapshot?: DocumentSnapshot;
+}
+
+export interface ExportDocumentItem {
+  lotId: string;
+  lotCode: string;
+  variety: string;
+  campaign: string;
+  origin: string;
+  quantity: number;
+  treatment?: string;
 }
 
 export interface PlanillaStockRow {
@@ -324,9 +353,8 @@ export type GeneratedDocument =
 // ---------------------------------------------------------------------------
 
 export interface CreateExportOperationRequest {
-  lotId: string;
+  items: Array<{ lotId: string; quantityKg: number }>;
   destinationCountry: string;
-  quantityKg: number;
   customer?: string;
   incoterm?: string;
   departurePort?: string;

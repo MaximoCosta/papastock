@@ -1,6 +1,7 @@
-import { SearchCheck } from 'lucide-react';
+import { Plus, SearchCheck, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Lot, Transporter } from '../../types/domain';
+import type { ExportLotLine } from '../../types/export';
 import { Button } from '../common/Button';
 import { LoadingLabel } from '../common/LoadingLabel';
 import { TransporterProfileCard } from '../transporters/TransporterProfileCard';
@@ -27,11 +28,10 @@ function FieldGroup({ step, title, description, children }: {
 }
 
 export function ExportForm({
-  lotId,
+  exportLines,
   lots,
   lotsMissingTreatment,
   destinationCountry,
-  quantity,
   buyerName,
   incoterm,
   departurePort,
@@ -43,9 +43,8 @@ export function ExportForm({
   requirementsSourceText,
   useAiRequirements,
   isLoading,
-  onLotChange,
+  onExportLinesChange,
   onCountryChange,
-  onQuantityChange,
   onBuyerChange,
   onIncotermChange,
   onDeparturePortChange,
@@ -57,11 +56,10 @@ export function ExportForm({
   onUseAiRequirementsChange,
   onAnalyze,
 }: {
-  lotId: string;
+  exportLines: ExportLotLine[];
   lots: Lot[];
   lotsMissingTreatment: string[];
   destinationCountry: string;
-  quantity: number;
   buyerName: string;
   incoterm: string;
   departurePort: string;
@@ -73,9 +71,8 @@ export function ExportForm({
   requirementsSourceText: string;
   useAiRequirements: boolean;
   isLoading: boolean;
-  onLotChange: (value: string) => void;
+  onExportLinesChange: (lines: ExportLotLine[]) => void;
   onCountryChange: (value: string) => void;
-  onQuantityChange: (value: number) => void;
   onBuyerChange: (value: string) => void;
   onIncotermChange: (value: string) => void;
   onDeparturePortChange: (value: string) => void;
@@ -90,6 +87,12 @@ export function ExportForm({
   const selectedTransporter = transporters.find((item) => item.id === transporterId);
   const activeTransporters = transporters.filter((item) => item.active);
   const missing = new Set(lotsMissingTreatment);
+  const usedLotIds = new Set(exportLines.map((line) => line.lotId));
+  const totalQuantity = exportLines.reduce((total, line) => total + line.quantity, 0);
+
+  function updateLine(index: number, change: Partial<ExportLotLine>) {
+    onExportLinesChange(exportLines.map((line, lineIndex) => lineIndex === index ? { ...line, ...change } : line));
+  }
 
   return (
     <section className="border border-[#d6d9d1] bg-white">
@@ -102,18 +105,44 @@ export function ExportForm({
       </div>
 
       <div className="space-y-5 p-5">
-        <FieldGroup step="01" title="Operación" description="Qué se exporta, a dónde y en qué condición comercial.">
-          <div className="grid grid-cols-4 gap-4 max-[1080px]:grid-cols-2">
-            <label>
-              <span className="label">Lote</span>
-              <select className="field" value={lotId} onChange={(event) => onLotChange(event.target.value)}>
-                {lots.map((lot) => (
-                  <option key={lot.id} value={lot.id}>
-                    {lot.code} · {lot.variety}{missing.has(lot.id) ? ' · falta tratamiento' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
+        <FieldGroup step="01" title="Operación" description="Indicá uno o más lotes y el peso neto de cada uno.">
+          <div className="space-y-3">
+            {exportLines.map((line, index) => (
+              <div key={`${line.lotId}-${index}`} className="grid grid-cols-[minmax(0,1.4fr)_minmax(150px,0.6fr)_auto] items-end gap-3 max-[680px]:grid-cols-1">
+                <label>
+                  <span className="label">Lote {index + 1}</span>
+                  <select className="field" value={line.lotId} onChange={(event) => updateLine(index, { lotId: event.target.value })}>
+                    {lots.filter((lot) => lot.id === line.lotId || !usedLotIds.has(lot.id)).map((lot) => (
+                      <option key={lot.id} value={lot.id}>
+                        {lot.code} · {lot.variety}{missing.has(lot.id) ? ' · falta tratamiento' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="label">Peso neto</span>
+                  <span className="relative block">
+                    <input className="field tabular pr-10" type="number" min="1" step="500" value={line.quantity || ''} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[#747970]">kg</span>
+                  </span>
+                </label>
+                <Button variant="secondary" className="h-10 px-3" onClick={() => onExportLinesChange(exportLines.filter((_, lineIndex) => lineIndex !== index))} disabled={exportLines.length === 1} aria-label={`Quitar lote ${index + 1}`}>
+                  <Trash2 size={15} />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#e8ebe4] pt-3">
+            <Button variant="secondary" onClick={() => {
+              const nextLot = lots.find((lot) => !usedLotIds.has(lot.id));
+              if (nextLot) onExportLinesChange([...exportLines, { lotId: nextLot.id, quantity: 0 }]);
+            }} disabled={usedLotIds.size >= lots.length}>
+              <Plus size={15} /> Agregar lote
+            </Button>
+            <span className="text-[11px] font-semibold text-[#4e5b50]">Total: {new Intl.NumberFormat('es-AR').format(totalQuantity)} kg</span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-4 max-[1080px]:grid-cols-2">
             <label>
               <span className="label">Destino</span>
               <select className="field" value={destinationCountry} onChange={(event) => onCountryChange(event.target.value)}>
@@ -121,20 +150,6 @@ export function ExportForm({
                 <option value="Chile">Chile</option>
                 <option value="Uruguay">Uruguay</option>
               </select>
-            </label>
-            <label>
-              <span className="label">Cantidad</span>
-              <span className="relative block">
-                <input
-                  className="field tabular pr-10"
-                  type="number"
-                  min="1"
-                  step="500"
-                  value={quantity || ''}
-                  onChange={(event) => onQuantityChange(Number(event.target.value))}
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[#747970]">kg</span>
-              </span>
             </label>
             <label>
               <span className="label">Incoterm</span>
@@ -238,7 +253,7 @@ export function ExportForm({
         </FieldGroup>
 
         <div className="flex justify-end border-t border-[#e8ebe4] pt-4">
-          <Button onClick={onAnalyze} disabled={isLoading || !lotId || quantity <= 0 || !transporterId} className="min-w-[190px]">
+          <Button onClick={onAnalyze} disabled={isLoading || exportLines.length === 0 || exportLines.some((line) => !line.lotId || line.quantity <= 0) || !transporterId} className="min-w-[190px]">
             {isLoading ? <LoadingLabel>Analizando documentación...</LoadingLabel> : <><SearchCheck size={15} /> Analizar documentación</>}
           </Button>
         </div>
