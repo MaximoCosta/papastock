@@ -6,7 +6,6 @@ import { ExportSummary } from '../components/exports/ExportSummary';
 import { MissingDataPanel } from '../components/exports/MissingDataPanel';
 import { RequirementChecklist } from '../components/exports/RequirementChecklist';
 import { PageHeader } from '../components/common/PageHeader';
-import { lots } from '../data/lots';
 import { aiService, toTraceabilityEvent } from '../services/aiService';
 import { mockDocumentService } from '../services/documentService';
 import { analyzeExportReadiness } from '../services/exportService';
@@ -15,7 +14,7 @@ import type { ExportValidationResult, ParsedTraceabilityEvent } from '../types/e
 
 export function NewExportPage() {
   const navigate = useNavigate();
-  const { traceabilityEvents, addTraceabilityEvent, addGeneratedDocument } = useAppData();
+  const { lots, traceabilityEvents, addTraceabilityEvent, addGeneratedDocument } = useAppData();
   const defaultLot = lots.find((lot) => lot.code === 'A-310') ?? lots[0];
   const [lotId, setLotId] = useState(defaultLot.id);
   const [destinationCountry, setDestinationCountry] = useState('Brasil');
@@ -36,11 +35,11 @@ export function NewExportPage() {
     setIsAnalyzing(false);
   }
 
-  function confirmTraceability(parsed: ParsedTraceabilityEvent) {
+  async function confirmTraceability(parsed: ParsedTraceabilityEvent) {
     if (!selectedLot) return;
     const event = toTraceabilityEvent(parsed, selectedLot.id);
-    const nextEvents = [...traceabilityEvents, event];
-    addTraceabilityEvent(event);
+    const saved = await addTraceabilityEvent(event);
+    const nextEvents = [...traceabilityEvents.filter((item) => item.id !== saved.id), saved];
     setValidation(analyzeExportReadiness(selectedLot, destinationCountry, quantity, nextEvents));
   }
 
@@ -74,6 +73,7 @@ export function NewExportPage() {
 
       <ExportForm
         lotId={lotId}
+        lots={lots}
         destinationCountry={destinationCountry}
         quantity={quantity}
         isLoading={isAnalyzing}

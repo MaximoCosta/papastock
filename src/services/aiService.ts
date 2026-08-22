@@ -1,4 +1,4 @@
-import type { Location, Movement, StockView, TraceabilityEvent } from '../types/domain';
+import type { Movement, StockView, TraceabilityEvent } from '../types/domain';
 import type {
   DiscrepancyAnalysis,
   ExportValidationResult,
@@ -9,7 +9,7 @@ export interface AIService {
   analyzeDiscrepancy(
     stock: StockView,
     movements: Movement[],
-    locations: Location[],
+    traceability: TraceabilityEvent[],
   ): Promise<DiscrepancyAnalysis>;
   analyzeRequirements(validation: ExportValidationResult): Promise<{ summary: string }>;
   parseTraceabilityInput(input: string): Promise<ParsedTraceabilityEvent>;
@@ -45,30 +45,31 @@ function parseProduct(input: string): string {
   return productMatch?.[1]?.trim() || 'Producto informado';
 }
 
-const mockAIService: AIService = {
-  async analyzeDiscrepancy(stock, lotMovements, allLocations) {
-    await delay(520);
-    const matchingMovement = lotMovements.find(
-      (movement) => movement.status === 'pending'
-        && movement.destinationLocationId === stock.locationId
-        && movement.quantity === Math.abs(stock.difference),
-    );
-
-    if (!matchingMovement) {
-      return {
-        cause: 'No se encontró un movimiento abierto que explique exactamente la diferencia. Revisar remitos y pesajes recientes.',
-        confidence: 'low',
-      };
+const httpAIService: AIService = {
+  async analyzeDiscrepancy(stock, lotMovements, traceability) {
+    const response = await fetch('/api/ai/discrepancy', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        lot: { id: stock.lot.id, code: stock.lot.code },
+        stock: {
+          id: stock.id,
+          lotId: stock.lotId,
+          locationId: stock.locationId,
+          declaredQuantity: stock.declaredQuantity,
+          verifiedQuantity: stock.verifiedQuantity,
+          updatedAt: stock.updatedAt,
+          verificationPending: stock.verificationPending,
+        },
+        movements: lotMovements,
+        traceability,
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as { data?: DiscrepancyAnalysis; error?: string };
+    if (!response.ok || !payload.data || !['llm', 'heuristic'].includes(payload.data.engine)) {
+      throw new Error(payload.error ?? `El análisis no está disponible (HTTP ${response.status}).`);
     }
-
-    const origin = allLocations.find((location) => location.id === matchingMovement.originLocationId);
-    const destination = allLocations.find((location) => location.id === matchingMovement.destinationLocationId);
-    return {
-      cause: `Existe un movimiento pendiente de ${matchingMovement.quantity.toLocaleString('es-AR')} kg desde ${origin?.name ?? 'origen no informado'} hacia ${destination?.name ?? 'destino no informado'} que coincide con la diferencia detectada.`,
-      relatedMovementId: matchingMovement.id,
-      relatedMovementReference: matchingMovement.reference,
-      confidence: 'high',
-    };
+    return payload.data;
   },
 
   async analyzeRequirements(validation) {
@@ -91,9 +92,7 @@ const mockAIService: AIService = {
   },
 };
 
-// Único punto de sustitución: cambiar esta asignación por un cliente HTTP
-// hacia una Edge Function o API segura. Los componentes consumen AIService.
-export const aiService: AIService = mockAIService;
+export const aiService: AIService = httpAIService;
 
 export function toTraceabilityEvent(
   parsed: ParsedTraceabilityEvent,

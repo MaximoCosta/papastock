@@ -52,11 +52,31 @@ export interface ParsedTraceabilityEvent {
   sourceText: string;
 }
 
+export type AnalysisEngine = 'llm' | 'heuristic';
+
+export interface DiscrepancyHypothesis {
+  title: string;
+  explanation: string;
+  movementReferences: string[];
+}
+
+export interface DiscrepancyEvidence {
+  type: 'movement' | 'traceability' | 'stock';
+  reference: string;
+  description: string;
+}
+
 export interface DiscrepancyAnalysis {
-  cause: string;
+  engine: AnalysisEngine;
+  summary: string;
+  confidence: number;
+  explainedQuantity: number;
+  unexplainedQuantity: number;
+  hypotheses: DiscrepancyHypothesis[];
+  evidence: DiscrepancyEvidence[];
+  recommendedAction: string;
   relatedMovementId?: string;
   relatedMovementReference?: string;
-  confidence: 'high' | 'medium' | 'low';
 }
 
 export interface GeneratedDocument {
@@ -72,4 +92,3 @@ export interface GeneratedDocument {
   treatment: string;
   campaign: string;
 }
-

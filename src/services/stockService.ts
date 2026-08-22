@@ -1,14 +1,15 @@
-import { locations } from '../data/locations';
-import { lots } from '../data/lots';
-import { stockRecords } from '../data/stock';
-import type { StockStatus, StockView } from '../types/domain';
+import type { Location, Lot, StockRecord, StockStatus, StockView } from '../types/domain';
 
 export function getStockStatus(declared: number, verified: number, pending = false): StockStatus {
   if (pending) return 'pending';
   return declared === verified ? 'verified' : 'discrepancy';
 }
 
-export function getStockViews(): StockView[] {
+export function getStockViews(
+  stockRecords: StockRecord[],
+  lots: Lot[],
+  locations: Location[],
+): StockView[] {
   return stockRecords.flatMap((record) => {
     const lot = lots.find((item) => item.id === record.lotId);
     const location = locations.find((item) => item.id === record.locationId);
@@ -29,12 +30,11 @@ export function getStockViews(): StockView[] {
   });
 }
 
-export function getStockViewByLotId(lotId: string): StockView | undefined {
-  return getStockViews().find((record) => record.lotId === lotId);
+export function getStockViewByLotId(stock: StockView[], lotId: string): StockView | undefined {
+  return stock.find((record) => record.lotId === lotId);
 }
 
-export function getOperationalMetrics() {
-  const stock = getStockViews();
+export function getOperationalMetrics(stock: StockView[]) {
   return {
     totalStock: stock.reduce((total, record) => total + record.verifiedQuantity, 0),
     activeLots: new Set(stock.map((record) => record.lotId)).size,
@@ -42,4 +42,3 @@ export function getOperationalMetrics() {
     pendingExports: 1,
   };
 }
-

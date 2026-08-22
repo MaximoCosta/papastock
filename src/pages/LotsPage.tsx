@@ -1,12 +1,13 @@
 import { ArrowRight, PackageSearch } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/common/PageHeader';
-import { lots } from '../data/lots';
 import { formatDate } from '../lib/formatters';
 import { getStockViewByLotId } from '../services/stockService';
 import { StockStatusBadge } from '../components/stock/StockStatusBadge';
+import { useAppData } from '../state/AppDataContext';
 
 export function LotsPage() {
+  const { lots, stockViews } = useAppData();
   return (
     <>
       <PageHeader eyebrow="Trazabilidad" title="Lotes productivos" description="Origen, campaña y situación operativa de cada unidad trazable." />
@@ -17,7 +18,7 @@ export function LotsPage() {
           </thead>
           <tbody>
             {lots.map((lot) => {
-              const stock = getStockViewByLotId(lot.id);
+              const stock = getStockViewByLotId(stockViews, lot.id);
               return (
                 <tr key={lot.id}>
                   <td><Link className="font-bold text-[#284332] hover:underline" to={`/lots/${lot.code}`}>{lot.code}</Link></td>

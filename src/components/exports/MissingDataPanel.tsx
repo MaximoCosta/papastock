@@ -6,10 +6,11 @@ import { Button } from '../common/Button';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { LoadingLabel } from '../common/LoadingLabel';
 
-export function MissingDataPanel({ onConfirm }: { onConfirm: (parsed: ParsedTraceabilityEvent) => void }) {
+export function MissingDataPanel({ onConfirm }: { onConfirm: (parsed: ParsedTraceabilityEvent) => Promise<void> }) {
   const [input, setInput] = useState('');
   const [parsed, setParsed] = useState<ParsedTraceabilityEvent>();
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   async function interpret() {
     if (!input.trim()) return;
@@ -50,7 +51,14 @@ export function MissingDataPanel({ onConfirm }: { onConfirm: (parsed: ParsedTrac
           <ConfirmDialog
             parsed={parsed}
             onCancel={() => setParsed(undefined)}
-            onConfirm={() => onConfirm(parsed)}
+            isSaving={isSaving}
+            onConfirm={() => {
+              setIsSaving(true);
+              void onConfirm(parsed)
+                .then(() => setParsed(undefined))
+                .catch(() => undefined)
+                .finally(() => setIsSaving(false));
+            }}
           />
         )}
       </div>

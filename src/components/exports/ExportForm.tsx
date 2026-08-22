@@ -1,10 +1,11 @@
 import { SearchCheck } from 'lucide-react';
-import { lots } from '../../data/lots';
+import type { Lot } from '../../types/domain';
 import { Button } from '../common/Button';
 import { LoadingLabel } from '../common/LoadingLabel';
 
 export function ExportForm({
   lotId,
+  lots,
   destinationCountry,
   quantity,
   isLoading,
@@ -14,6 +15,7 @@ export function ExportForm({
   onAnalyze,
 }: {
   lotId: string;
+  lots: Lot[];
   destinationCountry: string;
   quantity: number;
   isLoading: boolean;
@@ -65,4 +67,3 @@ export function ExportForm({
     </section>
   );
 }
-

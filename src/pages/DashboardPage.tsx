@@ -5,11 +5,13 @@ import { PageHeader } from '../components/common/PageHeader';
 import { StatCard } from '../components/common/StatCard';
 import { StockTable } from '../components/stock/StockTable';
 import { formatKg } from '../lib/formatters';
-import { getOperationalMetrics, getStockViews } from '../services/stockService';
+import { getOperationalMetrics } from '../services/stockService';
+import { useAppData } from '../state/AppDataContext';
 
 export function DashboardPage() {
-  const metrics = getOperationalMetrics();
-  const alerts = getStockViews().filter((record) => record.status === 'discrepancy');
+  const { stockViews, dataSource } = useAppData();
+  const metrics = getOperationalMetrics(stockViews);
+  const alerts = stockViews.filter((record) => record.status === 'discrepancy');
 
   return (
     <>
@@ -52,10 +54,9 @@ export function DashboardPage() {
         <div className="border border-[#d8dad3] bg-[#eceee8] p-5">
           <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#6b7169]">Última consolidación</p>
           <p className="tabular mt-3 text-xl font-semibold text-[#2d342f]">21 AGO · 11:45</p>
-          <p className="mt-1 text-[11px] text-[#747970]">10 registros procesados · datos mock</p>
+          <p className="mt-1 text-[11px] text-[#747970]">{stockViews.length} registros procesados · {dataSource === 'database' ? 'PostgreSQL' : 'fallback mock'}</p>
         </div>
       </section>
     </>
   );
 }
-

@@ -1,10 +1,9 @@
 import { ArrowRight, Minus } from 'lucide-react';
-import { locations } from '../../data/locations';
 import { formatDate, formatKg } from '../../lib/formatters';
-import type { Movement } from '../../types/domain';
+import type { Location, Movement } from '../../types/domain';
 import { StatusBadge } from '../common/StatusBadge';
 
-export function MovementList({ movements }: { movements: Movement[] }) {
+export function MovementList({ movements, locations }: { movements: Movement[]; locations: Location[] }) {
   return (
     <section className="border border-[#d8dad3] bg-white">
       <div className="border-b border-[#e0e2dc] px-5 py-4">
@@ -40,4 +39,3 @@ export function MovementList({ movements }: { movements: Movement[] }) {
     </section>
   );
 }
-

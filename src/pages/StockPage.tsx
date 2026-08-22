@@ -3,11 +3,11 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/common/PageHeader';
 import { StockTable } from '../components/stock/StockTable';
-import { locations } from '../data/locations';
-import { getStockViews } from '../services/stockService';
+import { useAppData } from '../state/AppDataContext';
 import type { StockStatus } from '../types/domain';
 
 export function StockPage() {
+  const { locations, stockViews } = useAppData();
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [locationId, setLocationId] = useState('all');
@@ -16,12 +16,12 @@ export function StockPage() {
     return initial === 'verified' || initial === 'discrepancy' || initial === 'pending' ? initial : 'all';
   });
 
-  const records = useMemo(() => getStockViews().filter((record) => {
+  const records = useMemo(() => stockViews.filter((record) => {
     const matchesQuery = record.lot.code.toLowerCase().includes(query.trim().toLowerCase());
     const matchesLocation = locationId === 'all' || record.locationId === locationId;
     const matchesStatus = status === 'all' || record.status === status;
     return matchesQuery && matchesLocation && matchesStatus;
-  }), [locationId, query, status]);
+  }), [locationId, query, status, stockViews]);
 
   return (
     <>
@@ -50,7 +50,7 @@ export function StockPage() {
             </select>
           </label>
           <div className="flex items-center justify-end gap-2 px-2 text-[10px] font-semibold text-[#747970]">
-            <Filter size={13} /> {records.length} de {getStockViews().length}
+            <Filter size={13} /> {records.length} de {stockViews.length}
           </div>
         </div>
       </section>
@@ -58,4 +58,3 @@ export function StockPage() {
     </>
   );
 }
-

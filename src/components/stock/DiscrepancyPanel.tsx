@@ -7,11 +7,13 @@ import { StatusBadge } from '../common/StatusBadge';
 
 export function DiscrepancyPanel({
   analysis,
+  error,
   isLoading,
   movementDate,
   onAnalyze,
 }: {
   analysis?: DiscrepancyAnalysis;
+  error?: string;
   isLoading: boolean;
   movementDate?: string;
   onAnalyze: () => void;
@@ -36,10 +38,23 @@ export function DiscrepancyPanel({
       </div>
 
       {analysis ? (
-        <div className="grid grid-cols-[1fr_190px] gap-8 p-5">
+        <div className="grid grid-cols-[1fr_230px] gap-8 p-5">
           <div>
-            <p className="label">Posible causa</p>
-            <p className="max-w-3xl text-[13px] leading-6 text-[#343832]">{analysis.cause}</p>
+            <div className="mb-3 flex items-center gap-2">
+              <StatusBadge tone={analysis.engine === 'llm' ? 'success' : 'warning'}>
+                {analysis.engine === 'llm' ? 'Analizado con IA' : 'Análisis local de respaldo'}
+              </StatusBadge>
+              <span className="tabular text-[10px] text-[#777c74]">{Math.round(analysis.confidence * 100)}% confianza</span>
+            </div>
+            <p className="label">Resumen</p>
+            <p className="max-w-3xl text-[13px] leading-6 text-[#343832]">{analysis.summary}</p>
+            {analysis.hypotheses.map((item) => (
+              <div key={item.title} className="mt-3 border-l-2 border-[#d8b579] pl-3">
+                <p className="text-[11px] font-bold text-[#3e463f]">{item.title}</p>
+                <p className="mt-1 text-[11px] leading-5 text-[#687068]">{item.explanation}</p>
+              </div>
+            ))}
+            <p className="mt-4 text-[11px] font-semibold text-[#665334]">Acción sugerida: {analysis.recommendedAction}</p>
           </div>
           <dl className="space-y-4 border-l border-[#e7ded0] pl-5">
             <div>
@@ -50,18 +65,21 @@ export function DiscrepancyPanel({
               </dd>
             </div>
             <div>
-              <dt className="label">Confianza</dt>
-              <dd><StatusBadge tone={analysis.confidence === 'high' ? 'success' : 'warning'}>{analysis.confidence === 'high' ? 'Alta' : analysis.confidence === 'medium' ? 'Media' : 'Baja'}</StatusBadge></dd>
+              <dt className="label">Cantidad explicada</dt>
+              <dd className="tabular text-[12px] font-bold text-[#356247]">{analysis.explainedQuantity.toLocaleString('es-AR')} kg</dd>
+            </div>
+            <div>
+              <dt className="label">Sin explicar</dt>
+              <dd className="tabular text-[12px] font-bold text-[#a33e37]">{analysis.unexplainedQuantity.toLocaleString('es-AR')} kg</dd>
             </div>
           </dl>
         </div>
       ) : (
-        <div className="flex items-center gap-3 px-5 py-4 text-[12px] text-[#77736b]">
+        <div className={`flex items-center gap-3 px-5 py-4 text-[12px] ${error ? 'text-[#8b3c35]' : 'text-[#77736b]'}`} role={error ? 'alert' : undefined}>
           <AlertOctagon size={15} className="text-[#9a681d]" />
-          El análisis buscará movimientos pendientes que coincidan con la diferencia registrada.
+          {error ?? 'El análisis buscará movimientos pendientes y evidencia trazable que expliquen la diferencia.'}
         </div>
       )}
     </section>
   );
 }
-

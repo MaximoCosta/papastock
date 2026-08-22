@@ -7,6 +7,7 @@ import {
   Sprout,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { useAppData } from '../../state/AppDataContext';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -17,6 +18,8 @@ const navItems = [
 ];
 
 export function Sidebar() {
+  const { dataSource, isLoading } = useAppData();
+
   return (
     <aside className="app-sidebar fixed inset-y-0 left-0 z-30 flex w-[236px] flex-col border-r border-[#173629] bg-[#1e4331] text-white max-[900px]:w-[76px]">
       <div className="flex h-[78px] items-center gap-3 border-b border-white/10 px-5 max-[900px]:justify-center max-[900px]:px-2">
@@ -55,14 +58,13 @@ export function Sidebar() {
 
       <div className="border-t border-white/10 px-5 py-4 max-[900px]:px-2">
         <div className="flex items-center gap-2.5 max-[900px]:justify-center">
-          <span className="h-2 w-2 rounded-full bg-[#99c7a2]" />
+          <span className={`h-2 w-2 rounded-full ${dataSource === 'database' ? 'bg-[#99c7a2]' : 'bg-[#e0bd72]'}`} />
           <div className="max-[900px]:hidden">
             <p className="text-[10px] font-semibold text-[#d9e4da]">Entorno de demo</p>
-            <p className="mt-0.5 text-[9px] text-[#91aa98]">Datos mock · v0.1</p>
+            <p className="mt-0.5 text-[9px] text-[#91aa98]">{isLoading ? 'Consolidando datos…' : dataSource === 'database' ? 'PostgreSQL · conectado' : 'Fallback mock · temporal'}</p>
           </div>
         </div>
       </div>
     </aside>
   );
 }
-

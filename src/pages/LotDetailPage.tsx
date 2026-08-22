@@ -7,9 +7,6 @@ import { LotHeader } from '../components/lots/LotHeader';
 import { MovementList } from '../components/lots/MovementList';
 import { TraceabilityTimeline } from '../components/lots/TraceabilityTimeline';
 import { DiscrepancyPanel } from '../components/stock/DiscrepancyPanel';
-import { locations } from '../data/locations';
-import { lots } from '../data/lots';
-import { movements } from '../data/movements';
 import { formatDate, formatKg, formatSignedKg } from '../lib/formatters';
 import { validateDispatch } from '../lib/validateDispatch';
 import { aiService } from '../services/aiService';
@@ -20,13 +17,14 @@ import type { DiscrepancyAnalysis } from '../types/export';
 
 export function LotDetailPage() {
   const { id } = useParams();
-  const { traceabilityEvents } = useAppData();
+  const { locations, lots, movements, stockViews, traceabilityEvents } = useAppData();
   const lot = lots.find((item) => item.code.toLowerCase() === id?.toLowerCase());
-  const stock = lot ? getStockViewByLotId(lot.id) : undefined;
+  const stock = lot ? getStockViewByLotId(stockViews, lot.id) : undefined;
   const lotMovements = lot ? movements.filter((movement) => movement.lotId === lot.id) : [];
   const lotEvents = lot ? traceabilityEvents.filter((event) => event.lotId === lot.id) : [];
   const [analysis, setAnalysis] = useState<DiscrepancyAnalysis>();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string>();
   const [dispatchQuantity, setDispatchQuantity] = useState(5000);
   const [dispatchResult, setDispatchResult] = useState<ValidationResult>();
 
@@ -35,9 +33,15 @@ export function LotDetailPage() {
 
   async function analyze() {
     setIsAnalyzing(true);
-    const result = await aiService.analyzeDiscrepancy(currentStock, lotMovements, locations);
-    setAnalysis(result);
-    setIsAnalyzing(false);
+    setAnalysisError(undefined);
+    try {
+      const result = await aiService.analyzeDiscrepancy(currentStock, lotMovements, lotEvents);
+      setAnalysis(result);
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : 'No se pudo ejecutar el análisis.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
   function attemptDispatch() {
@@ -99,12 +103,12 @@ export function LotDetailPage() {
 
       {stock.status === 'discrepancy' && (
         <div className="mb-5">
-          <DiscrepancyPanel analysis={analysis} isLoading={isAnalyzing} movementDate={matchingMovement?.date} onAnalyze={analyze} />
+          <DiscrepancyPanel analysis={analysis} error={analysisError} isLoading={isAnalyzing} movementDate={matchingMovement?.date} onAnalyze={analyze} />
         </div>
       )}
 
       <div className="mb-5 grid grid-cols-[1.15fr_0.85fr] gap-4">
-        <MovementList movements={lotMovements} />
+        <MovementList movements={lotMovements} locations={locations} />
         <TraceabilityTimeline events={lotEvents} />
       </div>
 

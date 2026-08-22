@@ -7,10 +7,12 @@ export function ConfirmDialog({
   parsed,
   onCancel,
   onConfirm,
+  isSaving = false,
 }: {
   parsed: ParsedTraceabilityEvent;
   onCancel: () => void;
   onConfirm: () => void;
+  isSaving?: boolean;
 }) {
   return (
     <div className="mt-4 border border-[#bfd0c2] bg-[#f4f8f4] p-4" role="region" aria-label="Confirmar información interpretada">
@@ -33,10 +35,9 @@ export function ConfirmDialog({
       </div>
       <p className="mt-3 text-[10px] leading-4 text-[#7a817a]">El evento se agregará a la trazabilidad únicamente después de confirmar.</p>
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button onClick={onConfirm}>Confirmar información</Button>
+        <Button variant="ghost" onClick={onCancel} disabled={isSaving}>Cancelar</Button>
+        <Button onClick={onConfirm} disabled={isSaving}>{isSaving ? 'Guardando…' : 'Confirmar información'}</Button>
       </div>
     </div>
   );
 }
-
