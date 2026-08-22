@@ -1,6 +1,6 @@
 # PapaStock
 
-Aplicación full-stack de Papasud para stock, trazabilidad, bloqueo de operaciones inseguras y preparación documental de exportación.
+Aplicación full-stack de Papasud para movimientos de stock asistidos, trazabilidad, bloqueo de operaciones inseguras y preparación documental de exportación.
 
 ## Arquitectura
 
@@ -51,9 +51,22 @@ El seed es idempotente pero deliberadamente manual. Conserva A-204 con 25.000/24
 - `src/repositories/`: cliente HTTP con fallback atómico al mock.
 - `src/lib/`: validaciones determinísticas de despacho/exportación.
 - `src/services/aiService.ts`: adaptador browser a `/api/ai/discrepancy` y helpers locales N03.
+- `src/services/movementService.ts`: interpretación, preview y confirmación separada del flujo N01.
 - `render.yaml`: Web Service + Managed PostgreSQL.
 - `docs/render-deploy.md`: despliegue y operación.
 
 ## Persistencia actual
 
-Trazabilidad confirmada por el operador se persiste en PostgreSQL. Los documentos generados siguen en `sessionStorage`; el despacho continúa siendo una validación determinística sin escritura, por diseño de la demo.
+Los movimientos N01 y la trazabilidad confirmada por el operador se persisten en PostgreSQL. Un movimiento se interpreta primero, se valida sin escritura y solo después de una confirmación humana se ejecuta en una transacción que registra el movimiento y actualiza origen/destino.
+
+Los documentos generados siguen en `sessionStorage`; el despacho continúa siendo una validación determinística sin escritura, por diseño de la demo.
+
+## Movimiento por texto (N01)
+
+En `/movements/new`, por ejemplo:
+
+```text
+Mové 500 kg del lote A-310 del Frigorífico Central al Galpón Principal.
+```
+
+Groq —o el parser local de respaldo— solo produce una intención estructurada. El backend vuelve a validar lote, ubicaciones, cantidad, stock verificado y discrepancias. `POST /api/movements` repite esa validación con las filas bloqueadas y ejecuta `UPDATE origen + UPSERT destino + INSERT movement` dentro de `BEGIN/COMMIT`.

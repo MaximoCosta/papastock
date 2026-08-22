@@ -125,3 +125,23 @@ export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
 }
+
+export interface MovementIntent {
+  action: 'transfer';
+  lotCode: string;
+  quantityKg: number;
+  origin: string;
+  destination: string;
+}
+
+export interface MovementInterpretation extends MovementIntent {
+  engine: 'llm' | 'heuristic';
+}
+
+export interface StockTransferPreview extends ValidationResult {
+  intent: MovementIntent;
+  lot?: Lot;
+  origin?: Location;
+  destination?: Location;
+  originStock?: Pick<StockRecord, 'declaredQuantity' | 'verifiedQuantity'>;
+}

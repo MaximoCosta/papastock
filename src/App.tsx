@@ -6,6 +6,7 @@ import { DocumentsPage } from './pages/DocumentsPage';
 import { LotDetailPage } from './pages/LotDetailPage';
 import { LotsPage } from './pages/LotsPage';
 import { NewExportPage } from './pages/NewExportPage';
+import { NewMovementPage } from './pages/NewMovementPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { StockPage } from './pages/StockPage';
 import { TransportersPage } from './pages/TransportersPage';
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="lots" element={<LotsPage />} />
         <Route path="lots/:id" element={<LotDetailPage />} />
         <Route path="transporters" element={<TransportersPage />} />
+        <Route path="movements/new" element={<NewMovementPage />} />
         <Route path="exports" element={<Navigate to="/exports/new" replace />} />
         <Route path="exports/new" element={<NewExportPage />} />
         <Route path="documents" element={<DocumentsPage />} />
