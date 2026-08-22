@@ -1,0 +1,47 @@
+{
+  "name": "papastock",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server/index.ts",
+    "build": "npm run check && vite build && tsup server/index.ts server/db/migrate.ts server/db/seed.ts --format esm --platform node --external vite --out-dir dist-server --clean",
+    "start": "node dist-server/index.js",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "render:validate": "node scripts/validate-render.mjs",
+    "db:migrate": "tsx server/db/migrate.ts",
+    "db:seed": "tsx server/db/seed.ts"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "lucide-react": "1.33.0",
+    "pg": "^8.23.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router-dom": "7.18.2",
+    "tsx": "^4.23.12",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/express": "^5.0.6",
+    "@types/pg": "^8.23.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@types/supertest": "^7.2.1",
+    "@vitejs/plugin-react": "6.1.0",
+    "supertest": "^7.2.2",
+    "tailwindcss": "4.3.3",
+    "tsup": "^8.5.1",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11",
+    "yaml": "^2.8.2"
+  },
+  "overrides": {
+    "tsup": {
+      "esbuild": "^0.28.2"
+    }
+  }
+}
