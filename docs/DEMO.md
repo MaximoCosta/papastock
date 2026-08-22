@@ -11,6 +11,11 @@ URL: `https://papastock.onrender.com`
 
 Hacelo **10 minutos antes**, no en vivo.
 
+Al abrir la app aparece un **login ficticio**. Usuario `operador`, contraseña
+`papasud`. No autentica contra el servidor: solo abre la sesión de demo en el
+navegador. La sesión vive en `sessionStorage` y se cierra con **Salir** en la
+barra superior.
+
 ### 1. Despertar el servicio
 
 El plan Free de Render suspende el servicio por inactividad. La primera request

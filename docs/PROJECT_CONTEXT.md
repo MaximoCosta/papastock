@@ -283,6 +283,9 @@ BFF adicional, no hay Supabase, no hay funciones serverless.
 `/` · `/stock` · `/lots` · `/lots/:id` · `/movements/new` · `/exports` (redirige a
 `/exports/new`) · `/exports/new` · `/documents` · `/documents/:id` · `*`
 
+Hay un **login ficticio de demo** (`operador` / `papasud`) que tapa la SPA hasta
+que hay sesión en `sessionStorage`. No es autenticación real ni protege la API.
+
 ---
 
 ## 7. Backend — endpoints reales

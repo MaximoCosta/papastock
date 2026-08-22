@@ -3,6 +3,7 @@ import { AppLayout } from './components/layout/AppLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { DocumentPage } from './pages/DocumentPage';
 import { DocumentsPage } from './pages/DocumentsPage';
+import { LoginPage } from './pages/LoginPage';
 import { LotDetailPage } from './pages/LotDetailPage';
 import { LotsPage } from './pages/LotsPage';
 import { NewExportPage } from './pages/NewExportPage';
@@ -10,8 +11,13 @@ import { NewMovementPage } from './pages/NewMovementPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { StockPage } from './pages/StockPage';
 import { TransportersPage } from './pages/TransportersPage';
+import { useDemoSession } from './state/DemoSessionContext';
 
 export default function App() {
+  const { session } = useDemoSession();
+
+  if (!session) return <LoginPage />;
+
   return (
     <Routes>
       <Route element={<AppLayout />}>
