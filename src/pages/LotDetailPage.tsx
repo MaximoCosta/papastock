@@ -1,6 +1,6 @@
-import { AlertTriangle, ArrowLeft, Ban, CheckCircle2, Send } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Ban, CheckCircle2, Send, Truck } from 'lucide-react';
 import { useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/common/Button';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { LotHeader } from '../components/lots/LotHeader';
@@ -10,6 +10,7 @@ import { DiscrepancyPanel } from '../components/stock/DiscrepancyPanel';
 import { formatDate, formatKg, formatSignedKg } from '../lib/formatters';
 import { validateDispatch } from '../lib/validateDispatch';
 import { aiService } from '../services/aiService';
+import { mockDocumentService } from '../services/documentService';
 import { getStockViewByLotId } from '../services/stockService';
 import { useAppData } from '../state/AppDataContext';
 import type { ValidationResult } from '../types/domain';
@@ -17,7 +18,8 @@ import type { DiscrepancyAnalysis } from '../types/export';
 
 export function LotDetailPage() {
   const { id } = useParams();
-  const { locations, lots, movements, stockViews, traceabilityEvents } = useAppData();
+  const navigate = useNavigate();
+  const { locations, lots, movements, stockViews, traceabilityEvents, addGeneratedDocument } = useAppData();
   const lot = lots.find((item) => item.code.toLowerCase() === id?.toLowerCase());
   const stock = lot ? getStockViewByLotId(stockViews, lot.id) : undefined;
   const lotMovements = lot ? movements.filter((movement) => movement.lotId === lot.id) : [];
@@ -26,9 +28,12 @@ export function LotDetailPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string>();
   const [dispatchQuantity, setDispatchQuantity] = useState(5000);
+  const [dispatchDestination, setDispatchDestination] = useState('');
+  const [dispatchTransporter, setDispatchTransporter] = useState('');
   const [dispatchResult, setDispatchResult] = useState<ValidationResult>();
 
   if (!lot || !stock) return <Navigate to="/lots" replace />;
+  const currentLot = lot;
   const currentStock = stock;
 
   async function analyze() {
@@ -51,6 +56,20 @@ export function LotDetailPage() {
       verifiedQuantity: currentStock.verifiedQuantity,
       hasUnresolvedDiscrepancy: currentStock.status === 'discrepancy',
     }));
+  }
+
+  function generateRemito() {
+    if (!dispatchResult?.valid) return;
+    const document = mockDocumentService.createRemito({
+      lot: currentLot,
+      quantity: dispatchQuantity,
+      originLocation: currentStock.location.name,
+      destinationLocation: dispatchDestination || 'No informado',
+      transporter: dispatchTransporter,
+      dispatchReference: `DESP-${currentLot.code}-${String(Date.now()).slice(-5)}`,
+    });
+    addGeneratedDocument(document);
+    navigate(`/documents/${document.id}`);
   }
 
   const matchingMovement = analysis?.relatedMovementId
@@ -120,7 +139,7 @@ export function LotDetailPage() {
           </div>
           <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-[#81867e]">Control de seguridad</span>
         </div>
-        <div className="grid grid-cols-[260px_auto_1fr] items-end gap-4 p-5">
+        <div className="grid grid-cols-[200px_1fr_1fr_auto] items-end gap-4 p-5">
           <label>
             <span className="label">Cantidad a despachar</span>
             <span className="relative block">
@@ -128,9 +147,17 @@ export function LotDetailPage() {
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#747970]">kg</span>
             </span>
           </label>
+          <label>
+            <span className="label">Destino</span>
+            <input className="field" value={dispatchDestination} onChange={(event) => setDispatchDestination(event.target.value)} placeholder="Ej: Depósito cliente" />
+          </label>
+          <label>
+            <span className="label">Transportista</span>
+            <input className="field" value={dispatchTransporter} onChange={(event) => setDispatchTransporter(event.target.value)} placeholder="Ej: Transportes del Sur" />
+          </label>
           <Button onClick={attemptDispatch}><Send size={14} /> Emitir despacho</Button>
-          <p className="pb-2 text-[10px] leading-4 text-[#777c74]">No se registra ningún despacho si la validación devuelve errores.</p>
         </div>
+        <p className="px-5 pb-4 text-[10px] leading-4 text-[#777c74]">No se registra ningún despacho si la validación devuelve errores.</p>
 
         {dispatchResult && !dispatchResult.valid && (
           <div className="m-5 mt-0 border border-[#dfaaa4] bg-[#fdf0ee] p-5" role="alert">
@@ -150,7 +177,10 @@ export function LotDetailPage() {
           </div>
         )}
         {dispatchResult?.valid && (
-          <div className="m-5 mt-0 flex items-center gap-3 border border-[#b9d1bf] bg-[#eff6f0] p-4 text-[12px] font-semibold text-[#315a40]"><CheckCircle2 size={17} /> Despacho validado. La operación puede continuar.</div>
+          <div className="m-5 mt-0 flex items-center justify-between gap-4 border border-[#b9d1bf] bg-[#eff6f0] p-4">
+            <span className="flex items-center gap-3 text-[12px] font-semibold text-[#315a40]"><CheckCircle2 size={17} /> Despacho validado. La operación puede continuar.</span>
+            <Button variant="secondary" onClick={generateRemito}><Truck size={14} /> Generar remito</Button>
+          </div>
         )}
       </section>
     </>

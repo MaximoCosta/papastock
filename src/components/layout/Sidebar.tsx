@@ -6,6 +6,7 @@ import {
   PackageSearch,
   Route,
   Sprout,
+  Truck,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAppData } from '../../state/AppDataContext';
@@ -15,6 +16,7 @@ const navItems = [
   { to: '/stock', label: 'Stock', icon: Boxes },
   { to: '/lots', label: 'Lotes', icon: PackageSearch },
   { to: '/movements/new', label: 'Mover stock', icon: Route },
+  { to: '/transporters', label: 'Transportistas', icon: Truck },
   { to: '/exports/new', label: 'Exportaciones', icon: ClipboardList },
   { to: '/documents', label: 'Documentos', icon: FileText },
 ];

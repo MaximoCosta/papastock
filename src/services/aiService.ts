@@ -1,4 +1,4 @@
-import type { Movement, StockView, TraceabilityEvent } from '../types/domain';
+import type { Movement, StockControlCorrection, StockView, TraceabilityEvent } from '../types/domain';
 import type {
   DiscrepancyAnalysis,
   ExportValidationResult,
@@ -13,6 +13,8 @@ export interface AIService {
   ): Promise<DiscrepancyAnalysis>;
   analyzeRequirements(validation: ExportValidationResult): Promise<{ summary: string }>;
   parseTraceabilityInput(input: string): Promise<ParsedTraceabilityEvent>;
+  /** Mock OCR/visión: interpreta una foto de planilla de conteo marcada a mano. */
+  parseStockControlSheet(file: File, scopeRecords: StockView[]): Promise<StockControlCorrection[]>;
 }
 
 const delay = (milliseconds: number) =>
@@ -43,6 +45,54 @@ function parseDate(input: string): string {
 function parseProduct(input: string): string {
   const productMatch = input.match(/(?:con|producto)\s+([\p{L}\d][\p{L}\d .-]*?)(?:\s+el\s+|\s+en\s+fecha|[,.]|$)/iu);
   return productMatch?.[1]?.trim() || 'Producto informado';
+}
+
+/** Correcciones hardcodeadas para la demo (sin backend). */
+function mockSheetCorrections(scopeRecords: StockView[]): StockControlCorrection[] {
+  const preferredCodes = ['A-204', 'F-301', 'C-102'];
+  const byCode = new Map(scopeRecords.map((record) => [record.lot.code, record]));
+  const corrections: StockControlCorrection[] = [];
+
+  for (const code of preferredCodes) {
+    const record = byCode.get(code);
+    if (!record) continue;
+
+    if (code === 'A-204') {
+      corrections.push({
+        stockRecordId: record.id,
+        lotCode: record.lot.code,
+        previousVerified: record.verifiedQuantity,
+        countedQuantity: 25000,
+        notes: 'Conteo físico confirma declarado; diferencia explicada por MV-1032 pendiente.',
+      });
+    } else if (code === 'F-301') {
+      corrections.push({
+        stockRecordId: record.id,
+        lotCode: record.lot.code,
+        previousVerified: record.verifiedQuantity,
+        countedQuantity: 16800,
+        notes: 'Pendiente de verificación → contado en piso: 16.800 kg.',
+      });
+    } else if (code === 'C-102') {
+      corrections.push({
+        stockRecordId: record.id,
+        lotCode: record.lot.code,
+        previousVerified: record.verifiedQuantity,
+        countedQuantity: 18500,
+        notes: 'Ajuste a declarado tras recontar bolsa rota.',
+      });
+    }
+  }
+
+  if (corrections.length > 0) return corrections;
+
+  return scopeRecords.slice(0, 2).map((record) => ({
+    stockRecordId: record.id,
+    lotCode: record.lot.code,
+    previousVerified: record.verifiedQuantity,
+    countedQuantity: record.declaredQuantity,
+    notes: 'Marcado en planilla como OK (demo).',
+  }));
 }
 
 const httpAIService: AIService = {
@@ -89,6 +139,16 @@ const httpAIService: AIService = {
       product: parseProduct(input),
       sourceText: input.trim(),
     };
+  },
+
+  // TODO backend: POST /api/ai/stock-sheet (multipart image + scope)
+  async parseStockControlSheet(file, scopeRecords) {
+    void file;
+    await delay(1500);
+    if (scopeRecords.length === 0) {
+      throw new Error('No hay lotes en el alcance para interpretar la planilla.');
+    }
+    return mockSheetCorrections(scopeRecords);
   },
 };
 

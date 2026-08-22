@@ -2,7 +2,16 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { createApp } from './app';
 
-const snapshot = { locations: [{ id: 'l', name: 'Sur', type: 'cold_storage' as const }], lots: [{ id: 'lot', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O' }], stockRecords: [{ id: 's', lotId: 'lot', locationId: 'l', declaredQuantity: 2, verifiedQuantity: 1, updatedAt: '2026-08-21' }], movements: [], traceabilityEvents: [] };
+const snapshot = {
+  locations: [{ id: 'l', name: 'Sur', type: 'cold_storage' as const }],
+  shelfUnits: [{ id: 'u', locationId: 'l', code: 'S-A', label: 'Rack A', gridRow: 0, gridCol: 0 }],
+  shelves: [{ id: 'sh', locationId: 'l', shelfUnitId: 'u', code: 'S-A1', label: 'Rack A · N1', level: 1 }],
+  lots: [{ id: 'lot', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O' }],
+  stockRecords: [{ id: 's', lotId: 'lot', locationId: 'l', declaredQuantity: 2, verifiedQuantity: 1, updatedAt: '2026-08-21' }],
+  movements: [],
+  transporters: [],
+  traceabilityEvents: [],
+};
 const repository = {
   loadSnapshot: vi.fn(async () => snapshot),
   loadLot: vi.fn(async () => snapshot),

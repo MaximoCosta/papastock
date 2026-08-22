@@ -11,6 +11,7 @@ export const movements: Movement[] = [
     quantity: 1000,
     date: '2026-08-20',
     status: 'pending',
+    transporterId: 'tr-pampa',
   },
   {
     id: 'movement-1028',
@@ -21,6 +22,7 @@ export const movements: Movement[] = [
     quantity: 8000,
     date: '2026-08-18',
     status: 'completed',
+    transporterId: 'tr-andina',
   },
   {
     id: 'movement-1016',
@@ -31,6 +33,7 @@ export const movements: Movement[] = [
     quantity: 22000,
     date: '2026-08-10',
     status: 'completed',
+    transporterId: 'tr-andina',
   },
   {
     id: 'movement-1037',
@@ -42,5 +45,37 @@ export const movements: Movement[] = [
     date: '2026-08-21',
     status: 'cancelled',
   },
+  {
+    id: 'movement-1041',
+    reference: 'MV-1041',
+    lotId: 'lot-b118',
+    originLocationId: 'loc-warehouse',
+    destinationLocationId: 'loc-north',
+    quantity: 4500,
+    date: '2026-08-19',
+    status: 'completed',
+    transporterId: 'tr-pampa',
+  },
+  {
+    id: 'movement-1044',
+    reference: 'MV-1044',
+    lotId: 'lot-g512',
+    originLocationId: 'loc-central',
+    destinationLocationId: 'loc-south',
+    quantity: 21000,
+    date: '2026-08-17',
+    status: 'completed',
+    transporterId: 'tr-sur',
+  },
+  {
+    id: 'movement-1048',
+    reference: 'MV-1048',
+    lotId: 'lot-f301',
+    originLocationId: 'loc-south',
+    destinationLocationId: 'loc-warehouse',
+    quantity: 17000,
+    date: '2026-08-21',
+    status: 'pending',
+    transporterId: 'tr-pampa',
+  },
 ];
-

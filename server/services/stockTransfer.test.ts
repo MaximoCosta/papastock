@@ -8,6 +8,8 @@ const snapshot: PapaStockSnapshot = {
     { id: 'central', name: 'Frigorífico Central', type: 'cold_storage' },
     { id: 'warehouse', name: 'Galpón Principal', type: 'warehouse' },
   ],
+  shelfUnits: [],
+  shelves: [],
   lots: [
     { id: 'a310', code: 'A-310', variety: 'Innovator', campaign: '2025/26', producer: 'P', origin: 'Balcarce' },
     { id: 'a204', code: 'A-204', variety: 'Innovator', campaign: '2025/26', producer: 'P', origin: 'Balcarce' },
@@ -17,6 +19,7 @@ const snapshot: PapaStockSnapshot = {
     { id: 's204', lotId: 'a204', locationId: 'central', declaredQuantity: 25000, verifiedQuantity: 24000, updatedAt: 'x' },
   ],
   movements: [],
+  transporters: [],
   traceabilityEvents: [],
 };
 
