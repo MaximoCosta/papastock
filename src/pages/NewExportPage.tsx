@@ -1,5 +1,5 @@
 import { ArrowRight, DatabaseZap } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/common/PageHeader';
 import { ExportForm } from '../components/exports/ExportForm';
@@ -8,9 +8,23 @@ import { MissingDataPanel } from '../components/exports/MissingDataPanel';
 import { RequirementChecklist } from '../components/exports/RequirementChecklist';
 import { aiService, toTraceabilityEvent } from '../services/aiService';
 import { mockDocumentService } from '../services/documentService';
-import { analyzeExportReadiness } from '../services/exportService';
+import {
+  analyzeExportReadiness,
+  buildDocumentSnapshot,
+  buildExportOperation,
+  type ExportLogistics,
+} from '../services/exportService';
 import { useAppData } from '../state/AppDataContext';
-import type { ExportValidationResult, ParsedTraceabilityEvent } from '../types/export';
+import type { TraceabilityEvent } from '../types/domain';
+import type {
+  AiExportRequirement,
+  AnalysisEngine,
+  ConfirmedTraceabilityEvent,
+  ExportValidationResult,
+} from '../types/export';
+
+const defaultRequirementsText = 'La documentación debe contener número de lote, variedad, origen, '
+  + 'peso neto y tratamiento fitosanitario.';
 
 export function NewExportPage() {
   const navigate = useNavigate();
@@ -20,9 +34,11 @@ export function NewExportPage() {
     transporters,
     stockViews,
     traceabilityEvents,
+    dataSource,
     addTraceabilityEvent,
     addGeneratedDocument,
   } = useAppData();
+
   const defaultLot = lots.find((lot) => lot.code === 'A-310') ?? lots[0];
   const [lotId, setLotId] = useState(defaultLot?.id ?? '');
   const [destinationCountry, setDestinationCountry] = useState('Brasil');
@@ -34,8 +50,13 @@ export function NewExportPage() {
   const [departureDate, setDepartureDate] = useState('2026-08-28');
   const [transporterId, setTransporterId] = useState('');
   const [notes, setNotes] = useState('Mantener cadena de frío 3–5 °C. Documentación fitosanitaria adjunta.');
+  const [useAiRequirements, setUseAiRequirements] = useState(false);
+  const [requirementsSourceText, setRequirementsSourceText] = useState(defaultRequirementsText);
   const [validation, setValidation] = useState<ExportValidationResult>();
+  const [requirementsEngine, setRequirementsEngine] = useState<AnalysisEngine>();
+  const [analysisSummary, setAnalysisSummary] = useState<string>();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState<string>();
 
   useEffect(() => {
     if (!lotId && defaultLot) setLotId(defaultLot.id);
@@ -51,63 +72,111 @@ export function NewExportPage() {
   const selectedTransporter = transporters.find((item) => item.id === transporterId);
   const stockForLot = stockViews.find((record) => record.lotId === lotId);
 
+  // Permite elegir un escenario incompleto para la demo sin borrar datos existentes.
+  const lotsMissingTreatment = useMemo(() => {
+    const withTreatment = new Set(
+      traceabilityEvents.filter((event) => event.type === 'treatment').map((event) => event.lotId),
+    );
+    return lots.filter((lot) => !withTreatment.has(lot.id)).map((lot) => lot.id);
+  }, [lots, traceabilityEvents]);
+
   function resetAnalysis() {
     setValidation(undefined);
+    setRequirementsEngine(undefined);
+    setAnalysisSummary(undefined);
+    setError(undefined);
+  }
+
+  function logistics(): ExportLogistics {
+    return { buyerName, incoterm, departurePort, arrivalPort, departureDate, notes, transporterId: transporterId || undefined };
+  }
+
+  function evaluate(events: TraceabilityEvent[], aiRequirements?: AiExportRequirement[]) {
+    return analyzeExportReadiness({
+      lot: selectedLot,
+      destinationCountry,
+      quantity,
+      traceabilityEvents: events,
+      stock: stockForLot,
+      aiRequirements,
+    });
   }
 
   async function analyze() {
     setIsAnalyzing(true);
-    const result = analyzeExportReadiness(selectedLot, destinationCountry, quantity, traceabilityEvents);
-    await aiService.analyzeRequirements(result);
-    setValidation(result);
-    setIsAnalyzing(false);
+    setError(undefined);
+    try {
+      let aiRequirements: AiExportRequirement[] | undefined;
+      if (useAiRequirements && requirementsSourceText.trim().length >= 8) {
+        const parsed = await aiService.analyzeExportRequirements(
+          destinationCountry,
+          'proforma',
+          requirementsSourceText,
+        );
+        aiRequirements = parsed.requirements;
+        setRequirementsEngine(parsed.engine);
+      } else {
+        setRequirementsEngine(undefined);
+      }
+
+      const result = evaluate(traceabilityEvents, aiRequirements);
+      setAnalysisSummary((await aiService.analyzeRequirements(result)).summary);
+      setValidation(result);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo analizar la documentación.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
-  async function confirmTraceability(parsed: ParsedTraceabilityEvent) {
+  async function confirmTraceability(confirmed: ConfirmedTraceabilityEvent) {
     if (!selectedLot) return;
-    const event = toTraceabilityEvent(parsed, selectedLot.id);
-    const saved = await addTraceabilityEvent(event);
+    const saved = await addTraceabilityEvent(toTraceabilityEvent(confirmed, selectedLot.id));
     const nextEvents = [...traceabilityEvents.filter((item) => item.id !== saved.id), saved];
-    setValidation(analyzeExportReadiness(selectedLot, destinationCountry, quantity, nextEvents));
+    setValidation(evaluate(nextEvents, validation?.requirements.length
+      ? validation.requirements
+        .filter((requirement) => requirement.origin === 'AI_PARSED')
+        .map((requirement) => ({ key: requirement.field, label: requirement.label, required: true }))
+      : undefined));
   }
 
-  function buildOperation() {
-    return {
-      id: `EXP-${Date.now()}`,
-      lotId: selectedLot!.id,
-      destinationCountry,
-      quantity,
-      status: 'generated' as const,
-      createdAt: new Date().toISOString(),
-      transporterId: transporterId || undefined,
-      buyerName,
-      incoterm,
-      departurePort,
-      arrivalPort,
-      departureDate,
-      notes,
-    };
+  function snapshotFor(operation: ReturnType<typeof buildExportOperation>) {
+    if (!selectedLot || !validation) return undefined;
+    return buildDocumentSnapshot({
+      operation,
+      lot: selectedLot,
+      validation,
+      traceabilityEvents,
+      sourceOfTruth: dataSource,
+      transporter: selectedTransporter,
+      originLocation: stockForLot?.location.name,
+    });
   }
 
   function generateProforma() {
     if (!selectedLot || !validation?.valid) return;
-    const document = mockDocumentService.createProforma(buildOperation(), selectedLot, traceabilityEvents, selectedTransporter);
+    const operation = buildExportOperation(selectedLot, destinationCountry, quantity, logistics());
+    const document = mockDocumentService.createProforma(
+      operation, selectedLot, traceabilityEvents, selectedTransporter, snapshotFor(operation),
+    );
     addGeneratedDocument(document);
     navigate(`/documents/${document.id}`);
   }
 
   function generateFactura(unitPrice: number, currency: string) {
     if (!selectedLot || !validation?.valid) return;
-    const document = mockDocumentService.createFactura(buildOperation(), selectedLot, unitPrice, currency, selectedTransporter);
+    const operation = buildExportOperation(selectedLot, destinationCountry, quantity, logistics());
+    const document = mockDocumentService.createFactura(
+      operation, selectedLot, unitPrice, currency, selectedTransporter, snapshotFor(operation),
+    );
     addGeneratedDocument(document);
     navigate(`/documents/${document.id}`);
   }
 
   function generateRemito() {
     if (!selectedLot || !validation?.valid || !selectedTransporter) return;
-    const origin = stockForLot?.location.name
-      ?? locations[0]?.name
-      ?? 'Depósito Papasud';
+    const operation = buildExportOperation(selectedLot, destinationCountry, quantity, logistics());
+    const origin = stockForLot?.location.name ?? locations[0]?.name ?? 'Depósito Papasud';
     const document = mockDocumentService.createRemito({
       lot: selectedLot,
       quantity,
@@ -120,6 +189,7 @@ export function NewExportPage() {
       transporterVehicle: selectedTransporter.vehicleType,
       transporterContact: selectedTransporter.contactName,
       transporterPhone: selectedTransporter.phone,
+      snapshot: snapshotFor(operation),
     });
     addGeneratedDocument(document);
     navigate(`/documents/${document.id}`);
@@ -141,6 +211,7 @@ export function NewExportPage() {
       <ExportForm
         lotId={lotId}
         lots={lots}
+        lotsMissingTreatment={lotsMissingTreatment}
         destinationCountry={destinationCountry}
         quantity={quantity}
         buyerName={buyerName}
@@ -151,6 +222,8 @@ export function NewExportPage() {
         transporterId={transporterId}
         transporters={transporters}
         notes={notes}
+        requirementsSourceText={requirementsSourceText}
+        useAiRequirements={useAiRequirements}
         isLoading={isAnalyzing}
         onLotChange={(value) => { setLotId(value); resetAnalysis(); }}
         onCountryChange={(value) => {
@@ -168,8 +241,14 @@ export function NewExportPage() {
         onDepartureDateChange={setDepartureDate}
         onTransporterChange={(value) => { setTransporterId(value); resetAnalysis(); }}
         onNotesChange={setNotes}
+        onRequirementsSourceTextChange={(value) => { setRequirementsSourceText(value); resetAnalysis(); }}
+        onUseAiRequirementsChange={(value) => { setUseAiRequirements(value); resetAnalysis(); }}
         onAnalyze={analyze}
       />
+
+      {error && (
+        <div className="mt-4 border border-[#dfaaa4] bg-[#fdf0ee] p-4 text-[12px] text-[#7c3732]" role="alert">{error}</div>
+      )}
 
       {validation && selectedLot && (
         <section className="mt-6">
@@ -180,12 +259,23 @@ export function NewExportPage() {
                 Lote {selectedLot.code}<ArrowRight size={15} className="text-[#8d928a]" />{destinationCountry}
               </h2>
             </div>
-            <p className="text-[10px] text-[#777c74]">{validation.completedFields.length} de {validation.requirements.length} requisitos completos</p>
+            <div className="text-right">
+              <p className="text-[10px] text-[#777c74]">
+                {validation.completedFields.length} de {validation.requirements.length} requisitos completos
+              </p>
+              {analysisSummary && <p className="mt-0.5 text-[10px] text-[#8b908a]">{analysisSummary}</p>}
+            </div>
           </div>
           <div className="grid grid-cols-[1.05fr_0.95fr] items-start gap-4 max-[1100px]:grid-cols-1">
-            <RequirementChecklist requirements={validation.requirements} />
+            <RequirementChecklist requirements={validation.requirements} engine={requirementsEngine} />
             <div>
-              {validation.missingFields.includes('treatment') && <MissingDataPanel onConfirm={confirmTraceability} />}
+              {validation.missingFields.includes('treatment') && (
+                <MissingDataPanel
+                  lotId={selectedLot.id}
+                  lotCode={selectedLot.code}
+                  onConfirm={confirmTraceability}
+                />
+              )}
               {validation.valid && (
                 <ExportSummary
                   lot={selectedLot}

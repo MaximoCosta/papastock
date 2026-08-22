@@ -1,8 +1,11 @@
 import type { Movement, StockControlCorrection, StockView, TraceabilityEvent } from '../types/domain';
 import type {
+  AiExportRequirementsResult,
+  ConfirmedTraceabilityEvent,
   DiscrepancyAnalysis,
   ExportValidationResult,
   ParsedTraceabilityEvent,
+  TraceabilityIntent,
 } from '../types/export';
 import { apiUrl, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
 
@@ -13,7 +16,12 @@ export interface AIService {
     traceability: TraceabilityEvent[],
   ): Promise<DiscrepancyAnalysis>;
   analyzeRequirements(validation: ExportValidationResult): Promise<{ summary: string }>;
-  parseTraceabilityInput(input: string): Promise<ParsedTraceabilityEvent>;
+  parseTraceabilityInput(input: string, lotId: string): Promise<ParsedTraceabilityEvent>;
+  analyzeExportRequirements(
+    country: string,
+    documentType: string,
+    sourceText: string,
+  ): Promise<AiExportRequirementsResult>;
   /** Mock OCR/visión: interpreta una foto de planilla de conteo marcada a mano. */
   parseStockControlSheet(file: File, scopeRecords: StockView[]): Promise<StockControlCorrection[]>;
 }
@@ -26,7 +34,8 @@ const monthNumbers: Record<string, string> = {
   julio: '07', agosto: '08', septiembre: '09', octubre: '10', noviembre: '11', diciembre: '12',
 };
 
-function parseDate(input: string): string {
+/** Último recurso si el endpoint no responde. Devuelve null antes que inventar un dato. */
+function parseDate(input: string): string | null {
   const isoMatch = input.match(/(20\d{2})[-/]([01]?\d)[-/]([0-3]?\d)/);
   if (isoMatch) {
     return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
@@ -36,16 +45,31 @@ function parseDate(input: string): string {
   if (spanishMatch) {
     const month = monthNumbers[spanishMatch[2].normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
     if (month) {
-      return `${spanishMatch[3] ?? '2026'}-${month}-${spanishMatch[1].padStart(2, '0')}`;
+      const year = spanishMatch[3] ?? String(new Date().getUTCFullYear());
+      return `${year}-${month}-${spanishMatch[1].padStart(2, '0')}`;
     }
   }
 
-  return '2026-08-18';
+  return null;
 }
 
-function parseProduct(input: string): string {
+function parseProduct(input: string): string | null {
   const productMatch = input.match(/(?:con|producto)\s+([\p{L}\d][\p{L}\d .-]*?)(?:\s+el\s+|\s+en\s+fecha|[,.]|$)/iu);
-  return productMatch?.[1]?.trim() || 'Producto informado';
+  return productMatch?.[1]?.trim() || null;
+}
+
+function localTraceabilityFallback(input: string): ParsedTraceabilityEvent {
+  const product = parseProduct(input);
+  const date = parseDate(input);
+  const found = Number(Boolean(product)) + Number(Boolean(date));
+  return {
+    type: 'treatment',
+    product,
+    date,
+    sourceText: input.trim(),
+    engine: 'heuristic',
+    confidence: found === 2 ? 0.5 : found === 1 ? 0.35 : 0.15,
+  };
 }
 
 /** Correcciones hardcodeadas para la demo (sin backend). */
@@ -132,14 +156,47 @@ const httpAIService: AIService = {
     };
   },
 
-  async parseTraceabilityInput(input) {
-    await delay(480);
-    return {
-      type: 'treatment',
-      date: parseDate(input),
-      product: parseProduct(input),
-      sourceText: input.trim(),
+  async parseTraceabilityInput(input, lotId) {
+    const text = input.trim();
+    try {
+      const response = await fetch('/api/ai/traceability-intent', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ text, lotId }),
+      });
+      const payload = await response.json().catch(() => ({})) as { data?: TraceabilityIntent };
+      const data = payload.data;
+      if (!response.ok || !data || !['llm', 'heuristic'].includes(data.engine)) {
+        throw new Error('Interpretación no disponible.');
+      }
+      return {
+        type: 'treatment',
+        product: data.product,
+        date: data.date,
+        sourceText: text,
+        engine: data.engine,
+        confidence: data.confidence,
+      };
+    } catch {
+      // El endpoint ya cae solo a heurística server-side; esto cubre red caída.
+      return localTraceabilityFallback(text);
+    }
+  },
+
+  async analyzeExportRequirements(country, documentType, sourceText) {
+    const response = await fetch('/api/ai/export-requirements', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ country, documentType, sourceText }),
+    });
+    const payload = await response.json().catch(() => ({})) as {
+      data?: AiExportRequirementsResult;
+      error?: string;
     };
+    if (!response.ok || !payload.data || !['llm', 'heuristic'].includes(payload.data.engine)) {
+      throw new Error(payload.error ?? `La interpretación de requisitos no está disponible (HTTP ${response.status}).`);
+    }
+    return payload.data;
   },
 
   // TODO backend: POST /api/ai/stock-sheet (multipart image + scope)
@@ -156,14 +213,18 @@ const httpAIService: AIService = {
 export const aiService: AIService = httpAIService;
 
 export function toTraceabilityEvent(
-  parsed: ParsedTraceabilityEvent,
+  confirmed: ConfirmedTraceabilityEvent,
   lotId: string,
 ): TraceabilityEvent {
   return {
-    id: `trace-${lotId}-${parsed.type}-${Date.now()}`,
+    id: `trace-${lotId}-${confirmed.type}-${Date.now()}`,
     lotId,
-    type: parsed.type,
-    date: parsed.date,
-    data: { product: parsed.product, sourceText: parsed.sourceText, origin: 'operator_confirmation' },
+    type: confirmed.type,
+    date: confirmed.date,
+    data: {
+      product: confirmed.product,
+      sourceText: confirmed.sourceText,
+      origin: 'operator_confirmation',
+    },
   };
 }

@@ -1,10 +1,10 @@
-import { Camera, CheckCircle2, ClipboardCheck, LoaderCircle, Printer, Sparkles, Upload } from 'lucide-react';
+import { Camera, CheckCircle2, ClipboardCheck, LoaderCircle, Printer, RotateCcw, ScanText, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatKg, formatSignedKg } from '../../lib/formatters';
 import { aiService } from '../../services/aiService';
 import { mockDocumentService } from '../../services/documentService';
-import type { Location, Shelf, StockControlCorrection, StockView, TraceabilityEvent } from '../../types/domain';
+import type { Location, Shelf, StockControlCorrection, StockView } from '../../types/domain';
 import type { PlanillaConteoDocument } from '../../types/export';
 import { Button } from '../common/Button';
 
@@ -16,14 +16,14 @@ export function StockControlWizard({
   stockViews,
   onApply,
   onCreateDocument,
-  onTraceability,
+  onReset,
 }: {
   locations: Location[];
   shelves: Shelf[];
   stockViews: StockView[];
   onApply: (corrections: StockControlCorrection[]) => void;
   onCreateDocument: (document: PlanillaConteoDocument) => void;
-  onTraceability: (events: TraceabilityEvent[]) => Promise<void>;
+  onReset: () => Promise<void>;
 }) {
   const navigate = useNavigate();
   const [step, setStep] = useState<WizardStep>(1);
@@ -97,33 +97,29 @@ export function StockControlWizard({
     }
   }
 
-  async function applyCorrections() {
+  // El backend todavía no acepta eventos `stock_verification`, así que la corrección
+  // queda deliberadamente en la sesión y no se envía a `POST /api/traceability`.
+  function applyCorrections() {
     if (corrections.length === 0) return;
     setApplying(true);
     setError(undefined);
     try {
       onApply(corrections);
-      const today = new Date().toISOString().slice(0, 10);
-      const events: TraceabilityEvent[] = corrections.map((correction, index) => {
-        const record = stockViews.find((item) => item.id === correction.stockRecordId);
-        return {
-          id: `trace-verify-${correction.stockRecordId}-${Date.now()}-${index}`,
-          lotId: record?.lotId ?? correction.stockRecordId,
-          type: 'stock_verification',
-          date: today,
-          locationId: record?.locationId,
-          data: {
-            countedQuantity: correction.countedQuantity,
-            previousVerified: correction.previousVerified,
-            notes: correction.notes,
-            origin: 'ai_sheet_photo',
-          },
-        };
-      });
-      await onTraceability(events);
       setApplied(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudieron aplicar las correcciones.');
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function revertSimulation() {
+    setApplying(true);
+    try {
+      await onReset();
+      setApplied(false);
+      setCorrections([]);
+      setStep(1);
     } finally {
       setApplying(false);
     }
@@ -259,8 +255,8 @@ export function StockControlWizard({
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="ghost" onClick={() => setStep(1)}>← Volver</Button>
             <Button onClick={() => void analyzePhoto()} disabled={!photo || analyzing}>
-              {analyzing ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
-              {analyzing ? 'Analizando…' : 'Analizar con IA'}
+              {analyzing ? <LoaderCircle size={14} className="animate-spin" /> : <ScanText size={14} />}
+              {analyzing ? 'Interpretando planilla…' : 'Interpretar planilla'}
             </Button>
           </div>
         </section>
@@ -286,6 +282,12 @@ export function StockControlWizard({
               </span>
             )}
           </div>
+
+          <p className="mb-4 border-l-[3px] border-[#c9a94f] bg-[#fdf8e9] px-4 py-2.5 text-[10px] leading-4 text-[#6d5c25]">
+            Demo · las correcciones quedan en esta sesión y no se escriben en PostgreSQL. Pueden
+            alterar temporalmente lotes con discrepancia abierta, como A-204. Usá
+            «Revertir simulación» para volver a los datos reales.
+          </p>
 
           <div className="overflow-hidden border border-[#dde0d8]">
             <table className="operational-table">
@@ -329,10 +331,15 @@ export function StockControlWizard({
 
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="ghost" onClick={() => setStep(2)} disabled={applying}>← Volver</Button>
-            <Button onClick={() => void applyCorrections()} disabled={applied || applying || corrections.length === 0}>
+            <Button onClick={applyCorrections} disabled={applied || applying || corrections.length === 0}>
               {applying ? <LoaderCircle size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-              {applied ? 'Correcciones aplicadas' : 'Aplicar al stock'}
+              {applied ? 'Correcciones aplicadas' : 'Aplicar en sesión'}
             </Button>
+            {applied && (
+              <Button variant="secondary" onClick={() => void revertSimulation()} disabled={applying}>
+                <RotateCcw size={14} /> Revertir simulación
+              </Button>
+            )}
           </div>
         </section>
       )}

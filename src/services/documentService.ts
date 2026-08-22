@@ -1,12 +1,38 @@
 import type { Lot, Shelf, StockView, TraceabilityEvent, Transporter } from '../types/domain';
 import type {
+  DocumentSnapshot,
   ExportOperation,
   FacturaDocument,
+  GeneratedDocument,
   PlanillaConteoDocument,
   PlanillaStockDocument,
   ProformaDocument,
   RemitoDocument,
 } from '../types/export';
+
+const storageKey = 'papastock.documents.v1';
+
+/**
+ * Almacenamiento temporal de documentos emitidos. Está encapsulado acá a
+ * propósito: cuando exista `generated_documents` en PostgreSQL se reemplaza
+ * esta implementación sin tocar componentes React.
+ */
+export function loadStoredDocuments(): GeneratedDocument[] {
+  try {
+    const raw = sessionStorage.getItem(storageKey);
+    return raw ? (JSON.parse(raw) as GeneratedDocument[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function persistDocuments(documents: GeneratedDocument[]): void {
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(documents));
+  } catch {
+    // Sin almacenamiento disponible los documentos siguen viviendo en memoria.
+  }
+}
 
 function nextDocumentId(prefix: string): string {
   return `${prefix}-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
@@ -31,6 +57,7 @@ export interface RemitoInput {
   transporterVehicle?: string;
   transporterContact?: string;
   transporterPhone?: string;
+  snapshot?: DocumentSnapshot;
 }
 
 export interface DocumentService {
@@ -39,6 +66,7 @@ export interface DocumentService {
     lot: Lot,
     events: TraceabilityEvent[],
     transporter?: Transporter,
+    snapshot?: DocumentSnapshot,
   ): ProformaDocument;
   createFactura(
     operation: ExportOperation,
@@ -46,6 +74,7 @@ export interface DocumentService {
     unitPrice: number,
     currency: string,
     transporter?: Transporter,
+    snapshot?: DocumentSnapshot,
   ): FacturaDocument;
   createRemito(input: RemitoInput): RemitoDocument;
   createPlanillaStock(records: StockView[], scope: string): PlanillaStockDocument;
@@ -53,8 +82,9 @@ export interface DocumentService {
 }
 
 export const mockDocumentService: DocumentService = {
-  createProforma(operation, lot, events, transporter) {
+  createProforma(operation, lot, events, transporter, snapshot) {
     return {
+      snapshot,
       id: nextDocumentId('PF'),
       type: 'proforma',
       createdAt: new Date().toISOString(),
@@ -79,8 +109,9 @@ export const mockDocumentService: DocumentService = {
     };
   },
 
-  createFactura(operation, lot, unitPrice, currency, transporter) {
+  createFactura(operation, lot, unitPrice, currency, transporter, snapshot) {
     return {
+      snapshot,
       id: nextDocumentId('FC'),
       type: 'factura',
       createdAt: new Date().toISOString(),
@@ -111,8 +142,10 @@ export const mockDocumentService: DocumentService = {
     transporterVehicle,
     transporterContact,
     transporterPhone,
+    snapshot,
   }) {
     return {
+      snapshot,
       id: nextDocumentId('RM'),
       type: 'remito',
       createdAt: new Date().toISOString(),

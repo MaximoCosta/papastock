@@ -4,7 +4,9 @@ import { config } from './config';
 import { pool } from './db/pool';
 import { PapaStockRepository } from './repositories/papaStockRepository';
 import { createDiscrepancyAnalyzer } from './services/groqDiscrepancy';
+import { createExportRequirementsParser } from './services/groqExportRequirements';
 import { createMovementIntentParser } from './services/groqMovementIntent';
+import { createTraceabilityIntentParser } from './services/groqTraceabilityIntent';
 import { buildPlanillaImportFromFile, buildStockIntakePlan, demoSnapshot, materializePlanillaImport } from './services/planillaImport';
 
 const identifier = z.string().min(1).max(120);
@@ -90,11 +92,24 @@ const stockIntakeSchema = z.object({
   producer: optionalText(120),
 });
 
+const traceabilityIntentInputSchema = z.object({
+  text: z.string().trim().min(8).max(1000),
+  lotId: identifier,
+});
+
+const exportRequirementsInputSchema = z.object({
+  country: z.string().trim().min(2).max(80),
+  documentType: z.string().trim().min(2).max(40),
+  sourceText: z.string().trim().min(8).max(2000),
+});
+
 export interface AppDependencies {
   repository?: Pick<PapaStockRepository,
     'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer' | 'executePlanillaImport'>;
   analyze?: ReturnType<typeof createDiscrepancyAnalyzer>;
   parseMovementIntent?: ReturnType<typeof createMovementIntentParser>;
+  parseTraceabilityIntent?: ReturnType<typeof createTraceabilityIntentParser>;
+  parseExportRequirements?: ReturnType<typeof createExportRequirementsParser>;
 }
 
 export function createApp(dependencies: AppDependencies = {}) {
@@ -110,6 +125,15 @@ export function createApp(dependencies: AppDependencies = {}) {
     model: config.aiModel,
     timeoutMs: config.groqTimeoutMs,
   });
+  const groqOptions = {
+    apiKey: config.groqApiKey,
+    model: config.aiModel,
+    timeoutMs: config.groqTimeoutMs,
+  };
+  const parseTraceabilityIntent = dependencies.parseTraceabilityIntent
+    ?? createTraceabilityIntentParser(groqOptions);
+  const parseExportRequirements = dependencies.parseExportRequirements
+    ?? createExportRequirementsParser(groqOptions);
 
   app.disable('x-powered-by');
   app.use(express.json({ limit: '64kb' }));
@@ -154,6 +178,20 @@ export function createApp(dependencies: AppDependencies = {}) {
         locations: snapshot.locations.map(({ name }) => ({ name })),
       });
       response.json({ data });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/ai/traceability-intent', async (request, response, next) => {
+    try {
+      const { text } = traceabilityIntentInputSchema.parse(request.body);
+      response.json({ data: await parseTraceabilityIntent(text) });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/ai/export-requirements', async (request, response, next) => {
+    try {
+      const input = exportRequirementsInputSchema.parse(request.body);
+      response.json({ data: await parseExportRequirements(input) });
     } catch (error) { next(error); }
   });
 
