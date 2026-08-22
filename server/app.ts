@@ -4,6 +4,7 @@ import { config } from './config';
 import { pool } from './db/pool';
 import { PapaStockRepository } from './repositories/papaStockRepository';
 import { createDiscrepancyAnalyzer } from './services/groqDiscrepancy';
+import { createMovementIntentParser } from './services/groqMovementIntent';
 
 const identifier = z.string().min(1).max(120);
 const discrepancyInputSchema = z.object({
@@ -49,15 +50,34 @@ const traceabilityInputSchema = z.object({
   }),
 });
 
+const movementTextSchema = z.object({
+  text: z.string().trim().min(8).max(500),
+});
+
+const movementIntentSchema = z.object({
+  action: z.literal('transfer'),
+  lotCode: identifier.max(40),
+  quantityKg: z.number().positive().max(1_000_000),
+  origin: identifier,
+  destination: identifier,
+});
+
 export interface AppDependencies {
-  repository?: Pick<PapaStockRepository, 'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent'>;
+  repository?: Pick<PapaStockRepository,
+    'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer'>;
   analyze?: ReturnType<typeof createDiscrepancyAnalyzer>;
+  parseMovementIntent?: ReturnType<typeof createMovementIntentParser>;
 }
 
 export function createApp(dependencies: AppDependencies = {}) {
   const app = express();
   const repository = dependencies.repository ?? (pool ? new PapaStockRepository(pool) : undefined);
   const analyze = dependencies.analyze ?? createDiscrepancyAnalyzer({
+    apiKey: config.groqApiKey,
+    model: config.aiModel,
+    timeoutMs: config.groqTimeoutMs,
+  });
+  const parseMovementIntent = dependencies.parseMovementIntent ?? createMovementIntentParser({
     apiKey: config.groqApiKey,
     model: config.aiModel,
     timeoutMs: config.groqTimeoutMs,
@@ -96,13 +116,44 @@ export function createApp(dependencies: AppDependencies = {}) {
     } catch (error) { next(error); }
   });
 
+  app.post('/api/ai/movement-intent', async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      const { text } = movementTextSchema.parse(request.body);
+      const snapshot = await repository.loadSnapshot();
+      const data = await parseMovementIntent(text, {
+        lots: snapshot.lots.map(({ code }) => ({ code })),
+        locations: snapshot.locations.map(({ name }) => ({ name })),
+      });
+      response.json({ data });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/movements/preview', async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      response.json({ data: await repository.previewStockTransfer(movementIntentSchema.parse(request.body)) });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/movements', async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      const movement = await repository.executeStockTransfer(movementIntentSchema.parse(request.body));
+      response.status(201).json({ data: movement });
+    } catch (error) { next(error); }
+  });
+
   app.use('/api', (_request, response) => response.status(404).json({ error: 'Endpoint no encontrado.' }));
   app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
     if (error instanceof z.ZodError) return response.status(400).json({ error: 'Solicitud inválida.', details: z.treeifyError(error) });
-    const candidate = error as { status?: number; code?: string; message?: string };
+    const candidate = error as { status?: number; code?: string; message?: string; details?: unknown };
     const status = candidate.status ?? (candidate.code === '23505' ? 409 : 500);
     if (status >= 500) console.error('[api]', error);
-    return response.status(status).json({ error: status >= 500 ? 'No se pudo completar la operación.' : candidate.message });
+    return response.status(status).json({
+      error: status >= 500 ? 'No se pudo completar la operación.' : candidate.message,
+      ...(candidate.details ? { details: candidate.details } : {}),
+    });
   });
   return app;
 }

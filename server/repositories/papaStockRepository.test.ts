@@ -19,4 +19,46 @@ describe('PapaStockRepository', () => {
     expect(result.stockRecords[0]).toMatchObject({ declaredQuantity: 25000, verifiedQuantity: 24000 });
     expect(result.movements[0]).toMatchObject({ reference: 'MV-1032', quantity: 1000 });
   });
+
+  it('confirma una transferencia dentro de BEGIN/COMMIT y actualiza ambos extremos', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql === 'begin' || sql === 'commit' || sql === 'rollback') return { rows: [] };
+      if (sql.includes('from public.locations')) return { rows: [
+        { id: 'central', name: 'Frigorífico Central', type: 'cold_storage', created_at: 'x' },
+        { id: 'warehouse', name: 'Galpón Principal', type: 'warehouse', created_at: 'x' },
+      ] };
+      if (sql.includes('from public.lots')) return { rows: [{ id: 'lot', code: 'A-310', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' }] };
+      if (sql.includes('from public.stock_records')) return { rows: [{ id: 'stock', lot_id: 'lot', location_id: 'central', declared_quantity: '22000', verified_quantity: '22000', verification_pending: false, updated_at: 'x' }] };
+      if (sql.includes('insert into public.movements')) return { rows: [{ id: 'move', reference: 'MV-N01-TEST', lot_id: 'lot', origin_location_id: 'central', destination_location_id: 'warehouse', quantity: '500', movement_date: '2026-08-22', status: 'completed', created_at: 'x' }] };
+      return { rows: [] };
+    });
+    const release = vi.fn();
+    const repository = new PapaStockRepository({ connect: async () => ({ query, release }) } as unknown as pg.Pool);
+
+    const result = await repository.executeStockTransfer({ action: 'transfer', lotCode: 'A-310', quantityKg: 500, origin: 'Frigorífico Central', destination: 'Galpón Principal' });
+
+    expect(result).toMatchObject({ status: 'completed', quantity: 500 });
+    expect(query.mock.calls.some(([sql]) => String(sql).startsWith('update public.stock_records'))).toBe(true);
+    expect(query.mock.calls.some(([sql]) => String(sql).startsWith('insert into public.stock_records'))).toBe(true);
+    expect(query).toHaveBeenCalledWith('commit');
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('hace rollback si la validación cambió antes de confirmar', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql === 'begin' || sql === 'commit' || sql === 'rollback') return { rows: [] };
+      if (sql.includes('from public.locations')) return { rows: [
+        { id: 'central', name: 'Frigorífico Central', type: 'cold_storage', created_at: 'x' },
+        { id: 'warehouse', name: 'Galpón Principal', type: 'warehouse', created_at: 'x' },
+      ] };
+      if (sql.includes('from public.lots')) return { rows: [{ id: 'lot', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' }] };
+      if (sql.includes('from public.stock_records')) return { rows: [{ id: 'stock', lot_id: 'lot', location_id: 'central', declared_quantity: '25000', verified_quantity: '24000', verification_pending: false, updated_at: 'x' }] };
+      return { rows: [] };
+    });
+    const repository = new PapaStockRepository({ connect: async () => ({ query, release: vi.fn() }) } as unknown as pg.Pool);
+
+    await expect(repository.executeStockTransfer({ action: 'transfer', lotCode: 'A-204', quantityKg: 500, origin: 'Frigorífico Central', destination: 'Galpón Principal' })).rejects.toMatchObject({ status: 409 });
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(query.mock.calls.some(([sql]) => String(sql).startsWith('update public.stock_records'))).toBe(false);
+  });
 });

@@ -21,7 +21,7 @@ function getFieldValue(field: ExportField, input: ExportValidationInput): string
       return input.lot?.origin;
     case 'treatment':
       return treatment && typeof treatment.data.product === 'string'
-        ? `${treatment.data.product} · ${new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC' }).format(new Date(`${treatment.date}T12:00:00Z`))}`
+        ? `${treatment.data.product} · ${new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC' }).format(new Date(`${treatment.date.slice(0, 10)}T12:00:00Z`))}`
         : undefined;
   }
 }
