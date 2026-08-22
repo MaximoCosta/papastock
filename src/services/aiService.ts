@@ -7,6 +7,7 @@ import type {
   ParsedTraceabilityEvent,
   TraceabilityIntent,
 } from '../types/export';
+import { hardcodedDiscrepancyAnalysis } from '../lib/demoDiscrepancyAnalysis';
 import { apiUrl, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
 
 export interface AIService {
@@ -122,6 +123,12 @@ function mockSheetCorrections(scopeRecords: StockView[]): StockControlCorrection
 
 const httpAIService: AIService = {
   async analyzeDiscrepancy(stock, lotMovements, traceability) {
+    const demoAnalysis = hardcodedDiscrepancyAnalysis(stock, lotMovements);
+    if (demoAnalysis) {
+      await delay(900);
+      return demoAnalysis;
+    }
+
     const response = await fetch(apiUrl('/api/ai/discrepancy'), {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
