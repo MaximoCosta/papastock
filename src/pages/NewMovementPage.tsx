@@ -128,7 +128,7 @@ export function NewMovementPage() {
             <li className="flex gap-3"><span className="tabular font-bold text-[#315740]">03</span>Una sola transacción PostgreSQL, después de confirmar.</li>
           </ol>
           <div className="mt-5 flex items-center gap-2 border-t border-[#cfd9d0] pt-4 text-[10px] font-semibold text-[#5c695f]">
-            <Database size={13} /> {dataSource === 'database' ? 'PostgreSQL conectado' : 'Movimiento deshabilitado en fallback mock'}
+            <Database size={13} /> {dataSource === 'database' ? 'PostgreSQL conectado' : dataSource === 'mock' ? 'Movimiento deshabilitado en modo mock' : 'Movimiento deshabilitado: API no disponible'}
           </div>
         </aside>
       </div>

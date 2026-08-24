@@ -38,6 +38,7 @@ export interface StockRecordRow {
   verification_pending: boolean;
   updated_at: string;
   unit?: QuantityUnit | null;
+  version?: number | string;
 }
 
 export interface MovementRow {
@@ -58,6 +59,8 @@ export interface MovementRow {
   received_unit?: QuantityUnit | null;
   received_at?: string | null;
   reception_status?: ReceptionStatus | null;
+  reception_idempotency_key?: string | null;
+  reception_payload_fingerprint?: string | null;
 }
 
 export interface MovementItemRow {

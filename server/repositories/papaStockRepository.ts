@@ -1,8 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { shelves as mockShelves } from '../../src/data/shelves';
-import { shelfUnits as mockShelfUnits } from '../../src/data/shelfUnits';
-import { transporters as mockTransporters } from '../../src/data/transporters';
 import { expandLegacyIntent, movementTouchesLot, recordMatchesUnit } from '../../src/lib/movements';
 import { stockUnit } from '../../src/lib/quantity';
 import { buildStockVerificationPreview, toStockVerificationConfirmation } from '../../src/lib/stockVerification';
@@ -34,8 +31,8 @@ import type {
   TraceabilityEvent,
 } from '../../src/types/domain';
 import { buildLotCorrectionPlan } from '../services/lotCorrection';
-import { buildReceptionPlan } from '../services/movementReception';
-import { PROTECTED_DEMO_LOT_CODES, fold, type PlanillaImportPlan } from '../services/planillaImport';
+import { buildReceptionPlan, receptionPayloadFingerprint } from '../services/movementReception';
+import { fold, type PlanillaImportPlan } from '../services/planillaImport';
 import { buildStockCountPlan } from '../services/stockCount';
 import { buildStockTransferPreview } from '../services/stockTransfer';
 import {
@@ -66,33 +63,44 @@ export class PapaStockRepository {
   constructor(private readonly database: pg.Pool) {}
 
   async loadSnapshot(): Promise<PapaStockSnapshot> {
-    const [locations, lots, stock, movements, items, traceability, discrepancies, counts] = await Promise.all([
-      this.database.query<LocationRow>('select * from public.locations order by id'),
-      this.database.query<LotRow>('select * from public.lots order by code'),
-      this.database.query<StockRecordRow>('select * from public.stock_records order by id'),
-      this.database.query<MovementRow>('select * from public.movements order by movement_date desc, id'),
-      this.database.query<MovementItemRow>('select * from public.movement_items order by movement_id, sort_order, id'),
-      this.database.query<TraceabilityEventRow>('select * from public.traceability_events order by event_date, id'),
-      this.database.query<DiscrepancyRow>('select * from public.discrepancies order by created_at desc, id'),
-      this.database.query<StockCountRow>('select * from public.stock_counts order by counted_at desc, id'),
-    ]);
+    const client = await this.database.connect();
+    try {
+      await client.query('begin isolation level repeatable read read only');
+      const [locations, lots, stock, movements, items, traceability, discrepancies, counts] = await Promise.all([
+        client.query<LocationRow>('select * from public.locations order by id'),
+        client.query<LotRow>('select * from public.lots order by code'),
+        client.query<StockRecordRow>('select * from public.stock_records order by id'),
+        client.query<MovementRow>('select * from public.movements order by movement_date desc, id'),
+        client.query<MovementItemRow>('select * from public.movement_items order by movement_id, sort_order, id'),
+        client.query<TraceabilityEventRow>('select * from public.traceability_events order by event_date, id'),
+        client.query<DiscrepancyRow>('select * from public.discrepancies order by created_at desc, id'),
+        client.query<StockCountRow>('select * from public.stock_counts order by counted_at desc, id'),
+      ]);
 
-    if (!locations.rowCount || !lots.rowCount || !stock.rowCount) {
-      throw new Error('La base existe pero el seed operativo está incompleto.');
+      if (!locations.rowCount || !lots.rowCount || !stock.rowCount) {
+        throw new Error('La base existe pero el seed operativo está incompleto.');
+      }
+
+      const snapshot = {
+        locations: locations.rows.map(mapLocation),
+        shelfUnits: [],
+        shelves: [],
+        lots: lots.rows.map(mapLot),
+        stockRecords: stock.rows.map(mapStockRecord),
+        movements: attachMovements(movements.rows, items.rows),
+        transporters: [],
+        traceabilityEvents: traceability.rows.map(mapTraceabilityEvent),
+        discrepancies: discrepancies.rows.map(mapDiscrepancy),
+        stockCounts: counts.rows.map(mapStockCount),
+      } satisfies PapaStockSnapshot;
+      await client.query('commit');
+      return snapshot;
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
     }
-
-    return {
-      locations: locations.rows.map(mapLocation),
-      shelfUnits: mockShelfUnits.map((item) => ({ ...item })),
-      shelves: mockShelves.map((item) => ({ ...item })),
-      lots: lots.rows.map(mapLot),
-      stockRecords: stock.rows.map(mapStockRecord),
-      movements: attachMovements(movements.rows, items.rows),
-      transporters: mockTransporters.map((item) => ({ ...item })),
-      traceabilityEvents: traceability.rows.map(mapTraceabilityEvent),
-      discrepancies: discrepancies.rows.map(mapDiscrepancy),
-      stockCounts: counts.rows.map(mapStockCount),
-    };
   }
 
   async loadLot(idOrCode: string): Promise<PapaStockSnapshot> {
@@ -147,12 +155,12 @@ export class PapaStockRepository {
         : { rows: [] as StockRecordRow[] };
       const snapshot: PapaStockSnapshot = {
         locations: locationsResult.rows.map(mapLocation),
-        shelfUnits: mockShelfUnits.map((item) => ({ ...item })),
-        shelves: mockShelves.map((item) => ({ ...item })),
+        shelfUnits: [],
+        shelves: [],
         lots: lotResult.rows.map(mapLot),
         stockRecords: stockResult.rows.map(mapStockRecord),
         movements: [],
-        transporters: mockTransporters.map((item) => ({ ...item })),
+        transporters: [],
         traceabilityEvents: [],
       };
       const preview = buildStockTransferPreview(expanded, snapshot);
@@ -175,7 +183,8 @@ export class PapaStockRepository {
           `update public.stock_records
            set declared_quantity = declared_quantity - $1,
                verified_quantity = verified_quantity - $1,
-               updated_at = now()
+               updated_at = now(),
+               version = version + 1
            where id = $2`,
           [line.quantity, originRecord.id],
         );
@@ -187,7 +196,8 @@ export class PapaStockRepository {
              declared_quantity = public.stock_records.declared_quantity + excluded.declared_quantity,
              verified_quantity = public.stock_records.verified_quantity + excluded.verified_quantity,
              verification_pending = false,
-             updated_at = now()`,
+             updated_at = now(),
+             version = public.stock_records.version + 1`,
           [`stock-${randomUUID()}`, line.lot.id, preview.destination.id, line.quantity, line.unit],
         );
       }
@@ -264,7 +274,6 @@ export class PapaStockRepository {
 
       let createdLots = 0;
       for (const lot of plan.lotsToCreate) {
-        if (PROTECTED_DEMO_LOT_CODES.has(lot.code)) continue;
         if (lotRows.rows.some((row) => row.code.toLowerCase() === lot.code.toLowerCase())) continue;
         await client.query(
           `insert into public.lots (id, code, variety, campaign, producer, origin, harvest_date)
@@ -286,7 +295,7 @@ export class PapaStockRepository {
         const lot = lotIdByCode.get(movement.lotCode.toLowerCase());
         const originId = locationIdByName.get(fold(movement.originName));
         const destinationId = locationIdByName.get(fold(movement.destinationName));
-        if (!lot || PROTECTED_DEMO_LOT_CODES.has(lot.code) || !originId || !destinationId || originId === destinationId) {
+        if (!lot || !originId || !destinationId || originId === destinationId) {
           skippedMovements += 1;
           continue;
         }
@@ -323,13 +332,13 @@ export class PapaStockRepository {
 
       for (const code of plan.stockLotCodes) {
         const lot = lotIdByCode.get(code.toLowerCase());
-        if (lot && !PROTECTED_DEMO_LOT_CODES.has(lot.code)) importedLotIds.add(lot.id);
+        if (lot) importedLotIds.add(lot.id);
       }
 
       let upsertedStockRecords = 0;
       for (const lotId of importedLotIds) {
         const lot = refreshedLots.rows.find((row) => row.id === lotId);
-        if (!lot || PROTECTED_DEMO_LOT_CODES.has(lot.code)) continue;
+        if (!lot) continue;
 
         const history = await client.query<MovementItemRow & { origin_location_id: string | null; destination_location_id: string | null; status: string }>(
           `select items.*, movements.origin_location_id, movements.destination_location_id, movements.status
@@ -362,10 +371,11 @@ export class PapaStockRepository {
               (id, lot_id, location_id, declared_quantity, verified_quantity, verification_pending, updated_at, unit)
              values ($1, $2, $3, $4, $4, false, now(), $5)
              on conflict (lot_id, location_id, unit) do update set
-               declared_quantity = excluded.declared_quantity,
-               verified_quantity = excluded.verified_quantity,
-               verification_pending = false,
-               updated_at = now()`,
+                declared_quantity = excluded.declared_quantity,
+                verified_quantity = excluded.verified_quantity,
+                verification_pending = false,
+                updated_at = now(),
+                version = public.stock_records.version + 1`,
             [`stock-imp-${randomUUID()}`, lotId, locationId, quantity, unit],
           );
           upsertedStockRecords += 1;
@@ -383,29 +393,47 @@ export class PapaStockRepository {
   }
 
   async executeStockVerification(input: StockVerificationInput): Promise<StockVerificationConfirmation> {
-    const snapshot = await this.loadSnapshot();
-    const preview = buildStockVerificationPreview(
-      input,
-      getStockViews(snapshot.stockRecords, snapshot.lots, snapshot.locations),
-    );
-    if (!preview.valid) {
-      throw Object.assign(new Error(preview.issues[0]?.message ?? 'La verificación no es válida.'), { status: 400, details: preview.issues });
-    }
-
     const client = await this.database.connect();
     try {
       await client.query('begin');
-      const updated = await client.query(
+      const locked = await client.query<StockRecordRow>(
+        'select * from public.stock_records where id = $1 for update',
+        [input.stockRecordId],
+      );
+      const current = locked.rows[0];
+      if (!current) {
+        throw Object.assign(new Error('Registro de stock no encontrado.'), { status: 404 });
+      }
+      const currentVersion = Number(current.version ?? 0);
+      if (currentVersion !== input.expectedVersion) {
+        throw Object.assign(new Error('El stock cambió desde el preview. Volvé a validar el conteo.'), { status: 409 });
+      }
+      const lotResult = await client.query<LotRow>('select * from public.lots where id = $1', [current.lot_id]);
+      const locationResult = await client.query<LocationRow>('select * from public.locations where id = $1', [current.location_id]);
+      const preview = buildStockVerificationPreview(
+        input,
+        getStockViews(
+          [mapStockRecord(current)],
+          lotResult.rows.map(mapLot),
+          locationResult.rows.map(mapLocation),
+        ),
+      );
+      if (!preview.valid) {
+        throw Object.assign(new Error(preview.issues[0]?.message ?? 'La verificación no es válida.'), { status: 400, details: preview.issues });
+      }
+
+      const updated = await client.query<StockRecordRow>(
         `update public.stock_records
             set verified_quantity = $1,
                 verification_pending = false,
-                updated_at = now()
-          where id = $2
-          returning id`,
-        [input.countedQuantity, input.stockRecordId],
+                updated_at = now(),
+                version = version + 1
+          where id = $2 and version = $3
+          returning *`,
+        [input.countedQuantity, input.stockRecordId, input.expectedVersion],
       );
       if (!updated.rowCount) {
-        throw Object.assign(new Error('Registro de stock no encontrado.'), { status: 404 });
+        throw Object.assign(new Error('El stock cambió durante la confirmación.'), { status: 409 });
       }
       const inserted = await client.query(
         `insert into public.traceability_events
@@ -427,7 +455,7 @@ export class PapaStockRepository {
         ],
       );
       await client.query('commit');
-      return toStockVerificationConfirmation(preview, true, inserted.rows[0]?.id);
+      return toStockVerificationConfirmation(preview, true, inserted.rows[0]?.id, Number(updated.rows[0].version));
     } catch (error) {
       await client.query('rollback');
       throw error;
@@ -448,10 +476,39 @@ export class PapaStockRepository {
         [input.movementId],
       );
       const movement = mapMovement(movementRow, itemResult.rows.map(mapMovementItem));
+      const fingerprint = receptionPayloadFingerprint(input);
+      if (movement.receptionStatus !== 'pending') {
+        if (
+          movementRow.reception_idempotency_key === input.idempotencyKey
+          && movementRow.reception_payload_fingerprint === fingerprint
+        ) {
+          const existingDiscrepancies = await client.query<DiscrepancyRow>(
+            'select * from public.discrepancies where movement_id = $1 order by created_at, id',
+            [movement.id],
+          );
+          await client.query('commit');
+          return {
+            movement,
+            discrepancies: existingDiscrepancies.rows.map(mapDiscrepancy),
+          };
+        }
+        throw Object.assign(new Error('El movimiento ya tiene una recepción registrada.'), { status: 409 });
+      }
+      if (movementRow.reception_idempotency_key) {
+        throw Object.assign(new Error('La recepción tiene una clave idempotente inconsistente.'), { status: 409 });
+      }
       const plan = buildReceptionPlan(movement, input);
       if (!plan.valid) {
         throw Object.assign(new Error(plan.errors[0]?.message ?? 'La recepción no es válida.'), { status: 409, details: plan.errors });
       }
+
+      await client.query(
+        `update public.movements
+            set reception_idempotency_key = $1,
+                reception_payload_fingerprint = $2
+          where id = $3`,
+        [input.idempotencyKey, fingerprint, movement.id],
+      );
 
       if (movement.destinationLocationId) {
         const lotIds = [...new Set(plan.stockAdjustments.map((item) => item.lotId))].sort();
@@ -474,7 +531,7 @@ export class PapaStockRepository {
       for (const adjustment of plan.stockAdjustments) {
         await client.query(
           `update public.stock_records
-              set verified_quantity = verified_quantity + $1, updated_at = now()
+              set verified_quantity = verified_quantity + $1, updated_at = now(), version = version + 1
             where lot_id = $2 and location_id = $3 and unit = $4`,
           [adjustment.deltaVerified, adjustment.lotId, movement.destinationLocationId, adjustment.unit],
         );
@@ -538,6 +595,14 @@ export class PapaStockRepository {
       return { movement: mapMovement(refreshed.rows[0], refreshedItems.rows.map(mapMovementItem)), discrepancies: created };
     } catch (error) {
       await client.query('rollback');
+      if (
+        typeof error === 'object'
+        && error !== null
+        && 'constraint' in error
+        && error.constraint === 'movements_reception_idempotency_key_unique'
+      ) {
+        throw Object.assign(new Error('La clave idempotente ya fue utilizada para otra recepción.'), { status: 409 });
+      }
       throw error;
     } finally {
       client.release();
@@ -562,21 +627,28 @@ export class PapaStockRepository {
       }
 
       await client.query(
-        `update public.stock_records
-            set declared_quantity = declared_quantity + $1,
-                verified_quantity = verified_quantity + $1,
-                updated_at = now()
-          where lot_id = $2 and location_id = $3 and unit = $4`,
-        [plan.quantity, plan.fromLot.id, plan.locationId, plan.unit],
+        `insert into public.stock_records
+          (id, lot_id, location_id, declared_quantity, verified_quantity, verification_pending, updated_at, unit)
+         values ($1, $2, $3, $4, $4, false, now(), $5)
+         on conflict (lot_id, location_id, unit) do update set
+           declared_quantity = stock_records.declared_quantity + excluded.declared_quantity,
+           verified_quantity = stock_records.verified_quantity + excluded.verified_quantity,
+           updated_at = now(),
+           version = stock_records.version + 1`,
+        [`stock-cor-${randomUUID()}`, plan.fromLot.id, plan.locationId, plan.quantity, plan.unit],
       );
-      await client.query(
+      const deducted = await client.query(
         `update public.stock_records
             set declared_quantity = declared_quantity - $1,
                 verified_quantity = verified_quantity - $1,
-                updated_at = now()
+                updated_at = now(),
+                version = version + 1
           where lot_id = $2 and location_id = $3 and unit = $4`,
         [plan.quantity, plan.toLot.id, plan.locationId, plan.unit],
       );
+      if (deducted.rowCount !== 1) {
+        throw Object.assign(new Error('El stock a corregir cambió antes de confirmar.'), { status: 409 });
+      }
 
       const token = randomUUID();
       const movementResult = await client.query<MovementRow>(
@@ -656,7 +728,7 @@ export class PapaStockRepository {
 
       await client.query(
         `update public.stock_records
-            set verified_quantity = $1, verification_pending = false, updated_at = now()
+            set verified_quantity = $1, verification_pending = false, updated_at = now(), version = version + 1
           where id = $2`,
         [input.observedQuantity, plan.record.id],
       );

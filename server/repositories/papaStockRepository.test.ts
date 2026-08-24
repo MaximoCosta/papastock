@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PapaStockRepository } from './papaStockRepository';
 
 describe('PapaStockRepository', () => {
-  it('proyecta un snapshot coherente desde cinco consultas', async () => {
+  it('proyecta un snapshot coherente en una transacción read-only', async () => {
     const responses = [
       { rowCount: 1, rows: [{ id: 'loc', name: 'Sur', type: 'cold_storage', created_at: 'x' }] },
       { rowCount: 1, rows: [{ id: 'lot', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' }] },
@@ -14,11 +14,17 @@ describe('PapaStockRepository', () => {
       { rowCount: 0, rows: [] },
       { rowCount: 0, rows: [] },
     ];
-    const query = vi.fn(async () => responses.shift());
-    const repository = new PapaStockRepository({ query } as unknown as pg.Pool);
+    const query = vi.fn(async (sql: string) => {
+      if (sql.startsWith('begin') || sql === 'commit' || sql === 'rollback') return { rowCount: 0, rows: [] };
+      return responses.shift();
+    });
+    const release = vi.fn();
+    const repository = new PapaStockRepository({ connect: async () => ({ query, release }) } as unknown as pg.Pool);
     const result = await repository.loadSnapshot();
 
-    expect(query).toHaveBeenCalledTimes(8);
+    expect(query).toHaveBeenNthCalledWith(1, 'begin isolation level repeatable read read only');
+    expect(query).toHaveBeenCalledWith('commit');
+    expect(release).toHaveBeenCalledOnce();
     expect(result.stockRecords[0]).toMatchObject({ declaredQuantity: 25000, verifiedQuantity: 24000 });
     expect(result.movements[0]).toMatchObject({ reference: 'MV-1032', quantity: 1000 });
   });
@@ -223,6 +229,41 @@ describe('PapaStockRepository', () => {
     })).rejects.toMatchObject({ status: 409 });
     expect(query).toHaveBeenCalledWith('rollback');
     expect(query.mock.calls.some(([sql]) => String(sql).startsWith('update public.stock_records'))).toBe(false);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('insert into public.movements'))).toBe(false);
+  });
+
+  it('restaura una corrección con UPSERT y revierte si el descuento no afecta una fila', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql === 'begin' || sql === 'commit' || sql === 'rollback') return { rows: [], rowCount: 0 };
+      if (sql.includes('select * from public.movements')) return { rows: [{
+        id: 'original', reference: 'MV-ORIGINAL', lot_id: 'lot-from', origin_location_id: 'other',
+        destination_location_id: 'loc', quantity: '10', movement_date: '2026-08-22', status: 'completed',
+        kind: 'transfer', reception_status: 'received', data: {}, created_at: 'x',
+      }], rowCount: 1 };
+      if (sql.includes('select * from public.movement_items')) return { rows: [{
+        id: 'original-item', movement_id: 'original', lot_id: 'lot-from', dispatched_quantity: '10',
+        received_quantity: '10', received_at: 'x', unit: 'kg', sort_order: 0, data: {}, created_at: 'x',
+      }], rowCount: 1 };
+      if (sql.includes('select * from public.lots')) return { rows: [
+        { id: 'lot-from', code: 'FROM', variety: 'V', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' },
+        { id: 'lot-to', code: 'TO', variety: 'V', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' },
+      ], rowCount: 2 };
+      if (sql.includes('select * from public.stock_records')) return { rows: [{
+        id: 'stock-to', lot_id: 'lot-to', location_id: 'loc', declared_quantity: '10',
+        verified_quantity: '10', verification_pending: false, updated_at: 'x', unit: 'kg',
+      }], rowCount: 1 };
+      if (sql.startsWith('insert into public.stock_records')) return { rows: [], rowCount: 1 };
+      if (sql.startsWith('update public.stock_records')) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+    const repository = new PapaStockRepository({ connect: async () => ({ query, release: vi.fn() }) } as unknown as pg.Pool);
+
+    await expect(repository.executeLotCorrection({
+      originalMovementId: 'original', locationId: 'loc', fromLotCode: 'FROM', toLotCode: 'TO', quantity: 10, unit: 'kg',
+    })).rejects.toMatchObject({ status: 409 });
+
+    expect(query.mock.calls.some(([sql]) => String(sql).startsWith('insert into public.stock_records'))).toBe(true);
+    expect(query).toHaveBeenCalledWith('rollback');
     expect(query.mock.calls.some(([sql]) => String(sql).includes('insert into public.movements'))).toBe(false);
   });
 });

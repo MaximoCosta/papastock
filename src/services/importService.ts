@@ -1,4 +1,5 @@
 import type { PlanillaImportConfirmation, PlanillaImportPreview } from '../types/domain';
+import { apiUrl } from './apiClient';
 
 async function readResponse<T>(response: Response, fallback: string): Promise<T> {
   const payload = await response.json().catch(() => ({})) as { data?: T; error?: string };
@@ -15,7 +16,7 @@ function uploadHeaders(file: File): HeadersInit {
 }
 
 export async function previewPlanillaImport(file: File): Promise<PlanillaImportPreview> {
-  const response = await fetch('/api/imports/planilla/preview', {
+  const response = await fetch(apiUrl('/api/imports/planilla/preview'), {
     method: 'POST',
     headers: uploadHeaders(file),
     body: file,
@@ -24,7 +25,7 @@ export async function previewPlanillaImport(file: File): Promise<PlanillaImportP
 }
 
 export async function confirmPlanillaImport(file: File): Promise<PlanillaImportConfirmation> {
-  const response = await fetch('/api/imports/planilla', {
+  const response = await fetch(apiUrl('/api/imports/planilla'), {
     method: 'POST',
     headers: uploadHeaders(file),
     body: file,

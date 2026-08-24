@@ -24,7 +24,7 @@ describe('hardcodedDiscrepancyAnalysis', () => {
     expect(analysis?.summary).toMatch(/161/);
     expect(analysis?.summary).toMatch(/Santa Ana/);
     expect(analysis?.summary).toMatch(/MV-1847/);
-    expect(analysis?.explainedQuantity + analysis!.unexplainedQuantity).toBe(350);
+    expect((analysis?.explainedQuantity ?? 0) + (analysis?.unexplainedQuantity ?? 0)).toBe(350);
     expect(analysis?.recommendedAction).toMatch(/no autoriza/i);
   });
 

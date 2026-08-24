@@ -225,7 +225,7 @@ export function NewExportPage() {
   }
 
   function buildContext(): ExportDocumentContext | undefined {
-    if (selectedLots.length === 0 || !validation) return undefined;
+    if (dataSource === 'unavailable' || selectedLots.length === 0 || !validation) return undefined;
     const operation = buildExportOperation(exportLines, destinationCountry, logistics());
     const originLocation = exportLines
       .map((line) => stockViews.find((record) => record.lotId === line.lotId)?.location.name)

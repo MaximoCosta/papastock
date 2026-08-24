@@ -18,9 +18,9 @@ if (config.nodeEnv === 'production') {
   });
 } else {
   if (pool) {
-    try { await verifyDatabaseConnection(); } catch (error) { console.warn('[database] se usará fallback mock:', error); }
+    try { await verifyDatabaseConnection(); } catch (error) { console.warn('[database] API operativa sin conexión; no se sustituirán datos por mock:', error); }
   } else {
-    console.warn('[database] DATABASE_URL ausente; el frontend usará el snapshot mock.');
+    console.warn('[database] DATABASE_URL ausente; la API operativa responderá como no configurada.');
   }
   const { createServer } = await import('vite');
   const vite = await createServer({ server: { middlewareMode: true }, appType: 'spa' });

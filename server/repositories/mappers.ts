@@ -42,6 +42,7 @@ export const mapStockRecord = (row: StockRecordRow): StockRecord => ({
   verificationPending: row.verification_pending,
   updatedAt: row.updated_at,
   unit: stockUnit(row),
+  version: Number(row.version ?? 0),
 });
 
 export const mapMovementItem = (row: MovementItemRow): MovementItem => ({

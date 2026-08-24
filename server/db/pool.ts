@@ -25,3 +25,20 @@ export function requirePool(): pg.Pool {
 export async function verifyDatabaseConnection(): Promise<void> {
   await requirePool().query('select 1');
 }
+
+export async function checkDatabaseReadiness(database: pg.Pool, timeoutMs: number): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const query = database.query('select 1');
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error('PostgreSQL readiness timeout.')), timeoutMs);
+  });
+  try {
+    await Promise.race([query, deadline]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+export async function verifyDatabaseReadiness(): Promise<void> {
+  await checkDatabaseReadiness(requirePool(), config.databaseReadinessTimeoutMs);
+}

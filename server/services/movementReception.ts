@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { movementItemsOf } from '../../src/lib/movements';
 import type {
   Discrepancy,
@@ -9,6 +10,21 @@ import type {
 } from '../../src/types/domain';
 
 const EPSILON = 0.001;
+
+export function receptionPayloadFingerprint(input: MovementReceptionInput): string {
+  const normalized = {
+    movementId: input.movementId,
+    date: input.date,
+    items: input.items
+      ? [...input.items]
+          .sort((left, right) => left.movementItemId.localeCompare(right.movementItemId))
+          .map(({ movementItemId, receivedQuantity }) => ({ movementItemId, receivedQuantity }))
+      : null,
+    receivedTotal: input.receivedTotal ?? null,
+    unit: input.unit ?? null,
+  };
+  return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+}
 
 export interface ReceptionPlan {
   valid: boolean;
@@ -29,6 +45,9 @@ export function buildReceptionPlan(movement: Movement, input: MovementReceptionI
   }
   if (movement.kind === 'correction') {
     errors.push({ code: 'NOT_RECEIVABLE', message: 'Una corrección no se recepciona.' });
+  }
+  if (movement.receptionStatus !== 'pending') {
+    errors.push({ code: 'RECEPTION_TERMINAL', message: 'El movimiento ya no admite una recepción inicial.' });
   }
 
   const itemUpdates: ReceptionPlan['itemUpdates'] = [];

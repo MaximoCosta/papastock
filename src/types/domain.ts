@@ -51,6 +51,7 @@ export interface StockRecord {
   updatedAt: string;
   verificationPending?: boolean;
   unit?: QuantityUnit;
+  version?: number;
 }
 
 export type MovementStatus = 'completed' | 'pending' | 'cancelled';
@@ -176,6 +177,7 @@ export interface StockIntakeInput {
 
 export interface StockVerificationInput {
   stockRecordId: string;
+  expectedVersion: number;
   countedQuantity: number;
   date: string;
   bags?: number;
@@ -186,6 +188,7 @@ export interface StockVerificationPreview {
   valid: boolean;
   issues: PlanillaImportIssue[];
   stockRecordId: string;
+  expectedVersion: number;
   lotId: string;
   lotCode: string;
   variety: string;
@@ -307,6 +310,7 @@ export interface StockControlCorrection {
   lotCode: string;
   countedQuantity: number;
   previousVerified: number;
+  newVersion?: number;
   notes?: string;
 }
 
@@ -364,6 +368,7 @@ export interface StockTransferPreview extends ValidationResult {
 
 export interface MovementReceptionInput {
   movementId: string;
+  idempotencyKey: string;
   date: string;
   items?: Array<{ movementItemId: string; receivedQuantity: number }>;
   receivedTotal?: number;

@@ -51,10 +51,10 @@ export async function receiveMovement(movementId: string, body: {
   items?: Array<{ movementItemId: string; receivedQuantity: number }>;
   receivedTotal?: number;
   unit?: 'bags' | 'kg';
-}) {
+}, idempotencyKey: string) {
   const response = await fetch(apiUrl(`/api/movements/${movementId}/reception`), {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    headers: { 'content-type': 'application/json', accept: 'application/json', 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(body),
   });
   return readApiData(response, 'No se pudo registrar la recepción.');

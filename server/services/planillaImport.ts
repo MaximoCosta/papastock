@@ -1,10 +1,7 @@
 import { createHash } from 'node:crypto';
+import { TextDecoder } from 'node:util';
 import * as XLSX from 'xlsx';
 import type { PapaStockSnapshot } from '../../src/repositories/dataRepository';
-import { locations as seedLocations } from '../../src/data/locations';
-import { lots as seedLots } from '../../src/data/lots';
-import { movements as seedMovements } from '../../src/data/movements';
-import { stockRecords as seedStockRecords } from '../../src/data/stock';
 import type {
   Location,
   LocationType,
@@ -19,10 +16,59 @@ import type {
   StockRecord,
 } from '../../src/types/domain';
 
-export const PROTECTED_DEMO_LOT_CODES = new Set(['A-204', 'A-310', 'C-102', 'F-301']);
-
 const SAMPLE_SIZE = 25;
 const MAX_ISSUES = 80;
+export const PLANILLA_LIMITS = Object.freeze({
+  maxFileBytes: 4 * 1024 * 1024,
+  maxSheets: 20,
+  maxRowsPerSheet: 10_000,
+  maxColumnsPerSheet: 80,
+  maxCells: 250_000,
+  maxImportedRows: 50_000,
+});
+
+function importError(message: string, status = 400): Error & { status: number } {
+  return Object.assign(new Error(message), { status });
+}
+
+function fileExtension(fileName: string): 'csv' | 'xls' | 'xlsx' | undefined {
+  const extension = /\.([a-z0-9]+)$/i.exec(fileName.trim())?.[1]?.toLowerCase();
+  return extension === 'csv' || extension === 'xls' || extension === 'xlsx' ? extension : undefined;
+}
+
+function hasPrefix(buffer: Buffer, bytes: number[]): boolean {
+  return bytes.every((byte, index) => buffer[index] === byte);
+}
+
+export function validatePlanillaUpload(buffer: Buffer, fileName: string, contentType?: string): void {
+  if (!buffer.length) throw importError('El archivo está vacío.');
+  if (buffer.length > PLANILLA_LIMITS.maxFileBytes) throw importError('La planilla supera el límite de 4 MB.', 413);
+  const extension = fileExtension(fileName);
+  if (!extension) throw importError('El archivo debe ser .csv, .xls o .xlsx.', 415);
+
+  const mime = contentType?.split(';', 1)[0]?.trim().toLowerCase() || 'application/octet-stream';
+  const allowedMime = extension === 'csv'
+    ? new Set(['text/csv', 'application/csv', 'text/plain', 'application/vnd.ms-excel', 'application/octet-stream'])
+    : extension === 'xlsx'
+      ? new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip', 'application/octet-stream'])
+      : new Set(['application/vnd.ms-excel', 'application/octet-stream']);
+  if (!allowedMime.has(mime)) throw importError('El tipo de contenido no coincide con la extensión de la planilla.', 415);
+
+  if (extension === 'xlsx' && !hasPrefix(buffer, [0x50, 0x4b, 0x03, 0x04])) {
+    throw importError('El archivo .xlsx no tiene una firma ZIP válida.', 415);
+  }
+  if (extension === 'xls' && !hasPrefix(buffer, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {
+    throw importError('El archivo .xls no tiene una firma OLE válida.', 415);
+  }
+  if (extension === 'csv') {
+    if (buffer.includes(0)) throw importError('El CSV contiene bytes binarios no permitidos.', 415);
+    try {
+      new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    } catch {
+      throw importError('El CSV debe estar codificado en UTF-8.', 415);
+    }
+  }
+}
 
 type SheetKind = 'campo-frio' | 'tolvas' | 'env-frio' | 'ret-frio' | 'pchica' | 'trevelin' | 'entregas' | 'generic';
 
@@ -343,12 +389,16 @@ interface RawParse {
 function parseWorkbook(buffer: Buffer, fileName: string): RawParse {
   const isCsv = /\.csv$/i.test(fileName);
   const workbook = isCsv
-    ? XLSX.read(buffer.toString('utf8').replace(/^\uFEFF/, ''), { type: 'string', raw: true, cellDates: true })
-    : XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: true });
+    ? XLSX.read(buffer.toString('utf8').replace(/^\uFEFF/, ''), { type: 'string', raw: true, cellDates: true, dense: true, sheetRows: PLANILLA_LIMITS.maxRowsPerSheet + 1 })
+    : XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: true, dense: true, sheetRows: PLANILLA_LIMITS.maxRowsPerSheet + 1 });
+  if (workbook.SheetNames.length > PLANILLA_LIMITS.maxSheets) {
+    throw importError(`La planilla supera el límite de ${PLANILLA_LIMITS.maxSheets} hojas.`, 413);
+  }
   const issues: PlanillaImportIssue[] = [];
   const rows: PlanillaImportRow[] = [];
   const sheets: PlanillaImportPreview['sheets'] = [];
   const skippedSheets: string[] = [];
+  let visitedCells = 0;
 
   for (const sheetName of workbook.SheetNames) {
     const identified = identifySheet(sheetName);
@@ -358,12 +408,28 @@ function parseWorkbook(buffer: Buffer, fileName: string): RawParse {
     }
 
     const sheet = workbook.Sheets[sheetName];
+    const rangeReference = (sheet as XLSX.WorkSheet & { '!fullref'?: string })['!fullref'] ?? sheet['!ref'];
+    if (rangeReference) {
+      const range = XLSX.utils.decode_range(rangeReference);
+      const rowCount = range.e.r - range.s.r + 1;
+      const columnCount = range.e.c - range.s.c + 1;
+      if (rowCount > PLANILLA_LIMITS.maxRowsPerSheet) {
+        throw importError(`La hoja “${sheetName}” supera el límite de ${PLANILLA_LIMITS.maxRowsPerSheet} filas.`, 413);
+      }
+      if (columnCount > PLANILLA_LIMITS.maxColumnsPerSheet) {
+        throw importError(`La hoja “${sheetName}” supera el límite de ${PLANILLA_LIMITS.maxColumnsPerSheet} columnas.`, 413);
+      }
+    }
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
       raw: true,
       defval: '',
       blankrows: false,
     });
+    visitedCells += matrix.reduce((total, row) => total + row.length, 0);
+    if (visitedCells > PLANILLA_LIMITS.maxCells) {
+      throw importError(`La planilla supera el límite de ${PLANILLA_LIMITS.maxCells} celdas procesables.`, 413);
+    }
     const headerRow = findHeaderRow(matrix);
     const kind: SheetKind | undefined = identified ?? (headerRow >= 0 ? 'generic' : undefined);
     if (!kind) {
@@ -436,17 +502,6 @@ function parseWorkbook(buffer: Buffer, fileName: string): RawParse {
         issues.push({ sheet: sheetName, rowNumber, code: 'MISSING_DATE', message: `El lote ${lotCode} no tiene fecha.` });
         continue;
       }
-      if (PROTECTED_DEMO_LOT_CODES.has(lotCode)) {
-        skipped += 1;
-        issues.push({
-          sheet: sheetName,
-          rowNumber,
-          code: 'PROTECTED_DEMO_LOT',
-          message: `El lote ${lotCode} es de demo (N02/N03) y no se importa.`,
-        });
-        continue;
-      }
-
       const variety = varietyRaw ? titleCase(varietyRaw) : (kind === 'pchica' ? 'Papa chica' : 'Sin especificar');
       const originName = resolveLocationSpec(
         originRaw || originFromNotes(notes, defaultOrigin(kind)) || defaultOrigin(kind),
@@ -501,6 +556,9 @@ function parseWorkbook(buffer: Buffer, fileName: string): RawParse {
         reference: `IMP-${createHash('sha256').update(referenceSeed).digest('hex').slice(0, 16).toUpperCase()}`,
       };
       rows.push(parsed);
+      if (rows.length > PLANILLA_LIMITS.maxImportedRows) {
+        throw importError(`La planilla supera el límite de ${PLANILLA_LIMITS.maxImportedRows} movimientos.`, 413);
+      }
       imported += 1;
     }
 
@@ -521,12 +579,7 @@ function matchLot(code: string, lots: Lot[]): Lot | undefined {
 }
 
 export function parsePlanillaBuffer(buffer: Buffer, fileName: string): RawParse {
-  if (!buffer.length) {
-    throw Object.assign(new Error('El archivo está vacío.'), { status: 400 });
-  }
-  if (!/\.(xlsx|xls|csv)$/i.test(fileName)) {
-    throw Object.assign(new Error('El archivo debe ser .csv, .xls o .xlsx.'), { status: 400 });
-  }
+  validatePlanillaUpload(buffer, fileName);
   try {
     return parseWorkbook(buffer, fileName);
   } catch (error) {
@@ -629,19 +682,6 @@ export function buildPlanillaImportFromFile(
   return buildPlanillaImportPlan(parsePlanillaBuffer(buffer, fileName), snapshot);
 }
 
-export function demoSnapshot(): PapaStockSnapshot {
-  return {
-    locations: seedLocations.map((item) => ({ ...item })),
-    shelfUnits: [],
-    shelves: [],
-    lots: seedLots.map((item) => ({ ...item })),
-    stockRecords: seedStockRecords.map((item) => ({ ...item })),
-    movements: seedMovements.map((item) => ({ ...item })),
-    transporters: [],
-    traceabilityEvents: [],
-  };
-}
-
 export function materializePlanillaImport(
   plan: PlanillaImportPlan,
   snapshot: PapaStockSnapshot,
@@ -657,7 +697,6 @@ export function materializePlanillaImport(
   const lots = snapshot.lots.map((item) => ({ ...item }));
   let createdLots = 0;
   for (const lot of plan.lotsToCreate) {
-    if (PROTECTED_DEMO_LOT_CODES.has(lot.code)) continue;
     if (lots.some((item) => fold(item.code) === fold(lot.code))) continue;
     lots.push({
       id: lot.id,
@@ -682,7 +721,7 @@ export function materializePlanillaImport(
     const lot = lotByCode.get(movement.lotCode.toLowerCase());
     const originId = locationIdByName.get(fold(movement.originName));
     const destinationId = locationIdByName.get(fold(movement.destinationName));
-    if (!lot || PROTECTED_DEMO_LOT_CODES.has(lot.code) || !originId || !destinationId || originId === destinationId) {
+    if (!lot || !originId || !destinationId || originId === destinationId) {
       skippedMovements += 1;
       continue;
     }
@@ -709,7 +748,7 @@ export function materializePlanillaImport(
   const importedLotIds = new Set<string>();
   for (const code of plan.stockLotCodes) {
     const lot = lotByCode.get(code.toLowerCase());
-    if (lot && !PROTECTED_DEMO_LOT_CODES.has(lot.code)) importedLotIds.add(lot.id);
+    if (lot) importedLotIds.add(lot.id);
   }
 
   const stockRecords = snapshot.stockRecords
@@ -781,15 +820,6 @@ export function buildStockIntakePlan(input: StockIntakeInput, snapshot: PapaStoc
     issues.push({ sheet: 'Carga de stock', rowNumber: 1, code: 'MISSING_DATE', message: 'La fecha debe ser AAAA-MM-DD.' });
   }
   if (!destinationRaw) issues.push({ sheet: 'Carga de stock', rowNumber: 1, code: 'MISSING_LOCATION', message: 'Falta el destino.' });
-  if (PROTECTED_DEMO_LOT_CODES.has(lotCode)) {
-    issues.push({
-      sheet: 'Carga de stock',
-      rowNumber: 1,
-      code: 'PROTECTED_DEMO_LOT',
-      message: `El lote ${lotCode} es de demo (N02/N03) y no se puede cargar por este formulario.`,
-    });
-  }
-
   const originName = resolveLocationSpec(originRaw)?.name;
   const destinationName = resolveLocationSpec(destinationRaw)?.name;
   if (originName && destinationName && fold(originName) === fold(destinationName)) {

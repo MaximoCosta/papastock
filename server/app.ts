@@ -1,17 +1,28 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
+import { AuthService, requireAuthentication, requirePermission, requireSameOrigin } from './auth';
 import { config } from './config';
-import { pool } from './db/pool';
+import { pool, verifyDatabaseReadiness } from './db/pool';
 import { PapaStockRepository } from './repositories/papaStockRepository';
 import { createDiscrepancyAnalyzer } from './services/groqDiscrepancy';
 import { createExportRequirementsParser } from './services/groqExportRequirements';
 import { createMovementIntentParser } from './services/groqMovementIntent';
 import { createTraceabilityIntentParser } from './services/groqTraceabilityIntent';
-import { buildPlanillaImportFromFile, buildStockIntakePlan, demoSnapshot, materializePlanillaImport } from './services/planillaImport';
+import {
+  buildPlanillaImportFromFile,
+  buildStockIntakePlan,
+  materializePlanillaImport,
+  PLANILLA_LIMITS,
+  validatePlanillaUpload,
+} from './services/planillaImport';
 import { getStockViews } from '../src/services/stockService';
 import { buildStockVerificationPreview, toStockVerificationConfirmation } from '../src/lib/stockVerification';
 
 const identifier = z.string().min(1).max(120);
+const loginSchema = z.object({
+  username: z.string().trim().min(1).max(120),
+  password: z.string().min(1).max(500),
+});
 const discrepancyInputSchema = z.object({
   lot: z.object({ id: identifier, code: identifier }),
   stock: z.object({
@@ -114,6 +125,7 @@ const receptionSchema = z.object({
   receivedTotal: z.number().nonnegative().max(1_000_000).optional(),
   unit: z.enum(['bags', 'kg']).optional(),
 });
+const idempotencyKeySchema = z.string().trim().min(16).max(200);
 
 const correctionSchema = z.object({
   originalMovementId: identifier,
@@ -137,6 +149,7 @@ const stockCountSchema = z.object({
 
 const stockVerificationSchema = z.object({
   stockRecordId: identifier,
+  expectedVersion: z.number().int().nonnegative(),
   countedQuantity: z.number().nonnegative().max(1_000_000),
   date: z.iso.date(),
   bags: z.number().positive().max(100_000).optional(),
@@ -183,11 +196,22 @@ export interface AppDependencies {
   parseMovementIntent?: ReturnType<typeof createMovementIntentParser>;
   parseTraceabilityIntent?: ReturnType<typeof createTraceabilityIntentParser>;
   parseExportRequirements?: ReturnType<typeof createExportRequirementsParser>;
+  auth?: AuthService;
+  checkReadiness?: () => Promise<void>;
+  planillaUploadsEnabled?: boolean;
 }
 
 export function createApp(dependencies: AppDependencies = {}) {
   const app = express();
+  const auth = dependencies.auth ?? new AuthService({
+    username: config.authUsername ?? '',
+    passwordHash: config.authPasswordHash ?? '',
+    sessionSecret: config.sessionSecret ?? '',
+    secureCookies: config.nodeEnv === 'production',
+  });
   const repository = dependencies.repository ?? (pool ? new PapaStockRepository(pool) : undefined);
+  const checkReadiness = dependencies.checkReadiness ?? verifyDatabaseReadiness;
+  const planillaUploadsEnabled = dependencies.planillaUploadsEnabled ?? config.nodeEnv !== 'production';
   const analyze = dependencies.analyze ?? createDiscrepancyAnalyzer({
     apiKey: config.groqApiKey,
     model: config.aiModel,
@@ -211,22 +235,58 @@ export function createApp(dependencies: AppDependencies = {}) {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '64kb' }));
   app.get('/health', (_request, response) => response.json({ status: 'ok' }));
+  app.get('/ready', async (_request, response) => {
+    try {
+      await checkReadiness();
+      return response.json({ status: 'ready' });
+    } catch {
+      return response.status(503).json({ status: 'unavailable' });
+    }
+  });
 
-  app.get('/api/snapshot', async (_request, response, next) => {
+  app.use('/api', requireSameOrigin);
+  app.post('/api/auth/login', (request, response, next) => {
+    try {
+      const credentials = loginSchema.parse(request.body);
+      const identity = auth.authenticate(credentials.username, credentials.password);
+      if (!identity) return response.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
+      const session = auth.createSession(identity);
+      auth.setSessionCookie(response, session.token);
+      return response.json({ data: identity });
+    } catch (error) { return next(error); }
+  });
+  app.get('/api/auth/session', (request, response) => {
+    const identity = auth.readSession(auth.tokenFrom(request));
+    if (!identity) return response.status(401).json({ error: 'Autenticación requerida.' });
+    return response.json({ data: identity });
+  });
+  app.post('/api/auth/logout', (request, response) => {
+    auth.revokeSession(auth.tokenFrom(request));
+    auth.clearSessionCookie(response);
+    return response.status(204).end();
+  });
+
+  app.use('/api', requireAuthentication(auth));
+  const canRead = requirePermission('data:read');
+  const canWriteStock = requirePermission('stock:write');
+  const canImport = requirePermission('imports:write');
+  const canUseAi = requirePermission('ai:use');
+
+  app.get('/api/snapshot', canRead, async (_request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       response.json({ data: await repository.loadSnapshot(), source: 'database' });
     } catch (error) { next(error); }
   });
 
-  app.get('/api/lots/:id', async (request, response, next) => {
+  app.get('/api/lots/:id', canRead, async (request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
-      response.json({ data: await repository.loadLot(request.params.id), source: 'database' });
+      response.json({ data: await repository.loadLot(identifier.parse(request.params.id)), source: 'database' });
     } catch (error) { next(error); }
   });
 
-  app.post('/api/traceability', async (request, response, next) => {
+  app.post('/api/traceability', canWriteStock, async (request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const event = traceabilityInputSchema.parse(request.body);
@@ -234,14 +294,14 @@ export function createApp(dependencies: AppDependencies = {}) {
     } catch (error) { next(error); }
   });
 
-  app.post('/api/ai/discrepancy', async (request, response, next) => {
+  app.post('/api/ai/discrepancy', canUseAi, async (request, response, next) => {
     try {
       const input = discrepancyInputSchema.parse(request.body);
       response.json({ data: await analyze(input) });
     } catch (error) { next(error); }
   });
 
-  app.post('/api/ai/movement-intent', async (request, response, next) => {
+  app.post('/api/ai/movement-intent', canUseAi, async (request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const { text } = movementTextSchema.parse(request.body);
@@ -254,28 +314,28 @@ export function createApp(dependencies: AppDependencies = {}) {
     } catch (error) { next(error); }
   });
 
-  app.post('/api/ai/traceability-intent', async (request, response, next) => {
+  app.post('/api/ai/traceability-intent', canUseAi, async (request, response, next) => {
     try {
       const { text } = traceabilityIntentInputSchema.parse(request.body);
       response.json({ data: await parseTraceabilityIntent(text) });
     } catch (error) { next(error); }
   });
 
-  app.post('/api/ai/export-requirements', async (request, response, next) => {
+  app.post('/api/ai/export-requirements', canUseAi, async (request, response, next) => {
     try {
       const input = exportRequirementsInputSchema.parse(request.body);
       response.json({ data: await parseExportRequirements(input) });
     } catch (error) { next(error); }
   });
 
-  app.post('/api/movements/preview', async (request, response, next) => {
+  app.post('/api/movements/preview', canWriteStock, async (request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       response.json({ data: await repository.previewStockTransfer(movementIntentSchema.parse(request.body)) });
     } catch (error) { next(error); }
   });
 
-  app.post('/api/movements', async (request, response, next) => {
+  app.post('/api/movements', canWriteStock, async (request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const movement = await repository.executeStockTransfer(movementIntentSchema.parse(request.body));
@@ -283,13 +343,14 @@ export function createApp(dependencies: AppDependencies = {}) {
     } catch (error) { next(error); }
   });
 
-  app.post('/api/movements/:id/reception', async (request, response, next) => {
+  app.post('/api/movements/:id/reception', canWriteStock, async (request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const body = receptionSchema.parse(request.body);
       response.status(201).json({
         data: await repository.executeReception({
-          movementId: request.params.id,
+          movementId: identifier.parse(request.params.id),
+          idempotencyKey: idempotencyKeySchema.parse(request.get('Idempotency-Key')),
           date: body.date,
           items: body.items,
           receivedTotal: body.receivedTotal,
@@ -299,21 +360,27 @@ export function createApp(dependencies: AppDependencies = {}) {
     } catch (error) { next(error); }
   });
 
-  app.post('/api/movements/corrections', async (request, response, next) => {
+  app.post('/api/movements/corrections', canWriteStock, async (request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       response.status(201).json({ data: await repository.executeLotCorrection(correctionSchema.parse(request.body)) });
     } catch (error) { next(error); }
   });
 
-  app.post('/api/stock-counts', async (request, response, next) => {
+  app.post('/api/stock-counts', canWriteStock, async (request, response, next) => {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       response.status(201).json({ data: await repository.executeStockCount(stockCountSchema.parse(request.body)) });
     } catch (error) { next(error); }
   });
 
-  const excelBody = express.raw({ type: () => true, limit: '4mb' });
+  const excelBody = express.raw({ type: () => true, limit: PLANILLA_LIMITS.maxFileBytes });
+  const requirePlanillaUploads = (_request: Request, response: Response, next: NextFunction) => {
+    if (!planillaUploadsEnabled) {
+      return response.status(503).json({ error: 'La importación de planillas está temporalmente deshabilitada.' });
+    }
+    return next();
+  };
 
   function readWorkbookUpload(request: Request): { buffer: Buffer; fileName: string } {
     const body = request.body;
@@ -321,32 +388,39 @@ export function createApp(dependencies: AppDependencies = {}) {
       throw Object.assign(new Error('Adjuntá un archivo .csv, .xls o .xlsx.'), { status: 400 });
     }
     const headerName = request.header('x-filename');
-    const fileName = headerName ? decodeURIComponent(headerName) : 'planilla.xls';
+    let fileName: string;
+    try {
+      fileName = headerName ? decodeURIComponent(headerName).trim() : '';
+    } catch {
+      throw Object.assign(new Error('El nombre del archivo no es válido.'), { status: 400 });
+    }
+    if (!fileName) throw Object.assign(new Error('Falta el nombre del archivo.'), { status: 400 });
+    validatePlanillaUpload(body, fileName, request.header('content-type'));
     return { buffer: body, fileName };
   }
 
-  app.post('/api/imports/planilla/preview', excelBody, async (request, response, next) => {
+  app.post('/api/imports/planilla/preview', canImport, requirePlanillaUploads, excelBody, async (request, response, next) => {
     try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const { buffer, fileName } = readWorkbookUpload(request);
-      const snapshot = repository ? await repository.loadSnapshot() : demoSnapshot();
+      const snapshot = await repository.loadSnapshot();
       const plan = buildPlanillaImportFromFile(buffer, fileName, snapshot);
       response.json({ data: plan.preview });
     } catch (error) { next(error); }
   });
 
-  app.post('/api/imports/planilla', excelBody, async (request, response, next) => {
+  app.post('/api/imports/planilla', canImport, requirePlanillaUploads, excelBody, async (request, response, next) => {
     try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const { buffer, fileName } = readWorkbookUpload(request);
-      const snapshot = repository ? await repository.loadSnapshot() : demoSnapshot();
+      const snapshot = await repository.loadSnapshot();
       const plan = buildPlanillaImportFromFile(buffer, fileName, snapshot);
       const materialized = materializePlanillaImport(plan, snapshot);
-      const persisted = repository
-        ? await repository.executePlanillaImport(plan)
-        : materialized.result;
+      const persisted = await repository.executePlanillaImport(plan);
       response.status(201).json({
         data: {
           ...persisted,
-          persisted: Boolean(repository),
+          persisted: true,
           applied: {
             locations: materialized.applied.locations,
             lots: materialized.applied.lots,
@@ -359,10 +433,11 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
 
   async function snapshotForImport() {
-    return repository ? repository.loadSnapshot() : demoSnapshot();
+    if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+    return repository.loadSnapshot();
   }
 
-  app.post('/api/stock/intake/preview', async (request, response, next) => {
+  app.post('/api/stock/intake/preview', canImport, async (request, response, next) => {
     try {
       const input = stockIntakeSchema.parse(request.body);
       const plan = buildStockIntakePlan(input, await snapshotForImport());
@@ -370,8 +445,9 @@ export function createApp(dependencies: AppDependencies = {}) {
     } catch (error) { next(error); }
   });
 
-  app.post('/api/stock/intake', async (request, response, next) => {
+  app.post('/api/stock/intake', canImport, async (request, response, next) => {
     try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const input = stockIntakeSchema.parse(request.body);
       const snapshot = await snapshotForImport();
       const plan = buildStockIntakePlan(input, snapshot);
@@ -379,13 +455,11 @@ export function createApp(dependencies: AppDependencies = {}) {
         throw Object.assign(new Error(plan.preview.issues[0]?.message ?? 'La carga de stock no es válida.'), { status: 400, details: plan.preview.issues });
       }
       const materialized = materializePlanillaImport(plan, snapshot);
-      const persisted = repository
-        ? await repository.executePlanillaImport(plan)
-        : materialized.result;
+      const persisted = await repository.executePlanillaImport(plan);
       response.status(201).json({
         data: {
           ...persisted,
-          persisted: Boolean(repository),
+          persisted: true,
           applied: {
             locations: materialized.applied.locations,
             lots: materialized.applied.lots,
@@ -397,7 +471,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     } catch (error) { next(error); }
   });
 
-  app.post('/api/stock/verify', async (request, response, next) => {
+  app.post('/api/stock/verify', canWriteStock, async (request, response, next) => {
     try {
       const input = stockVerificationSchema.parse(request.body);
       const snapshot = await snapshotForImport();

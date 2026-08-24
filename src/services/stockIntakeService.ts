@@ -1,4 +1,5 @@
 import type { PlanillaImportConfirmation, PlanillaImportPreview, StockIntakeInput } from '../types/domain';
+import { apiUrl } from './apiClient';
 
 async function readResponse<T>(response: Response, fallback: string): Promise<T> {
   const payload = await response.json().catch(() => ({})) as { data?: T; error?: string };
@@ -7,7 +8,7 @@ async function readResponse<T>(response: Response, fallback: string): Promise<T>
 }
 
 export async function previewStockIntake(input: StockIntakeInput): Promise<PlanillaImportPreview> {
-  const response = await fetch('/api/stock/intake/preview', {
+  const response = await fetch(apiUrl('/api/stock/intake/preview'), {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify(input),
@@ -16,7 +17,7 @@ export async function previewStockIntake(input: StockIntakeInput): Promise<Plani
 }
 
 export async function confirmStockIntake(input: StockIntakeInput): Promise<PlanillaImportConfirmation> {
-  const response = await fetch('/api/stock/intake', {
+  const response = await fetch(apiUrl('/api/stock/intake'), {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify(input),

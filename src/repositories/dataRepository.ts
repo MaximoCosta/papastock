@@ -1,4 +1,5 @@
 import { initialTraceabilityEvents } from '../data/traceability';
+import { isExplicitMockMode } from '../config/dataMode';
 import { locations as mockLocations } from '../data/locations';
 import { lots as mockLots } from '../data/lots';
 import { movements as mockMovements } from '../data/movements';
@@ -10,7 +11,7 @@ import { apiUrl, normalizeSnapshot, readApiData, traceabilityBody } from '../ser
 import { presentStockForOralDemo } from '../lib/demoStockPresentation';
 import type { Discrepancy, Location, Lot, Movement, Shelf, ShelfUnit, StockCount, StockRecord, TraceabilityEvent, Transporter } from '../types/domain';
 
-export type DataSource = 'database' | 'mock';
+export type DataSource = 'database' | 'mock' | 'unavailable';
 
 export interface PapaStockSnapshot {
   locations: Location[];
@@ -53,6 +54,13 @@ function mockSnapshot(): PapaStockSnapshot {
   });
 }
 
+function emptySnapshot(): PapaStockSnapshot {
+  return {
+    locations: [], shelfUnits: [], shelves: [], lots: [], stockRecords: [], movements: [],
+    transporters: [], traceabilityEvents: [], discrepancies: [], stockCounts: [],
+  };
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'error desconocido';
 }
@@ -73,7 +81,7 @@ function isSnapshot(value: unknown): value is Omit<PapaStockSnapshot, 'shelfUnit
 }
 
 export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
-  if (import.meta.env.VITE_DATA_SOURCE?.toLowerCase() === 'mock') {
+  if (isExplicitMockMode()) {
     return { data: mockSnapshot(), source: 'mock', warning: 'Modo demo mock forzado. Los cambios son temporales.' };
   }
 
@@ -89,21 +97,16 @@ export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
     if (!isSnapshot(payload.data) || !payload.data.locations.length || !payload.data.lots.length || !payload.data.stockRecords.length) {
       throw new Error('snapshot remoto inválido o sin seed');
     }
-    const snapshot = withDemoStock(normalizeSnapshot(payload.data));
+    const snapshot = normalizeSnapshot(payload.data);
     return {
-      data: {
-        ...snapshot,
-        shelves: snapshot.shelves.length ? snapshot.shelves : mockShelves.map((item) => ({ ...item })),
-        shelfUnits: snapshot.shelfUnits.length ? snapshot.shelfUnits : mockShelfUnits.map((item) => ({ ...item })),
-        transporters: snapshot.transporters.length ? snapshot.transporters : mockTransporters.map((item) => ({ ...item })),
-      },
+      data: snapshot,
       source: 'database',
     };
   } catch (error) {
     return {
-      data: mockSnapshot(),
-      source: 'mock',
-      warning: `La API no respondió (${errorMessage(error)}). Se cargó el snapshot mock completo.`,
+      data: emptySnapshot(),
+      source: 'unavailable',
+      warning: `La API no respondió (${errorMessage(error)}). No se sustituyeron datos reales por datos mock.`,
     };
   } finally {
     globalThis.clearTimeout(timeout);

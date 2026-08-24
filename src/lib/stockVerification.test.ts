@@ -8,19 +8,21 @@ import { buildStockVerificationPreview } from './stockVerification';
 const records = getStockViews(stockRecords, lots, locations);
 
 describe('buildStockVerificationPreview', () => {
-  it('bloquea la verificación de A-204', () => {
+  it('valida A-204 por sus datos reales, sin una excepción de demo', () => {
     const preview = buildStockVerificationPreview({
       stockRecordId: 'stock-a204',
+      expectedVersion: 0,
       countedQuantity: 25000,
       date: '2026-08-22',
     }, records);
-    expect(preview.valid).toBe(false);
-    expect(preview.issues.some((item) => item.code === 'PROTECTED_DEMO_LOT')).toBe(true);
+    expect(preview.valid).toBe(true);
+    expect(preview).toMatchObject({ lotCode: 'A-204', countedQuantity: 25000 });
   });
 
   it('arma el preview con declarado, contado y diferencia', () => {
     const preview = buildStockVerificationPreview({
       stockRecordId: 'stock-b118',
+      expectedVersion: 0,
       countedQuantity: 14400,
       date: '2026-08-22',
       bags: 288,

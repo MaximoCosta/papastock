@@ -93,10 +93,10 @@ export function Sidebar() {
 
       <div className="border-t border-white/10 px-5 py-4 max-[900px]:px-2">
         <div className="flex items-center gap-2.5 max-[900px]:justify-center">
-          <span className={`h-2 w-2 rounded-full ${dataSource === 'database' ? 'bg-[#99c7a2]' : 'bg-[#e0bd72]'}`} />
+          <span className={`h-2 w-2 rounded-full ${dataSource === 'database' ? 'bg-[#99c7a2]' : dataSource === 'mock' ? 'bg-[#e0bd72]' : 'bg-[#c7796f]'}`} />
           <div className="max-[900px]:hidden">
             <p className="text-[10px] font-semibold text-[#d9e4da]">Entorno de demo</p>
-            <p className="mt-0.5 text-[9px] text-[#91aa98]">{isLoading ? 'Consolidando datos…' : dataSource === 'database' ? 'PostgreSQL · conectado' : 'Fallback mock · temporal'}</p>
+            <p className="mt-0.5 text-[9px] text-[#91aa98]">{isLoading ? 'Consolidando datos…' : dataSource === 'database' ? 'PostgreSQL · conectado' : dataSource === 'mock' ? 'Mock explícito · temporal' : 'API · no disponible'}</p>
           </div>
         </div>
       </div>

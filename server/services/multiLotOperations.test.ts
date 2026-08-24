@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Movement } from '../../src/types/domain';
 import { buildLotCorrectionPlan } from './lotCorrection';
-import { buildReceptionPlan } from './movementReception';
+import { buildReceptionPlan, receptionPayloadFingerprint } from './movementReception';
 import { buildStockCountPlan } from './stockCount';
 
 const movement: Movement = {
@@ -24,6 +24,7 @@ describe('TEST D — recepción 600 → 595', () => {
   it('conserva despachado y crea discrepancia sin inventar el reparto', () => {
     const plan = buildReceptionPlan(movement, {
       movementId: 'mv-315',
+      idempotencyKey: 'receipt-test-total-0001',
       date: '2026-08-22',
       receivedTotal: 595,
       unit: 'bags',
@@ -44,6 +45,7 @@ describe('TEST D — recepción 600 → 595', () => {
   it('si hay líneas, conserva despachado y observa recibido por lote', () => {
     const plan = buildReceptionPlan(movement, {
       movementId: 'mv-315',
+      idempotencyKey: 'receipt-test-lines-0001',
       date: '2026-08-22',
       items: [
         { movementItemId: 'i1', receivedQuantity: 397 },
@@ -53,6 +55,33 @@ describe('TEST D — recepción 600 → 595', () => {
     expect(plan.valid).toBe(true);
     expect(plan.itemUpdates[0]).toMatchObject({ receivedQuantity: 397, difference: -3 });
     expect(plan.discrepancies).toHaveLength(2);
+  });
+
+  it('normaliza el orden de líneas para un fingerprint idempotente estable', () => {
+    const base = {
+      movementId: 'mv-315', idempotencyKey: 'receipt-fingerprint-01', date: '2026-08-22',
+    };
+    expect(receptionPayloadFingerprint({
+      ...base,
+      items: [
+        { movementItemId: 'i2', receivedQuantity: 198 },
+        { movementItemId: 'i1', receivedQuantity: 397 },
+      ],
+    })).toBe(receptionPayloadFingerprint({
+      ...base,
+      items: [
+        { movementItemId: 'i1', receivedQuantity: 397 },
+        { movementItemId: 'i2', receivedQuantity: 198 },
+      ],
+    }));
+  });
+
+  it('rechaza planificar una recepción sobre un estado terminal', () => {
+    const plan = buildReceptionPlan({ ...movement, receptionStatus: 'received' }, {
+      movementId: 'mv-315', idempotencyKey: 'receipt-terminal-0001', date: '2026-08-22', receivedTotal: 600, unit: 'bags',
+    });
+    expect(plan.valid).toBe(false);
+    expect(plan.errors).toContainEqual(expect.objectContaining({ code: 'RECEPTION_TERMINAL' }));
   });
 });
 

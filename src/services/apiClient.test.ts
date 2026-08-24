@@ -1,12 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  apiUrl,
   normalizeDiscrepancyAnalysis,
   normalizeMovementInterpretation,
   normalizeSnapshot,
   normalizeTransferPreview,
 } from './apiClient';
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe('backend adapters', () => {
+  it('ignora backends remotos en producción y conserva el opt-in en desarrollo', () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://spring.example.test');
+    vi.stubEnv('DEV', false);
+    expect(apiUrl('/api/snapshot')).toBe('/api/snapshot');
+    vi.stubEnv('DEV', true);
+    expect(apiUrl('/api/snapshot')).toBe('https://spring.example.test/api/snapshot');
+  });
   it('maps Spring movement intent without action/engine', () => {
     expect(normalizeMovementInterpretation({
       lotCode: 'A-204',

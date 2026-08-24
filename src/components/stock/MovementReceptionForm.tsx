@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { formatQuantity } from '../../lib/formatters';
 import { movementItemsOf, movementPrimaryUnit } from '../../lib/movements';
 import { receiveMovement } from '../../services/movementService';
@@ -19,6 +19,7 @@ export function MovementReceptionForm({
   const [receivedTotal, setReceivedTotal] = useState('');
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const pendingRequest = useRef<{ signature: string; idempotencyKey: string } | undefined>(undefined);
   const selected = pending.find((movement) => movement.id === movementId) ?? pending[0];
   const items = selected ? movementItemsOf(selected) : [];
   const unit = selected ? movementPrimaryUnit(selected) : 'bags';
@@ -30,14 +31,20 @@ export function MovementReceptionForm({
     if (!selected) return;
     setSaving(true);
     setError(undefined);
+    const body = {
+      date: new Date().toISOString().slice(0, 10),
+      receivedTotal: Number(receivedTotal),
+      unit,
+    };
+    const signature = JSON.stringify({ movementId: selected.id, ...body });
+    if (pendingRequest.current?.signature !== signature) {
+      pendingRequest.current = { signature, idempotencyKey: crypto.randomUUID() };
+    }
     try {
-      await receiveMovement(selected.id, {
-        date: new Date().toISOString().slice(0, 10),
-        receivedTotal: Number(receivedTotal),
-        unit,
-      });
+      await receiveMovement(selected.id, body, pendingRequest.current.idempotencyKey);
       await onReceived();
       setReceivedTotal('');
+      pendingRequest.current = undefined;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo registrar la recepción.');
     } finally {

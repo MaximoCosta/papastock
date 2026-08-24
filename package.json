@@ -11,7 +11,8 @@
     "test": "vitest run",
     "render:validate": "node scripts/validate-render.mjs",
     "db:migrate": "tsx --env-file-if-exists=.env server/db/migrate.ts",
-    "db:seed": "tsx --env-file-if-exists=.env server/db/seed.ts"
+    "db:seed": "tsx --env-file-if-exists=.env server/db/seed.ts",
+    "auth:hash": "tsx server/hashAuthPassword.ts"
   },
   "dependencies": {
     "express": "^5.2.1",
@@ -21,7 +22,7 @@
     "react-dom": "19.2.8",
     "react-router-dom": "7.18.2",
     "tsx": "^4.23.12",
-    "xlsx": "^0.18.5",
+    "xlsx": "file:vendor/xlsx-0.20.3.tgz",
     "zod": "^4.4.3"
   },
   "devDependencies": {

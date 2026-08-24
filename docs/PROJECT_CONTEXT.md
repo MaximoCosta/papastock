@@ -131,7 +131,7 @@ bolsas a kilos.** Si hace falta kg y no hay peso por bolsa, se conservan bolsas.
 ### Restricciones vigentes de N01
 
 - La UI deshabilita el botón si `dataSource !== 'database'`: **no se puede mover
-  stock en fallback mock**.
+  stock en modo mock explícito**.
 - El preview bloquea el movimiento si el lote tiene discrepancia o verificación
   pendiente (`UNRESOLVED_DISCREPANCY`), lo que hace que **A-204, C-102 y F-301
   estén bloqueados para N01** por diseño.
@@ -154,6 +154,12 @@ Stock → Movimientos → seleccionar .xls/.xlsx
   → confirmación humana en la UI
   → POST /api/imports/planilla           (reparsea + transacción PostgreSQL)
 ```
+
+Por hardening de seguridad, los dos endpoints de upload están temporalmente
+deshabilitados cuando `NODE_ENV=production`. El parser local conserva soporte
+para CSV, XLS y XLSX con SheetJS 0.20.3 vendorado, validación de firma/MIME y
+límites de tamaño, hojas, filas, columnas y celdas. La carga manual JSON no está
+afectada.
 
 Hojas importables: `De campo a Frío`, `Ingreso Tolvas Santa Ana`, `Env a Frio`,
 `Ret Frio`, `P.Chica`, `Ingreso Trevelin`, `Entregas a clientes 2026`. Hojas de
@@ -317,12 +323,9 @@ BFF adicional, no hay Supabase, no hay funciones serverless.
 - En desarrollo: monta Vite en `middlewareMode` sobre el mismo Express, por lo
   que `npm run dev` levanta todo en `http://localhost:3000`.
 - El navegador nunca recibe `DATABASE_URL` ni `GROQ_API_KEY`.
-- En desarrollo, el frontend puede apuntar a un backend Spring Boot externo
-  (`VITE_DATA_SOURCE=api`, `VITE_API_BASE_URL=https://papasudbackend.onrender.com`
-  o `http://localhost:8080`). Vite proxifica `/api` hacia esa URL. Snapshot,
-  N01, N02 y `POST /api/traceability` usan esa base; importar planilla y cargar
-  stock siguen en Express. Si `VITE_API_BASE_URL` está vacío, `/api` queda en
-  Express como hasta ahora.
+- En producción todo `/api` usa Express same-origin. En desarrollo,
+  `VITE_API_BASE_URL` permite optar explícitamente por un backend alternativo;
+  sin esa variable también se usa Express.
 
 ### Rutas de la SPA (`src/App.tsx`)
 
@@ -334,8 +337,9 @@ Las pestañas internas de stock se reemplazaron por páginas. Las URLs viejas
 `/stock?tab=ubicaciones|modelo|movimientos|control` redirigen a la página
 correspondiente.
 
-Hay un **login ficticio de demo** (`operador` / `papasud`) que tapa la SPA hasta
-que hay sesión en `sessionStorage`. No es autenticación real ni protege la API.
+Express valida una cuenta operadora configurada por entorno. La sesión es opaca,
+vive server-side y se transporta en una cookie HttpOnly, SameSite=Strict y Secure
+en producción. Reiniciar la única instancia invalida las sesiones activas.
 
 ---
 
@@ -346,7 +350,11 @@ existen hoy.
 
 | Método | Ruta | Nivel | Efecto | Notas |
 | --- | --- | --- | --- | --- |
-| GET | `/health` | — | ninguno | Devuelve exactamente `{ "status": "ok" }`. Usado como `healthCheckPath` de Render. No consulta la base. |
+| GET | `/health` | — | ninguno | Liveness: devuelve exactamente `{ "status": "ok" }`. Render todavía usa esta ruta. |
+| GET | `/ready` | — | ninguno | Readiness: comprueba PostgreSQL con timeout; devuelve 200 o 503 sin detalles internos. |
+| POST | `/api/auth/login` | — | sesión | Valida la cuenta operadora y emite cookie HttpOnly. |
+| GET | `/api/auth/session` | — | ninguno | Devuelve la identidad de la sesión válida. |
+| POST | `/api/auth/logout` | — | sesión | Revoca la sesión y limpia la cookie. |
 | GET | `/api/snapshot` | — | lectura | Snapshot completo: locations, lots, stockRecords, movements, traceabilityEvents. Responde `{ data, source: 'database' }`. 503 si no hay `DATABASE_URL`. |
 | GET | `/api/lots/:id` | — | lectura | Acepta id o code (case-insensitive). Filtra el snapshot al lote. 404 si no existe. |
 | POST | `/api/traceability` | N03 | **escribe** | Sólo `type: 'treatment'`. Inserta en `traceability_events`. 201. Violación de unicidad → 409. |
@@ -373,8 +381,9 @@ existen hoy.
 - Manejador de errores central: `ZodError` → 400 con `z.treeifyError`;
   código PostgreSQL `23505` → 409; `error.status` respetado; ≥500 se loguea con
   prefijo `[api]` y se responde con un mensaje genérico.
-- No hay autenticación, autorización ni rate limiting. Es una limitación
-  deliberada de la demo, documentada en `docs/render-deploy.md`.
+- Toda la API de inventario requiere autenticación y permisos server-side.
+  Login/logout además validan same-origin en requests mutantes. Sigue pendiente
+  rate limiting.
 
 ---
 
@@ -426,7 +435,9 @@ nombres de columnas de base.**
 - calcula SHA-256 de cada archivo y lo compara con `schema_migrations.checksum`;
 - **si una migración ya aplicada cambió de contenido, lanza error y el deploy
   falla**;
-- aplica las pendientes, cada una en su propia transacción.
+- aplica las pendientes, cada una en su propia transacción;
+- valida que el historial aplicado sea un prefijo continuo y rechaza huecos;
+- permite cortes controlados con `--to` y `--only`, sin saltar dependencias.
 
 Reglas:
 
@@ -435,8 +446,15 @@ Reglas:
 - Para cambios de schema: crear `migrations/002_*.sql`, `003_*.sql`, etc.
 - Rollback de schema: nueva migración correctiva, nunca revertir a mano.
 
-Comandos: `npm run db:migrate` (idempotente, corre en `preDeployCommand`) y
-`npm run db:seed` (manual, deliberadamente **no** automático).
+Comandos:
+
+- `npm run db:migrate`: todas las pendientes; idempotente y usado por `preDeployCommand`.
+- `npm run db:migrate -- --to 004_correction_invariants.sql`: todas las pendientes hasta 004 inclusive.
+- `npm run db:migrate -- --only 005_reception_idempotency.sql`: sólo 005, siempre que sea exactamente la próxima pendiente.
+- `npm run db:seed`: manual, deliberadamente **no** automático.
+
+El seed materializa también los `movement_items` de sus movimientos legacy y
+puede repetirse sin duplicar líneas.
 
 ---
 
@@ -571,25 +589,23 @@ las heurísticas del servidor.
 
 ## 12. Fuente de datos
 
-**PostgreSQL es la fuente principal.** Existe un fallback mock para resiliencia
-de la demo.
+**PostgreSQL es la fuente principal.** El modo mock es explícito y aislado.
 
 `src/repositories/dataRepository.ts` → `loadPapaStockSnapshot`:
 
 1. si `VITE_DATA_SOURCE=mock`, devuelve el mock con `source: 'mock'` y warning;
-2. si no, hace `GET {VITE_API_BASE_URL}/api/snapshot` (o `/api/snapshot` si la
-   base está vacía), valida la forma del payload y que haya locations, lots y
-   stockRecords, y normaliza nulos/`confirmed` del contrato Spring Boot;
-3. ante cualquier fallo, devuelve el mock **completo** con `source: 'mock'` y un
-   warning que explica el error.
+2. si no, hace `GET /api/snapshot` same-origin en producción, valida y normaliza
+   el payload sin alterar cantidades;
+3. ante cualquier fallo, devuelve arrays vacíos con `source: 'unavailable'` y un
+   warning. Nunca sustituye PostgreSQL por datos demo.
 
 El mock vive en `src/data/` (`locations.ts`, `lots.ts`, `stock.ts`,
 `movements.ts`, `traceability.ts`) y **replica el seed de PostgreSQL**.
 
 Reglas:
 
-- El fallback es **atómico**: o todo viene de la base, o todo viene del mock.
-  **Nunca mezclar registros de base con registros mock silenciosamente.**
+- Los datos mock sólo existen con `VITE_DATA_SOURCE=mock`. Las respuestas de base
+  no pasan por `presentStockForOralDemo` ni se completan con catálogos mock.
 - `dataSource` se expone en el contexto de la app y se muestra en la UI.
 - Las mutaciones se comportan según la fuente:
   `AppDataContext.addTraceabilityEvent` sólo llama a la API si
@@ -734,7 +750,7 @@ Leyenda: ✅ implementado · 🟡 parcial · 🧪 demo/mock · 🔴 falta
 | N03 proforma / factura / remito / lista de empaque | 🧪 | `mockDocumentService`; paquete documental no fiscal, con empaque y precios |
 | Documentos generados | 🟡 | Sólo `sessionStorage` (`papastock.documents.v1`); se pierden al cerrar la pestaña |
 | `ExportOperation` | 🔴 | Se construye en memoria y nunca se guarda |
-| Snapshot con fallback mock | ✅ | Atómico, identificado en la UI |
+| Snapshot mock explícito | ✅ | Aislado mediante `VITE_DATA_SOURCE=mock` e identificado en la UI |
 | Trazabilidad (lectura) | ✅ | Timeline en la ficha de lote desde PostgreSQL |
 | Dashboard / stock / lotes | ✅ | Métricas derivadas del snapshot |
 | Escenario de reset de demo | 🔴 | No existe forma segura de volver A-310 a 4/5 |
@@ -780,12 +796,13 @@ Verificado contra el schema actual: no existen tablas `dispatches`,
 
 - `DATABASE_URL` es server-side. `server/config.ts` la valida (protocolo
   `postgres:`/`postgresql:`, host y nombre de base) y la exige en producción.
-- `GROQ_API_KEY` es server-side, `sync: false` en Render, nunca versionada.
+- `GROQ_API_KEY` es server-side y `sync: false` en Render. Una clave expuesta
+  históricamente debe revocarse; `.env` ya no se trackea.
 - **Todas** las queries son parametrizadas. No hay concatenación de SQL en el
   repositorio; los únicos valores dinámicos van por `$n`.
 - **Ningún secreto en variables `VITE_*`**: todo lo que empieza con `VITE_` se
   inlinea en el bundle del navegador. Las únicas `VITE_*` son `VITE_DATA_SOURCE`
-  (mock vs API) y `VITE_API_BASE_URL` (origen público del backend Spring Boot,
+  (mock explícito) y `VITE_API_BASE_URL` (override exclusivo de desarrollo,
   no un secreto).
 - `.env` está cubierto por `.gitignore` (`*.local` y ausencia de `.env`
   versionado); el repositorio sólo tiene `.env.example` con placeholders.
@@ -793,9 +810,8 @@ Verificado contra el schema actual: no existen tablas `dispatches`,
   Shell.
 - Cuerpo de request limitado a 64 kb; `x-powered-by` deshabilitado; los errores
   ≥500 no filtran detalles internos al cliente.
-- **Faltante conocido:** no hay autenticación, autorización ni rate limiting.
-  Cualquier persona con la URL puede llamar a las mutaciones y a los endpoints de
-  IA. Aceptable para una demo de hackathon, inaceptable en producción.
+- La autenticación usa password scrypt, sesiones opacas aleatorias, cookie
+  HttpOnly y permisos explícitos. Sigue pendiente rate limiting global.
 
 ---
 
@@ -825,11 +841,15 @@ patrones visuales existentes.
 Runner: **Vitest** (`npm test` → `vitest run`). Sin configuración propia de
 Vitest: usa `vite.config.ts`.
 
-**Resultado real al 2026-08-22: 15 archivos, 80 tests pasando, 1 skipped.**
+**Resultado real al 2026-08-23: 24 archivos, 126 tests pasando, 1 skipped.**
 
 | Archivo | Tests | Qué cubre |
 | --- | --- | --- |
-| `server/app.test.ts` | 5 | Contrato HTTP con repositorio y servicios mockeados: `/health` exacto, snapshot con `source: 'database'`, rechazo 400 de trazabilidad fuera de contrato, análisis estructurado, y que interpretar/previsualizar **no** ejecute la transferencia |
+| `server/app.test.ts` | 18 | Contrato HTTP, autenticación, permisos, CSRF/origin, atributos de cookie, logout y flujos operativos existentes. |
+| `server/auth.test.ts` | 3 | Password scrypt, sesión opaca, revocación y expiración. |
+| `src/repositories/dataRepository.test.ts` | 3 | PostgreSQL sin overlays mock, API caída sin sustitución y mock sólo explícito. |
+| `src/services/aiService.test.ts` | 3 | IA hardcodeada y planilla simulada aisladas al modo mock. |
+| `src/services/apiClient.test.ts` | 5 | Adaptadores y garantía same-origin en producción con backend alternativo sólo en desarrollo. |
 | `server/repositories/papaStockRepository.test.ts` | 3 | Proyección del snapshot desde 5 queries, transferencia dentro de `BEGIN/COMMIT` actualizando ambos extremos, y `rollback` cuando la validación cambió |
 | `server/services/discrepancyHeuristic.test.ts` | 5 | Los cinco caminos de la heurística canónica, incluido “no inventar evidencia” |
 | `server/services/groqDiscrepancy.test.ts` | 6 | Respuesta válida → `engine: 'llm'`; fallback ante JSON inválido, referencia inventada, HTTP 429 y timeout; sin clave no hay llamada de red |

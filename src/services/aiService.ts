@@ -1,4 +1,5 @@
 import type { Movement, StockControlCorrection, StockView, TraceabilityEvent } from '../types/domain';
+import { isExplicitMockMode } from '../config/dataMode';
 import type {
   AiExportRequirementsResult,
   ConfirmedTraceabilityEvent,
@@ -28,7 +29,7 @@ export interface AIService {
 }
 
 const delay = (milliseconds: number) =>
-  new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+  new Promise<void>((resolve) => globalThis.setTimeout(resolve, milliseconds));
 
 const monthNumbers: Record<string, string> = {
   enero: '01', febrero: '02', marzo: '03', abril: '04', mayo: '05', junio: '06',
@@ -123,7 +124,7 @@ function mockSheetCorrections(scopeRecords: StockView[]): StockControlCorrection
 
 const httpAIService: AIService = {
   async analyzeDiscrepancy(stock, lotMovements, traceability) {
-    const demoAnalysis = hardcodedDiscrepancyAnalysis(stock, lotMovements);
+    const demoAnalysis = isExplicitMockMode() ? hardcodedDiscrepancyAnalysis(stock, lotMovements) : undefined;
     if (demoAnalysis) {
       await delay(900);
       return demoAnalysis;
@@ -166,7 +167,7 @@ const httpAIService: AIService = {
   async parseTraceabilityInput(input, lotId) {
     const text = input.trim();
     try {
-      const response = await fetch('/api/ai/traceability-intent', {
+      const response = await fetch(apiUrl('/api/ai/traceability-intent'), {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
         body: JSON.stringify({ text, lotId }),
@@ -191,7 +192,7 @@ const httpAIService: AIService = {
   },
 
   async analyzeExportRequirements(country, documentType, sourceText) {
-    const response = await fetch('/api/ai/export-requirements', {
+    const response = await fetch(apiUrl('/api/ai/export-requirements'), {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({ country, documentType, sourceText }),
@@ -208,6 +209,9 @@ const httpAIService: AIService = {
 
   // TODO backend: POST /api/ai/stock-sheet (multipart image + scope)
   async parseStockControlSheet(file, scopeRecords) {
+    if (!isExplicitMockMode()) {
+      throw new Error('La lectura simulada de planillas sólo está disponible en modo mock explícito.');
+    }
     void file;
     await delay(1500);
     if (scopeRecords.length === 0) {

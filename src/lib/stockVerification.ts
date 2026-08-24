@@ -5,8 +5,6 @@ import type {
   StockView,
 } from '../types/domain';
 
-const PROTECTED_DEMO_LOT_CODES = new Set(['A-204', 'A-310', 'C-102', 'F-301']);
-
 function issue(code: string, message: string): StockVerificationPreview['issues'][number] {
   return { sheet: 'verificación', rowNumber: 0, code, message };
 }
@@ -21,10 +19,6 @@ export function buildStockVerificationPreview(
 
   if (!record) {
     issues.push(issue('RECORD_NOT_FOUND', 'Seleccioná un lote y una ubicación existentes.'));
-  }
-
-  if (record && PROTECTED_DEMO_LOT_CODES.has(record.lot.code)) {
-    issues.push(issue('PROTECTED_DEMO_LOT', `El lote ${record.lot.code} es de demo y no se verifica por este formulario.`));
   }
 
   if (!Number.isFinite(countedQuantity) || countedQuantity < 0) {
@@ -42,6 +36,7 @@ export function buildStockVerificationPreview(
     valid: issues.length === 0,
     issues,
     stockRecordId: input.stockRecordId,
+    expectedVersion: input.expectedVersion,
     lotId: record?.lotId ?? '',
     lotCode: record?.lot.code ?? '',
     variety: record?.lot.variety ?? '',
@@ -62,6 +57,7 @@ export function toStockVerificationConfirmation(
   preview: StockVerificationPreview,
   persisted: boolean,
   eventId?: string,
+  newVersion?: number,
 ): StockVerificationConfirmation {
   return {
     persisted,
@@ -70,6 +66,7 @@ export function toStockVerificationConfirmation(
       lotCode: preview.lotCode,
       countedQuantity: preview.countedQuantity,
       previousVerified: preview.previousVerified,
+      newVersion,
       notes: preview.notes,
     },
     event: {

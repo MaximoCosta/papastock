@@ -79,6 +79,26 @@ on conflict (id) do update set
   movement_date = excluded.movement_date,
   status = excluded.status;
 
+-- El seed puede ejecutarse después de 003, cuando su backfill legacy ya ocurrió.
+-- Materializa las líneas canónicas de estos movimientos sin duplicarlas si una
+-- base existente ya las tiene.
+insert into public.movement_items (
+  id, movement_id, lot_id, dispatched_quantity, unit, sort_order, data
+)
+select seeded.id, seeded.movement_id, seeded.lot_id, seeded.quantity, 'kg', 0, '{"source":"seed"}'::jsonb
+from (values
+  ('mitem-movement-1032', 'movement-1032', 'lot-a204', 1000::numeric),
+  ('mitem-movement-1028', 'movement-1028', 'lot-a204', 8000::numeric),
+  ('mitem-movement-1016', 'movement-1016', 'lot-a310', 22000::numeric),
+  ('mitem-movement-1037', 'movement-1037', 'lot-c102', 500::numeric)
+) as seeded(id, movement_id, lot_id, quantity)
+where not exists (
+  select 1
+  from public.movement_items existing
+  where existing.movement_id = seeded.movement_id
+)
+on conflict (id) do nothing;
+
 insert into public.traceability_events (id, lot_id, event_type, event_date, location_id, data) values
   ('trace-a204-planting', 'lot-a204', 'planting', '2026-03-10', null, '{"seedBatch":"SEM-882","plot":"Lote 14"}'),
   ('trace-a204-treatment', 'lot-a204', 'treatment', '2026-06-18', null, '{"product":"Mancozeb","dose":"2 kg/ha"}'),

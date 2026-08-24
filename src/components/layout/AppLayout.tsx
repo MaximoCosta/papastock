@@ -27,7 +27,7 @@ export function AppLayout() {
               <div className={`anim-fade-in mb-4 flex items-center justify-between border px-3 py-2 text-[10px] ${dataWarning ? 'border-[#e2c88e] bg-[#fff8e8] text-[#785716]' : 'border-[#c6d7c9] bg-[#eff5ef] text-[#365b42]'}`} role={dataWarning ? 'status' : undefined}>
                 <span className="flex items-center gap-2">
                   {dataWarning ? <AlertTriangle size={13} /> : <CheckCircle2 size={13} />}
-                  {dataWarning ?? `Fuente operativa conectada: ${dataSource === 'database' ? 'PostgreSQL' : 'mock'}.`}
+                  {dataWarning ?? `Fuente operativa: ${dataSource === 'database' ? 'PostgreSQL' : dataSource === 'mock' ? 'mock explícito' : 'no disponible'}.`}
                 </span>
               </div>
               {actionError && (

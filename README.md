@@ -4,7 +4,7 @@ Aplicación full-stack de Papasud para movimientos de stock asistidos, trazabili
 
 ## Arquitectura
 
-Un único servicio Node/TypeScript expone la API local (planilla, carga de stock) y sirve la SPA React/Vite. El frontend puede apuntar al backend Spring Boot con `VITE_API_BASE_URL`. El navegador nunca recibe `DATABASE_URL` ni `GROQ_API_KEY`.
+Un único servicio Node/TypeScript expone toda la API y sirve la SPA React/Vite. En producción, Express es siempre el backend same-origin autoritativo. `VITE_API_BASE_URL` permite probar un backend alternativo únicamente en desarrollo. El navegador nunca recibe secretos server-side.
 
 ```text
 Navegador React
@@ -15,7 +15,7 @@ Render Web Service (Express)
       └── HTTPS ────► Groq Structured Outputs
 ```
 
-Si `/api/snapshot` falla, el frontend carga un snapshot mock completo y lo identifica visualmente. Groq solo propone análisis: cualquier error, timeout o respuesta inválida activa la heurística server-side; nunca autoriza operaciones ni escribe datos.
+Si `/api/snapshot` falla, el frontend muestra la fuente como no disponible y no sustituye datos reales por mock. El dataset demo sólo se activa explícitamente con `VITE_DATA_SOURCE=mock`. Groq solo propone análisis: cualquier error, timeout o respuesta inválida activa la heurística server-side; nunca autoriza operaciones ni escribe datos.
 
 ## Desarrollo
 
@@ -29,7 +29,7 @@ npm run db:seed
 npm run dev
 ```
 
-`npm run dev` levanta Express y Vite en `http://localhost:3000`. Copiá `.env.example` a `.env`. Con `VITE_DATA_SOURCE=api` y `VITE_API_BASE_URL=https://papasudbackend.onrender.com` el snapshot, N01, N02 y la trazabilidad van al backend Spring Boot. La importación de planilla y **Cargar stock** siguen en Express local. Para forzar el mock del frontend: `VITE_DATA_SOURCE=mock`. El script de desarrollo carga `.env` si existe.
+`npm run dev` levanta Express y Vite en `http://localhost:3000`. Copiá `.env.example` a `.env`. Sin override, todo `/api` queda en Express. En desarrollo se puede definir `VITE_API_BASE_URL` como opt-in para probar otro backend; producción ignora esa variable. Para activar el dataset demo: `VITE_DATA_SOURCE=mock`.
 
 En **Stock → Movimientos** está el botón para importar la planilla operativa de Papasud (`.xls`/`.xlsx`). El backend parsea, muestra un preview y recién escribe en PostgreSQL cuando el operador confirma. No modifica los lotes de demo A-204 / A-310 / C-102 / F-301.
 
@@ -50,7 +50,7 @@ El seed es idempotente pero deliberadamente manual. Conserva A-204 con 25.000/24
 
 - `server/`: Express, acceso PostgreSQL, Groq y heurística canónica.
 - `migrations/`: esquema versionado y seed separado.
-- `src/repositories/`: cliente HTTP con fallback atómico al mock.
+- `src/repositories/`: cliente HTTP con modos `database`, `mock` explícito y `unavailable`.
 - `src/lib/`: validaciones determinísticas de despacho/exportación.
 - `src/services/aiService.ts`: adaptador browser a `/api/ai/discrepancy` y helpers locales N03.
 - `src/services/movementService.ts`: interpretación, preview y confirmación separada del flujo N01.

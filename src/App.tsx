@@ -18,7 +18,11 @@ import { WarehousePage } from './pages/WarehousePage';
 import { useDemoSession } from './state/DemoSessionContext';
 
 export default function App() {
-  const { session } = useDemoSession();
+  const { session, isCheckingSession } = useDemoSession();
+
+  if (isCheckingSession) {
+    return <div className="flex min-h-screen items-center justify-center bg-[#f3f3ee] text-sm text-[#526158]">Validando sesión segura…</div>;
+  }
 
   if (!session) return <LoginPage />;
 
