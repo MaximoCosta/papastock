@@ -12,6 +12,7 @@
     "render:validate": "node scripts/validate-render.mjs",
     "db:migrate": "tsx --env-file-if-exists=.env server/db/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env server/db/seed.ts",
+    "db:showcase": "tsx --env-file-if-exists=.env server/db/showcaseSeed.ts",
     "auth:hash": "tsx server/hashAuthPassword.ts"
   },
   "dependencies": {
