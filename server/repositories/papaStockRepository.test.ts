@@ -14,9 +14,16 @@ describe('PapaStockRepository', () => {
       { rowCount: 0, rows: [] },
       { rowCount: 0, rows: [] },
     ];
+    let activeQueries = 0;
+    let maxActiveQueries = 0;
     const query = vi.fn(async (sql: string) => {
       if (sql.startsWith('begin') || sql === 'commit' || sql === 'rollback') return { rowCount: 0, rows: [] };
-      return responses.shift();
+      activeQueries += 1;
+      maxActiveQueries = Math.max(maxActiveQueries, activeQueries);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      const response = responses.shift();
+      activeQueries -= 1;
+      return response;
     });
     const release = vi.fn();
     const repository = new PapaStockRepository({ connect: async () => ({ query, release }) } as unknown as pg.Pool);
@@ -25,8 +32,24 @@ describe('PapaStockRepository', () => {
     expect(query).toHaveBeenNthCalledWith(1, 'begin isolation level repeatable read read only');
     expect(query).toHaveBeenCalledWith('commit');
     expect(release).toHaveBeenCalledOnce();
+    expect(maxActiveQueries).toBe(1);
     expect(result.stockRecords[0]).toMatchObject({ declaredQuantity: 25000, verifiedQuantity: 24000 });
     expect(result.movements[0]).toMatchObject({ reference: 'MV-1032', quantity: 1000 });
+  });
+
+  it('revierte y libera el cliente si falla una consulta del snapshot', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.startsWith('begin') || sql === 'rollback') return { rowCount: 0, rows: [] };
+      if (sql.includes('from public.locations')) return { rowCount: 1, rows: [{ id: 'loc' }] };
+      throw new Error('snapshot query failed');
+    });
+    const release = vi.fn();
+    const repository = new PapaStockRepository({ connect: async () => ({ query, release }) } as unknown as pg.Pool);
+
+    await expect(repository.loadSnapshot()).rejects.toThrow('snapshot query failed');
+    expect(query).toHaveBeenCalledWith('rollback');
+    expect(query).not.toHaveBeenCalledWith('commit');
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it('confirma una transferencia dentro de BEGIN/COMMIT y actualiza ambos extremos', async () => {

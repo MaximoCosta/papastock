@@ -66,16 +66,14 @@ export class PapaStockRepository {
     const client = await this.database.connect();
     try {
       await client.query('begin isolation level repeatable read read only');
-      const [locations, lots, stock, movements, items, traceability, discrepancies, counts] = await Promise.all([
-        client.query<LocationRow>('select * from public.locations order by id'),
-        client.query<LotRow>('select * from public.lots order by code'),
-        client.query<StockRecordRow>('select * from public.stock_records order by id'),
-        client.query<MovementRow>('select * from public.movements order by movement_date desc, id'),
-        client.query<MovementItemRow>('select * from public.movement_items order by movement_id, sort_order, id'),
-        client.query<TraceabilityEventRow>('select * from public.traceability_events order by event_date, id'),
-        client.query<DiscrepancyRow>('select * from public.discrepancies order by created_at desc, id'),
-        client.query<StockCountRow>('select * from public.stock_counts order by counted_at desc, id'),
-      ]);
+      const locations = await client.query<LocationRow>('select * from public.locations order by id');
+      const lots = await client.query<LotRow>('select * from public.lots order by code');
+      const stock = await client.query<StockRecordRow>('select * from public.stock_records order by id');
+      const movements = await client.query<MovementRow>('select * from public.movements order by movement_date desc, id');
+      const items = await client.query<MovementItemRow>('select * from public.movement_items order by movement_id, sort_order, id');
+      const traceability = await client.query<TraceabilityEventRow>('select * from public.traceability_events order by event_date, id');
+      const discrepancies = await client.query<DiscrepancyRow>('select * from public.discrepancies order by created_at desc, id');
+      const counts = await client.query<StockCountRow>('select * from public.stock_counts order by counted_at desc, id');
 
       if (!locations.rowCount || !lots.rowCount || !stock.rowCount) {
         throw new Error('La base existe pero el seed operativo está incompleto.');
