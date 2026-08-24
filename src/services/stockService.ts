@@ -40,6 +40,18 @@ export function getStockViewByLotId(stock: StockView[], lotId: string): StockVie
   return stock.find((record) => String(record.lotId) === target);
 }
 
+export function getStockViewsByLotId(stock: StockView[], lotId: string): StockView[] {
+  const target = String(lotId);
+  return stock.filter((record) => String(record.lotId) === target);
+}
+
+export function getPriorityStockViewByLotId(stock: StockView[], lotId: string): StockView | undefined {
+  const records = getStockViewsByLotId(stock, lotId);
+  return records.find((record) => record.status === 'discrepancy')
+    ?? records.find((record) => record.status === 'pending')
+    ?? records[0];
+}
+
 export function operationalQuantity(record: Pick<StockView, 'declaredQuantity' | 'verifiedQuantity' | 'verificationPending' | 'status'>): number {
   if (record.verificationPending || record.status === 'pending') return record.declaredQuantity;
   return record.verifiedQuantity;

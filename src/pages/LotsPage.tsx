@@ -5,7 +5,7 @@ import { PageHeader } from '../components/common/PageHeader';
 import { PaginationBar } from '../components/common/PaginationBar';
 import { formatDate } from '../lib/formatters';
 import { paginate } from '../lib/pagination';
-import { getStockViewByLotId } from '../services/stockService';
+import { getPriorityStockViewByLotId } from '../services/stockService';
 import { StockStatusBadge } from '../components/stock/StockStatusBadge';
 import { useAppData } from '../state/AppDataContext';
 
@@ -24,7 +24,7 @@ export function LotsPage() {
           </thead>
           <tbody>
             {pageWindow.items.map((lot) => {
-              const stock = getStockViewByLotId(stockViews, lot.id);
+              const stock = getPriorityStockViewByLotId(stockViews, lot.id);
               return (
                 <tr key={lot.id}>
                   <td><Link className="font-bold text-[#284332] hover:underline" to={`/lots/${lot.code}`}>{lot.code}</Link></td>
