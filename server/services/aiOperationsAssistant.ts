@@ -13,6 +13,7 @@ import {
   type GroqOptions,
   type StructuredRequest,
 } from './groqStructured';
+import { buildCanonicalLotStockAnswer } from './aiOperationsFacts';
 
 export { buildAiOperationsContext, measureAiOperationsContext } from './aiOperationsContext';
 export type { AiOperationsContext, AiOperationsIntent } from './aiOperationsContext';
@@ -190,18 +191,45 @@ function controlledRequestTooLargeError(
   );
 }
 
+function logControlledUpstreamError(
+  error: GroqHttpError,
+  contextMetrics: ReturnType<typeof measureAiOperationsContext>,
+): void {
+  console.warn('[ai] Groq rechazó la consulta operativa:', {
+    status: error.status,
+    requestBodyBytes: error.requestBodyBytes,
+    responseError: error.responseError,
+    safeHeaders: error.safeHeaders,
+    contextMetrics,
+  });
+}
+
 export function createAiOperationsAssistant(options: AiOperationsOptions) {
   return async function answerOperationsQuestion(
     question: string,
     context: AiOperationsContext,
   ): Promise<OperationsAssistantAnswer> {
+    const contextMetrics = measureAiOperationsContext(context);
+    if (context.intent === 'LOT_STOCK') {
+      console.info('[ai] métricas de contexto proyectado:', {
+        intent: context.intent,
+        mode: 'deterministic',
+        questionBytes: Buffer.byteLength(question, 'utf8'),
+        contextBytes: contextMetrics.contextBytes,
+        selectedCounts: contextMetrics.counts,
+      });
+      return validateClosedWorld(
+        operationsAnswerSchema.parse(buildCanonicalLotStockAnswer(context)),
+        context,
+      );
+    }
+
     const request: StructuredRequest = {
       schemaName: 'papastock_operations_answer',
       jsonSchema,
       system: operationsSystemPrompt,
       user: { question, context },
     };
-    const contextMetrics = measureAiOperationsContext(context);
     const requestMetrics = serializeStructuredRequest(options.model, request).metrics;
     console.info('[ai] métricas de contexto proyectado:', {
       intent: context.intent,
@@ -226,6 +254,7 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
         || (error instanceof GroqHttpError && error.status === 413)) {
         throw controlledRequestTooLargeError(error, contextMetrics, requestMetrics);
       }
+      if (error instanceof GroqHttpError) logControlledUpstreamError(error, contextMetrics);
       console.warn('[ai] asistente operativo no disponible:', error instanceof Error ? error.message : 'respuesta inválida');
       throw Object.assign(new Error('El asistente de inventario no está disponible en este momento.'), { status: 502 });
     }

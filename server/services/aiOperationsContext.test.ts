@@ -75,6 +75,12 @@ describe('proyección determinística del contexto operativo', () => {
     expect(context.ledger.classifications).toHaveLength(2);
   });
 
+  it('clasifica la pregunta genérica cuánto hay como LOT_STOCK', () => {
+    const context = build('¿Cuánto hay del lote SHOW-001?');
+    expect(context.intent).toBe('LOT_STOCK');
+    expect(context.stockRecords).toHaveLength(2);
+  });
+
   it('LOT_LOCATION selecciona sólo SHOW-002 y sus ubicaciones', () => {
     const context = build('¿Dónde está SHOW-002?');
     expect(context.intent).toBe('LOT_LOCATION');

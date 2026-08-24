@@ -284,7 +284,8 @@ pendiente (§20). Ver `docs/DEMO.md` para la alternativa no destructiva.
   representan asesoramiento regulatorio.
 - `aiService.parseTraceabilityInput` y `aiService.analyzeRequirements` son
   **parsers/resúmenes locales con `setTimeout` artificial**, no llaman a Groq.
-  Groq sólo se usa en N01 (intent) y N02 (discrepancias).
+  Groq también presenta respuestas del asistente operativo, salvo los intents
+  determinísticos como `LOT_STOCK`, cuyos hechos resuelve el backend.
 - `POST /api/traceability` acepta **únicamente** `type: 'treatment'`
   (`z.literal('treatment')`). Cualquier otro tipo devuelve 400.
 - La proforma, factura, lista de empaque y remito viven en `sessionStorage`, no
@@ -360,6 +361,7 @@ existen hoy.
 | POST | `/api/traceability` | N03 | **escribe** | Sólo `type: 'treatment'`. Inserta en `traceability_events`. 201. Violación de unicidad → 409. |
 | POST | `/api/ai/discrepancy` | N02 | ninguno | Groq con Structured Outputs, fallback heurístico. Devuelve `{ data: { engine, … } }`. No requiere base. |
 | POST | `/api/ai/movement-intent` | N01 | ninguno | Texto (8–500 chars) → intención estructurada + `engine`. Carga el snapshot para dar contexto de lotes/ubicaciones al modelo. |
+| POST | `/api/ai/operations` | operaciones | ninguno | Asistente autenticado y read-only sobre PostgreSQL. `LOT_STOCK` usa hechos canónicos server-side; los demás intents usan contexto proyectado y Structured Outputs. |
 | POST | `/api/movements/preview` | N01 | ninguno | Valida la intención multi-lote. Devuelve `lines[]` con stock antes/después. **Nunca escribe.** |
 | POST | `/api/movements` | N01 | **escribe** | Revalida con filas bloqueadas y ejecuta el viaje completo en una transacción. 201 o 409. |
 | POST | `/api/movements/:id/reception` | N01 | **escribe** | Registra recibido vs despachado. Crea discrepancia si difieren. |
@@ -524,10 +526,39 @@ Detalles operativos en `docs/render-deploy.md`.
 | Validación | Zod sobre el JSON devuelto, más chequeos antialucinación |
 | Autenticación | Header `authorization: Bearer <GROQ_API_KEY>`, sólo server-side |
 
-Dos schemas registrados:
+Tres schemas registrados:
 
 - `papastock_movement_intent` (N01) — `server/services/groqMovementIntent.ts`
 - `papastock_discrepancy` (N02) — `server/services/groqDiscrepancy.ts`
+- `papastock_operations_answer` (asistente operativo) —
+  `server/services/aiOperationsAssistant.ts`
+
+### Semántica de cantidades del asistente operativo
+
+PostgreSQL aporta los registros; el backend determina los hechos y Groq sólo
+interpreta o presenta los intents no determinísticos. Para una consulta genérica
+como “¿Cuánto stock hay de X?”, el contrato específico del asistente es:
+
+| Concepto | Semántica |
+| --- | --- |
+| `declaredQuantity` | Saldo persistido declarado. Se suma por lote y unidad y es el valor principal, etiquetado como **stock declarado**. |
+| `verifiedQuantity` | Último valor físico verificado. Se informa además del declarado cuando difieren. |
+| `operationalQuantity` | Derivación de UI: declarado si la verificación está pendiente y verificado en otro caso. No redefine el total del asistente. |
+| `persistedBalance` | Suma declarada que el verificador compara contra el ledger. |
+| `ledgerBalance` | Saldo reconstruido desde movimientos completados. No sustituye declarado ni verificado. |
+| `difference` | `totalVerified - totalDeclared`, calculada por lote y unidad. |
+
+`server/services/aiOperationsFacts.ts` agrupa por `lot + unit`; nunca convierte ni
+suma `kg` con `bags`. Si hay verificación pendiente, la respuesta y sus warnings
+lo indican explícitamente. `LOT_STOCK` no llama a Groq, por lo que una salida del
+modelo no puede reemplazar estos totales.
+
+Los errores HTTP de Groq distintos de 413/429 conservan sólo diagnóstico
+server-side permitido: status, `error.code`, `error.type`, `x-request-id` y los
+headers incluidos en la allowlist. Se omite `error.message` porque el proveedor
+podría reflejar prompt o contexto. No se registran pregunta, prompts, snapshot,
+credenciales ni cuerpos completos. Un 400 no se reintenta y el frontend recibe
+un 502 genérico.
 
 Los prompts de sistema le prohíben explícitamente al modelo inventar datos,
 autorizar operaciones o escribir. Si falta `GROQ_API_KEY`, **no se hace ninguna

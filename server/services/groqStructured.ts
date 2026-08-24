@@ -67,13 +67,13 @@ export class GroqHttpError extends Error {
   readonly retryAfterSeconds?: number;
   readonly rateLimitHeaders: Readonly<Record<string, string>>;
   readonly safeHeaders: Readonly<Record<string, string>>;
-  readonly responseError?: Readonly<{ code?: string; type?: string; message?: string }>;
+  readonly responseError?: Readonly<{ code?: string; type?: string }>;
   readonly requestBodyBytes: number;
 
   constructor(
     response: Response,
     requestBodyBytes: number,
-    responseError?: { code?: string; type?: string; message?: string },
+    responseError?: { code?: string; type?: string },
   ) {
     super(`Groq respondió HTTP ${response.status}`);
     this.name = 'GroqHttpError';
@@ -92,11 +92,13 @@ export class GroqHttpError extends Error {
   }
 }
 
-function safeErrorField(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim().slice(0, 500) : undefined;
+function safeErrorIdentifier(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const candidate = value.trim();
+  return candidate && /^[a-zA-Z0-9_.:/-]+$/.test(candidate) ? candidate.slice(0, 120) : undefined;
 }
 
-async function parseSafeError(response: Response): Promise<{ code?: string; type?: string; message?: string } | undefined> {
+async function parseSafeError(response: Response): Promise<{ code?: string; type?: string } | undefined> {
   const text = (await response.text()).slice(0, MAX_ERROR_BODY_BYTES);
   if (!text) return undefined;
   try {
@@ -105,9 +107,8 @@ async function parseSafeError(response: Response): Promise<{ code?: string; type
       ? payload.error as Record<string, unknown>
       : {};
     const result = {
-      code: safeErrorField(source.code),
-      type: safeErrorField(source.type),
-      message: safeErrorField(source.message),
+      code: safeErrorIdentifier(source.code),
+      type: safeErrorIdentifier(source.type),
     };
     return Object.values(result).some(Boolean) ? result : undefined;
   } catch {

@@ -105,10 +105,35 @@ describe('cliente Groq Structured Output', () => {
     }
     expect(caught).toMatchObject({
       status: 413,
-      responseError: { code: 'request_too_large', type: 'tokens', message: 'Requested 7282 tokens; limit 6000.' },
+      responseError: { code: 'request_too_large', type: 'tokens' },
       safeHeaders: { 'content-type': 'application/json', 'content-length': '147' },
     });
+    expect((caught as GroqHttpError).responseError).not.toHaveProperty('message');
     expect((caught as GroqHttpError).safeHeaders).not.toHaveProperty('x-unrelated-header');
     expect(JSON.stringify(caught)).not.toContain('sensitive-context-fixture');
+  });
+
+  it('preserva code, type y x-request-id de un 400 y omite mensajes potencialmente reflejados', async () => {
+    const reflected = 'question-fixture context-fixture secret-fixture';
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: { code: 'invalid_request_error', type: 'invalid_request', message: reflected },
+    }), {
+      status: 400,
+      headers: { 'content-type': 'application/json', 'x-request-id': 'req-safe-fixture' },
+    })) as unknown as typeof fetch;
+    let caught: unknown;
+    try {
+      await requestStructuredOutput({ apiKey: 'secret-fixture', model: 'model-fixture', timeoutMs: 100, fetchImpl }, request);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({
+      status: 400,
+      responseError: { code: 'invalid_request_error', type: 'invalid_request' },
+      safeHeaders: { 'content-type': 'application/json', 'x-request-id': 'req-safe-fixture' },
+    });
+    expect((caught as GroqHttpError).responseError).not.toHaveProperty('message');
+    expect(JSON.stringify(caught)).not.toContain(reflected);
+    expect(JSON.stringify(caught)).not.toContain('secret-fixture');
   });
 });

@@ -429,6 +429,22 @@ describe('API PapaStock', () => {
     expect(JSON.stringify(response.body)).not.toContain('SHOW-001');
   });
 
+  it('devuelve 502 controlado sin exponer el diagnóstico interno de Groq', async () => {
+    answerOperationsQuestion.mockRejectedValueOnce(Object.assign(
+      new Error('El asistente de inventario no está disponible en este momento.'),
+      { status: 502 },
+    ));
+    const response = await protectedPost(app, '/api/ai/operations')
+      .send({ question: '¿Qué pasó con SHOW-001?' })
+      .expect(502);
+    expect(response.body).toEqual({
+      error: 'No se pudo completar la operación.',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('Groq');
+    expect(JSON.stringify(response.body)).not.toContain('x-request-id');
+    expect(JSON.stringify(response.body)).not.toContain('SHOW-001');
+  });
+
   it('rechaza mutaciones cross-site incluso con sesión y el logout invalida la sesión', async () => {
     await request(app).post('/api/stock-counts')
       .set('host', TEST_HOST)

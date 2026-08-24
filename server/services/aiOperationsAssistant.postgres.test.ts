@@ -168,18 +168,26 @@ describePostgres.sequential('asistente operativo con PostgreSQL 18 real', () => 
         });
         expect({ intent: context.intent, ...metrics.counts }).toMatchObject(expected[index]);
         let requestBodyBytes = 0;
+        let fetchCalled = false;
         const fetchImpl = (async (_url, init) => {
+          fetchCalled = true;
           requestBodyBytes = Buffer.byteLength(String(init?.body ?? ''), 'utf8');
           return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
             answer: 'Respuesta canónica.', confidence: 'high', dataQuality: 'authoritative',
             entities: [], warnings: [], evidence: [{ source: 'ledger', description: 'Resumen canónico.' }],
           }) } }] }), { status: 200 });
         }) as typeof fetch;
-        await createAiOperationsAssistant({
+        const answer = await createAiOperationsAssistant({
           apiKey: 'fixture', model: 'openai/gpt-oss-20b', timeoutMs: 100,
           maxRequestBodyBytes: 20_000, fetchImpl,
         })(question, context);
         expect(requestBodyBytes).toBeLessThan(7_000);
+        if (index === 0) {
+          expect(fetchCalled).toBe(false);
+          expect(answer.answer).toContain('10.250 kg de stock declarado');
+          expect(answer.answer).toContain('10.150 kg');
+          expect(answer.answer).toContain('-100 kg');
+        }
       }
     } finally {
       info.mockRestore();

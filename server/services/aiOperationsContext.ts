@@ -81,7 +81,7 @@ function classifyIntent(
   if (/recep/.test(normalizedQuestion) && /pendient/.test(normalizedQuestion)) return 'PENDING_RECEPTION';
   if (mentionedLotIds.size > 0 && /(que paso|histori|trazabil)/.test(normalizedQuestion)) return 'LOT_HISTORY';
   if (mentionedLotIds.size > 0 && /(donde|ubicac)/.test(normalizedQuestion)) return 'LOT_LOCATION';
-  if (mentionedLotIds.size > 0 && /stock|saldo|cantidad/.test(normalizedQuestion)) return 'LOT_STOCK';
+  if (mentionedLotIds.size > 0 && /(stock|saldo|cantidad|cuanto (?:hay|queda))/.test(normalizedQuestion)) return 'LOT_STOCK';
   return 'GENERAL';
 }
 

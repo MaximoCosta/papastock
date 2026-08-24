@@ -36,6 +36,56 @@ const validAnswer = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('asistente operativo read-only', () => {
+  it('responde LOT_STOCK con hechos canónicos aunque Groq proponga el total verificado', async () => {
+    const canonicalSnapshot: PapaStockSnapshot = {
+      ...snapshot,
+      locations: [
+        ...snapshot.locations,
+        { id: 'loc-frig-a', name: 'Frigorífico A', type: 'cold_storage' },
+      ],
+      stockRecords: [
+        snapshot.stockRecords[0],
+        {
+          id: 'stock-show-frig', lotId: 'lot-show-001', locationId: 'loc-frig-a',
+          declaredQuantity: 2_250, verifiedQuantity: 2_250, unit: 'kg',
+          updatedAt: '2026-08-24', verificationPending: false,
+        },
+      ],
+    };
+    const fetchImpl = vi.fn(async () => envelope(validAnswer({
+      answer: 'SHOW-001 tiene 10.150 kg de stock declarado.',
+    }))) as unknown as typeof fetch;
+
+    const answer = await createAiOperationsAssistant({ model: 'test', timeoutMs: 100, fetchImpl })(
+      '¿Cuánto stock hay de SHOW-001?',
+      buildAiOperationsContext('¿Cuánto stock hay de SHOW-001?', canonicalSnapshot),
+    );
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(answer.answer).toContain('10.250 kg de stock declarado');
+    expect(answer.answer).toContain('10.150 kg');
+    expect(answer.answer).toContain('-100 kg');
+    expect(answer.answer).not.toContain('10.150 kg de stock declarado');
+    expect(answer.entities).toEqual(expect.arrayContaining([
+      { type: 'lot', id: 'lot-show-001', label: 'SHOW-001' },
+      { type: 'location', id: 'loc-oriente', label: 'Campo Oriente' },
+      { type: 'location', id: 'loc-frig-a', label: 'Frigorífico A' },
+    ]));
+  });
+
+  it('comunica explícitamente una verificación pendiente en LOT_STOCK', async () => {
+    const pendingSnapshot: PapaStockSnapshot = {
+      ...snapshot,
+      stockRecords: [{ ...snapshot.stockRecords[0], verifiedQuantity: 0, verificationPending: true }],
+    };
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
+      'Stock de SHOW-001', buildAiOperationsContext('Stock de SHOW-001', pendingSnapshot),
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(`${answer.answer} ${answer.warnings.join(' ')}`).toContain('verificación pendiente');
+  });
+
   it('construye contexto desde snapshot y distingue SHOW-* MATCH de la autoridad global', () => {
     const context = buildAiOperationsContext(snapshot, '2026-08-24T12:00:00.000Z');
     expect(context.timestamp).toBe('2026-08-24T12:00:00.000Z');
@@ -155,6 +205,117 @@ describe('asistente operativo read-only', () => {
     )).rejects.toMatchObject({ status: 502, message: 'El asistente de inventario no está disponible en este momento.' });
   });
 
+  it('diagnostica un 400 sin retry ni exposición de pregunta, contexto o secreto', async () => {
+    const secret = 'secret-groq-400-fixture';
+    const question = 'pregunta-privada-groq-400-fixture';
+    const reflected = `${question} ${secret} stock-show`;
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: { code: 'invalid_request_error', type: 'invalid_request', message: reflected },
+    }), {
+      status: 400,
+      headers: { 'content-type': 'application/json', 'x-request-id': 'req-safe-400' },
+    })) as unknown as typeof fetch;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let caught: unknown;
+    try {
+      await createAiOperationsAssistant({ apiKey: secret, model: 'test', timeoutMs: 100, fetchImpl })(
+        question, buildAiOperationsContext(question, snapshot),
+      );
+    } catch (error) {
+      caught = error;
+    }
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(caught).toMatchObject({
+      status: 502,
+      message: 'El asistente de inventario no está disponible en este momento.',
+    });
+    expect(logged).toContain('invalid_request_error');
+    expect(logged).toContain('invalid_request');
+    expect(logged).toContain('req-safe-400');
+    expect(logged).not.toContain(secret);
+    expect(logged).not.toContain(question);
+    expect(logged).not.toContain('stock-show');
+    expect(JSON.stringify(caught)).not.toContain('req-safe-400');
+    warn.mockRestore();
+  });
+
+  it('serializa LOT_HISTORY de forma determinística y dentro del presupuesto', async () => {
+    const historySnapshot: PapaStockSnapshot = {
+      locations: [
+        { id: 'loc-oriente', name: 'Campo Oriente', type: 'warehouse' },
+        { id: 'loc-frig-a', name: 'Frigorífico A', type: 'cold_storage' },
+      ],
+      shelfUnits: [], shelves: [], transporters: [],
+      lots: [snapshot.lots[0]],
+      stockRecords: [
+        snapshot.stockRecords[0],
+        {
+          id: 'stock-show-frig', lotId: 'lot-show-001', locationId: 'loc-frig-a',
+          declaredQuantity: 2_250, verifiedQuantity: 2_250, unit: 'kg', updatedAt: '2026-08-24',
+        },
+      ],
+      movements: [
+        {
+          id: 'movement-import', reference: 'SHOWCASE-IMPORT-001', destinationLocationId: 'loc-oriente',
+          date: '2026-08-18', status: 'completed', kind: 'import', receptionStatus: 'not_applicable',
+          items: [{ id: 'item-import', movementId: 'movement-import', lotId: 'lot-show-001', dispatchedQuantity: 10_000, unit: 'kg', sortOrder: 0 }],
+        },
+        {
+          id: 'movement-transfer', reference: 'SHOWCASE-TRANSFER-001', originLocationId: 'loc-oriente', destinationLocationId: 'loc-frig-a',
+          date: '2026-08-20', status: 'completed', kind: 'transfer', receptionStatus: 'received',
+          items: [{ id: 'item-transfer', movementId: 'movement-transfer', lotId: 'lot-show-001', dispatchedQuantity: 2_000, receivedQuantity: 2_000, unit: 'kg', sortOrder: 0 }],
+        },
+        {
+          id: 'movement-correction', reference: 'SHOWCASE-CORRECTION-001', originLocationId: 'loc-frig-a', destinationLocationId: 'loc-frig-a',
+          correctsMovementId: 'movement-transfer', date: '2026-08-22', status: 'completed', kind: 'correction', receptionStatus: 'not_applicable',
+          items: [{ id: 'item-correction', movementId: 'movement-correction', lotId: 'lot-show-001', dispatchedQuantity: 250, unit: 'kg', sortOrder: 0, data: { effect: 'restore' } }],
+        },
+      ],
+      traceabilityEvents: [
+        { id: 'trace-correction', lotId: 'lot-show-001', type: 'correction', date: '2026-08-22', locationId: 'loc-frig-a', data: { source: 'showcase', unit: 'kg', reference: 'SHOWCASE-CORRECTION-001' } },
+        { id: 'trace-verification', lotId: 'lot-show-001', type: 'stock_verification', date: '2026-08-23', locationId: 'loc-oriente', data: { source: 'showcase', verifiedQuantity: 7_900, origin: 'operator_confirmation' } },
+      ],
+      discrepancies: [], stockCounts: [],
+    };
+    let sentBody = '';
+    const fetchImpl = vi.fn(async (_url, init) => {
+      sentBody = String(init?.body ?? '');
+      return new Response(JSON.stringify({ error: { code: 'fixture_400', type: 'invalid_request' } }), {
+        status: 400, headers: { 'x-request-id': 'req-history-fixture' },
+      });
+    }) as unknown as typeof fetch;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const question = '¿Qué pasó con SHOW-001?';
+    const context = buildAiOperationsContext(question, historySnapshot, '2026-08-24T12:00:00.000Z');
+    await expect(createAiOperationsAssistant({
+      apiKey: 'fixture', model: 'openai/gpt-oss-20b', timeoutMs: 100,
+      maxRequestBodyBytes: 20_000, fetchImpl,
+    })(question, context)).rejects.toMatchObject({ status: 502 });
+
+    const payload = JSON.parse(sentBody) as Record<string, any>;
+    const user = JSON.parse(payload.messages[1].content);
+    expect(payload).toMatchObject({
+      model: 'openai/gpt-oss-20b', temperature: 0,
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'papastock_operations_answer', strict: true },
+      },
+      messages: [{ role: 'system' }, { role: 'user' }],
+    });
+    expect(user.context).toMatchObject({
+      intent: 'LOT_HISTORY',
+      movements: expect.any(Array), movementItems: expect.any(Array), traceability: expect.any(Array),
+    });
+    expect(user.context.movements).toHaveLength(3);
+    expect(user.context.movementItems).toHaveLength(3);
+    expect(user.context.traceability).toHaveLength(2);
+    expect(user.context.ledger.classifications).toHaveLength(2);
+    expect(Buffer.byteLength(sentBody, 'utf8')).toBeLessThan(20_000);
+    expect(JSON.parse(JSON.stringify(user))).toEqual(user);
+    warn.mockRestore();
+  });
+
   it('trata 413 como no reintentable y preserva sólo diagnóstico seguro', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       error: { code: 'request_too_large', type: 'tokens', message: 'Request exceeds the account token limit.' },
@@ -162,8 +323,8 @@ describe('asistente operativo read-only', () => {
     const wait = vi.fn(async () => undefined);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await expect(createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl, wait })(
-      '¿Cuánto stock hay de SHOW-001?',
-      buildAiOperationsContext('¿Cuánto stock hay de SHOW-001?', snapshot),
+      'Resumen operativo',
+      buildAiOperationsContext('Resumen operativo', snapshot),
     )).rejects.toMatchObject({ status: 413, details: { code: 'AI_UPSTREAM_REQUEST_TOO_LARGE' } });
     expect(fetchImpl).toHaveBeenCalledOnce();
     expect(wait).not.toHaveBeenCalled();
@@ -178,8 +339,8 @@ describe('asistente operativo read-only', () => {
     await expect(createAiOperationsAssistant({
       apiKey: 'test', model: 'test', timeoutMs: 100, maxRequestBodyBytes: 100, fetchImpl,
     })(
-      '¿Cuánto stock hay de SHOW-001?',
-      buildAiOperationsContext('¿Cuánto stock hay de SHOW-001?', snapshot),
+      'Resumen operativo',
+      buildAiOperationsContext('Resumen operativo', snapshot),
     )).rejects.toMatchObject({ status: 413, details: { code: 'AI_REQUEST_BODY_BUDGET_EXCEEDED' } });
     expect(fetchImpl).not.toHaveBeenCalled();
     warn.mockRestore();
