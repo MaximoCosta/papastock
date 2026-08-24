@@ -15,6 +15,7 @@ import { StockControlPage } from './pages/StockControlPage';
 import { StockPage } from './pages/StockPage';
 import { TransportersPage } from './pages/TransportersPage';
 import { WarehousePage } from './pages/WarehousePage';
+import { OperationsAssistantPage } from './pages/OperationsAssistantPage';
 import { useDemoSession } from './state/DemoSessionContext';
 
 export default function App() {
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="exports/new" element={<NewExportPage />} />
         <Route path="documents" element={<DocumentsPage />} />
         <Route path="documents/:id" element={<DocumentPage />} />
+        <Route path="assistant" element={<OperationsAssistantPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

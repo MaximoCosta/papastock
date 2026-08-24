@@ -54,6 +54,7 @@ export const mapMovementItem = (row: MovementItemRow): MovementItem => ({
   receivedAt: row.received_at ?? undefined,
   unit: row.unit,
   sortOrder: row.sort_order,
+  data: row.data && typeof row.data === 'object' && !Array.isArray(row.data) ? row.data : undefined,
 });
 
 export const mapMovement = (row: MovementRow, items: MovementItem[] = []): Movement => {

@@ -8,6 +8,7 @@ import {
   LayoutGrid,
   PackageSearch,
   Route,
+  Sparkles,
   Truck,
   Warehouse,
 } from 'lucide-react';
@@ -36,6 +37,7 @@ const inventory: NavItem[] = [
 ];
 
 const operations: NavItem[] = [
+  { to: '/assistant', label: 'Asistente IA', icon: Sparkles },
   { to: '/movements/new', label: 'Mover stock', icon: Route },
   { to: '/transporters', label: 'Transportistas', icon: Truck },
   { to: '/exports/new', label: 'Exportaciones', icon: ClipboardList },

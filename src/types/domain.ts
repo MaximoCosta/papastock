@@ -70,6 +70,7 @@ export interface MovementItem {
   receivedAt?: string;
   unit: QuantityUnit;
   sortOrder: number;
+  data?: Record<string, unknown>;
 }
 
 export interface Movement {

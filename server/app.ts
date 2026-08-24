@@ -8,6 +8,7 @@ import { createDiscrepancyAnalyzer } from './services/groqDiscrepancy';
 import { createExportRequirementsParser } from './services/groqExportRequirements';
 import { createMovementIntentParser } from './services/groqMovementIntent';
 import { createTraceabilityIntentParser } from './services/groqTraceabilityIntent';
+import { buildAiOperationsContext, createAiOperationsAssistant } from './services/aiOperationsAssistant';
 import {
   buildPlanillaImportFromFile,
   buildStockIntakePlan,
@@ -189,6 +190,10 @@ const exportRequirementsInputSchema = z.object({
   sourceText: z.string().trim().min(8).max(2000),
 });
 
+const operationsQuestionSchema = z.object({
+  question: z.string().trim().min(3).max(500),
+});
+
 export interface AppDependencies {
   repository?: Pick<PapaStockRepository,
     'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer' | 'executePlanillaImport' | 'executeStockVerification' | 'executeReception' | 'executeLotCorrection' | 'executeStockCount'>;
@@ -196,6 +201,7 @@ export interface AppDependencies {
   parseMovementIntent?: ReturnType<typeof createMovementIntentParser>;
   parseTraceabilityIntent?: ReturnType<typeof createTraceabilityIntentParser>;
   parseExportRequirements?: ReturnType<typeof createExportRequirementsParser>;
+  answerOperationsQuestion?: ReturnType<typeof createAiOperationsAssistant>;
   auth?: AuthService;
   checkReadiness?: () => Promise<void>;
   planillaUploadsEnabled?: boolean;
@@ -231,6 +237,8 @@ export function createApp(dependencies: AppDependencies = {}) {
     ?? createTraceabilityIntentParser(groqOptions);
   const parseExportRequirements = dependencies.parseExportRequirements
     ?? createExportRequirementsParser(groqOptions);
+  const answerOperationsQuestion = dependencies.answerOperationsQuestion
+    ?? createAiOperationsAssistant(groqOptions);
 
   app.disable('x-powered-by');
   app.use(express.json({ limit: '64kb' }));
@@ -325,6 +333,15 @@ export function createApp(dependencies: AppDependencies = {}) {
     try {
       const input = exportRequirementsInputSchema.parse(request.body);
       response.json({ data: await parseExportRequirements(input) });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/ai/operations', canUseAi, async (request, response, next) => {
+    try {
+      if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      const { question } = operationsQuestionSchema.parse(request.body);
+      const context = buildAiOperationsContext(await repository.loadSnapshot());
+      response.json({ data: await answerOperationsQuestion(question, context) });
     } catch (error) { next(error); }
   });
 

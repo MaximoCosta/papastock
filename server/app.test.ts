@@ -106,7 +106,14 @@ const parseTraceabilityIntent = vi.fn(async () => ({
 const parseExportRequirements = vi.fn(async () => ({
   engine: 'llm' as const, requirements: [{ key: 'treatment' as const, label: 'Tratamiento fitosanitario', required: true }],
 }));
-const app = createApp({ repository, analyze, parseMovementIntent, parseTraceabilityIntent, parseExportRequirements, auth });
+const answerOperationsQuestion = vi.fn(async () => ({
+  answer: 'SHOW-001 tiene 8.000 kg registrados.', confidence: 'high' as const,
+  dataQuality: 'operational_only' as const,
+  entities: [{ type: 'lot' as const, id: 'lot', label: 'A-204' }],
+  warnings: ['El ledger todavía no es autoritativo.'],
+  evidence: [{ source: 'stock_records' as const, description: 'Registro s.' }],
+}));
+const app = createApp({ repository, analyze, parseMovementIntent, parseTraceabilityIntent, parseExportRequirements, answerOperationsQuestion, auth });
 
 describe('API PapaStock', () => {
   beforeAll(async () => {
@@ -146,6 +153,7 @@ describe('API PapaStock', () => {
       ['POST', '/api/ai/movement-intent'],
       ['POST', '/api/ai/traceability-intent'],
       ['POST', '/api/ai/export-requirements'],
+      ['POST', '/api/ai/operations'],
       ['POST', '/api/movements/preview'],
       ['POST', '/api/movements'],
       ['POST', '/api/movements/movement/reception'],
@@ -359,6 +367,17 @@ describe('API PapaStock', () => {
     const body = { country: 'Brasil', documentType: 'proforma', sourceText: 'Debe incluir tratamiento fitosanitario.' };
     const data = (await protectedPost(app, '/api/ai/export-requirements').send(body).expect(200)).body.data;
     expect(data).toMatchObject({ engine: 'llm', requirements: [{ key: 'treatment' }] });
+  });
+
+  it('consulta el asistente read-only usando el snapshot PostgreSQL y permanece detrás de auth', async () => {
+    repository.loadSnapshot.mockClear();
+    const data = (await protectedPost(app, '/api/ai/operations')
+      .send({ question: '¿Cuánto stock hay de A-204?' })
+      .expect(200)).body.data;
+    expect(data).toMatchObject({ dataQuality: 'operational_only', confidence: 'high' });
+    expect(repository.loadSnapshot).toHaveBeenCalledOnce();
+    expect(answerOperationsQuestion).toHaveBeenCalledOnce();
+    await protectedPost(app, '/api/ai/operations').send({ question: 'x' }).expect(400);
   });
 
   it('rechaza mutaciones cross-site incluso con sesión y el logout invalida la sesión', async () => {
