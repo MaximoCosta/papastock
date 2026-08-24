@@ -2,8 +2,10 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app';
-import { config } from './config';
+import { assertProductionServerConfig, config } from './config';
 import { pool, verifyDatabaseConnection } from './db/pool';
+
+assertProductionServerConfig();
 
 const app = createApp();
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

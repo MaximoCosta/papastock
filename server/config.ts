@@ -24,18 +24,22 @@ export const config = {
   sessionSecret: process.env.PAPASTOCK_SESSION_SECRET?.trim(),
 };
 
+export type PapaStockConfig = typeof config;
+
 if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {
   throw new Error('PORT debe ser un entero entre 1 y 65535.');
-}
-
-if (config.nodeEnv === 'production' && !config.databaseUrl) {
-  throw new Error('DATABASE_URL es obligatoria en producción.');
 }
 
 if (!Number.isInteger(config.databaseReadinessTimeoutMs) || config.databaseReadinessTimeoutMs < 100 || config.databaseReadinessTimeoutMs > 10_000) {
   throw new Error('DATABASE_READINESS_TIMEOUT_MS debe ser un entero entre 100 y 10000.');
 }
 
-if (config.nodeEnv === 'production' && (!config.authUsername || !config.authPasswordHash || !config.sessionSecret)) {
-  throw new Error('PAPASTOCK_AUTH_USERNAME, PAPASTOCK_AUTH_PASSWORD_HASH y PAPASTOCK_SESSION_SECRET son obligatorias en producción.');
+export function assertProductionServerConfig(candidate: PapaStockConfig = config): void {
+  if (candidate.nodeEnv !== 'production') return;
+  if (!candidate.databaseUrl) {
+    throw new Error('DATABASE_URL es obligatoria en producción.');
+  }
+  if (!candidate.authUsername || !candidate.authPasswordHash || !candidate.sessionSecret) {
+    throw new Error('PAPASTOCK_AUTH_USERNAME, PAPASTOCK_AUTH_PASSWORD_HASH y PAPASTOCK_SESSION_SECRET son obligatorias en producción.');
+  }
 }
