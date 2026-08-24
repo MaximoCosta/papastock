@@ -513,6 +513,12 @@ export function createApp(dependencies: AppDependencies = {}) {
     const candidate = error as { status?: number; code?: string; message?: string; details?: unknown };
     const status = candidate.status ?? (candidate.code === '23505' ? 409 : 500);
     if (status >= 500) console.error('[api]', error);
+    const retryAfterSeconds = status === 429 && candidate.details && typeof candidate.details === 'object'
+      ? (candidate.details as { retryAfterSeconds?: unknown }).retryAfterSeconds
+      : undefined;
+    if (typeof retryAfterSeconds === 'number' && Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+      response.set('retry-after', String(Math.ceil(retryAfterSeconds)));
+    }
     return response.status(status).json({
       error: status >= 500 ? 'No se pudo completar la operación.' : candidate.message,
       ...(candidate.details ? { details: candidate.details } : {}),

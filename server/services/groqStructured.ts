@@ -13,6 +13,40 @@ export interface StructuredRequest {
 }
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const RATE_LIMIT_HEADERS = [
+  'x-ratelimit-limit-requests',
+  'x-ratelimit-remaining-requests',
+  'x-ratelimit-reset-requests',
+  'x-ratelimit-limit-tokens',
+  'x-ratelimit-remaining-tokens',
+  'x-ratelimit-reset-tokens',
+] as const;
+
+function parseRetryAfter(value: string | null, now = Date.now()): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds;
+  const date = Date.parse(value);
+  if (!Number.isFinite(date)) return undefined;
+  return Math.max(0, (date - now) / 1_000);
+}
+
+export class GroqHttpError extends Error {
+  readonly status: number;
+  readonly retryAfterSeconds?: number;
+  readonly rateLimitHeaders: Readonly<Record<string, string>>;
+
+  constructor(response: Response) {
+    super(`Groq respondió HTTP ${response.status}`);
+    this.name = 'GroqHttpError';
+    this.status = response.status;
+    this.retryAfterSeconds = parseRetryAfter(response.headers.get('retry-after'));
+    this.rateLimitHeaders = Object.fromEntries(RATE_LIMIT_HEADERS.flatMap((header) => {
+      const value = response.headers.get(header);
+      return value === null ? [] : [[header, value.slice(0, 120)]];
+    }));
+  }
+}
 
 /**
  * Pide un JSON estructurado a Groq y lo devuelve sin interpretar.
@@ -44,7 +78,7 @@ export async function requestStructuredOutput(
         },
       }),
     });
-    if (!response.ok) throw new Error(`Groq respondió HTTP ${response.status}`);
+    if (!response.ok) throw new GroqHttpError(response);
     const envelope = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = envelope.choices?.[0]?.message?.content;
     if (!content) throw new Error('Groq no devolvió contenido.');

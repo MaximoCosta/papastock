@@ -380,6 +380,21 @@ describe('API PapaStock', () => {
     await protectedPost(app, '/api/ai/operations').send({ question: 'x' }).expect(400);
   });
 
+  it('preserva un rate limit temporal del asistente como HTTP 429 controlado', async () => {
+    answerOperationsQuestion.mockRejectedValueOnce(Object.assign(
+      new Error('El asistente alcanzó un límite temporal. Reintentá en unos segundos.'),
+      { status: 429, details: { retryAfterSeconds: 2 } },
+    ));
+    const response = await protectedPost(app, '/api/ai/operations')
+      .send({ question: '¿Cuánto stock hay de SHOW-001?' })
+      .expect(429);
+    expect(response.headers['retry-after']).toBe('2');
+    expect(response.body).toEqual({
+      error: 'El asistente alcanzó un límite temporal. Reintentá en unos segundos.',
+      details: { retryAfterSeconds: 2 },
+    });
+  });
+
   it('rechaza mutaciones cross-site incluso con sesión y el logout invalida la sesión', async () => {
     await request(app).post('/api/stock-counts')
       .set('host', TEST_HOST)

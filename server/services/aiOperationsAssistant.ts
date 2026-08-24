@@ -3,7 +3,7 @@ import type { PapaStockSnapshot } from '../../src/repositories/dataRepository';
 import { stockUnit } from '../../src/lib/quantity';
 import type { OperationsAssistantAnswer, OperationsAssistantEntity } from '../../src/types/operationsAssistant';
 import { verifyLedgerAuthority } from './ledgerVerifier';
-import { requestStructuredOutput, type GroqOptions } from './groqStructured';
+import { GroqHttpError, requestStructuredOutput, type GroqOptions, type StructuredRequest } from './groqStructured';
 
 const CONTEXT_LIMITS = {
   lots: 250,
@@ -18,6 +18,10 @@ const CONTEXT_LIMITS = {
 
 const CLOSED_WORLD_WARNING = 'El stock operativo persistido es la referencia actual; el historial de movimientos todavía no reconstruye todos los saldos.';
 const MAX_CONTEXT_BYTES = 512_000;
+const GLOBAL_AUTHORITY_CLAIMS = [
+  /\bel ledger (?:confirma|valida|reconstruye) (?:todo(?: el inventario)?|todos? los saldos|los saldos|el inventario(?: completo)?)\b/,
+  /\bel historial(?: de movimientos)? (?:confirma|valida|reconstruye) (?:completamente|por completo|todo) (?:el inventario|los saldos)\b/,
+];
 
 export const operationsAnswerSchema = z.object({
   answer: z.string().trim().min(1).max(4_000),
@@ -203,6 +207,26 @@ export function buildAiOperationsContext(snapshot: PapaStockSnapshot, timestamp 
 
 export type AiOperationsContext = ReturnType<typeof buildAiOperationsContext>;
 
+export function measureAiOperationsContext(context: AiOperationsContext) {
+  const jsonBytes = Buffer.byteLength(JSON.stringify(context), 'utf8');
+  return {
+    jsonBytes,
+    estimatedInputTokens: Math.ceil(jsonBytes / 4),
+    counts: {
+      lots: context.lots.length,
+      locations: context.locations.length,
+      stockRecords: context.stockRecords.length,
+      movements: context.movements.length,
+      movementItems: context.movementItems.length,
+      traceability: context.traceability.length,
+      discrepancies: context.discrepancies.length,
+      stockCounts: context.stockCounts.length,
+      ledgerClassifications: context.ledger.classifications.length,
+      ledgerBlockingIssues: context.ledger.blockingIssues.length,
+    },
+  };
+}
+
 function canonicalEntities(context: AiOperationsContext): Map<string, OperationsAssistantEntity> {
   const result = new Map<string, OperationsAssistantEntity>();
   for (const lot of context.lots) result.set(`lot:${lot.id}`, { type: 'lot', id: lot.id, label: lot.code });
@@ -219,17 +243,16 @@ function validateClosedWorld(answer: OperationsAssistantAnswer, context: AiOpera
     return canonical;
   });
 
-  if (!context.ledger.ledgerAuthority && answer.dataQuality === 'authoritative') {
-    throw new Error('El modelo declaró autoridad inexistente del ledger.');
-  }
-
   const normalized = answer.answer.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (!context.ledger.ledgerAuthority && /el ledger (confirma|valida|reconstruye) (todo|el inventario|los saldos)/.test(normalized)) {
+  if (!context.ledger.ledgerAuthority && GLOBAL_AUTHORITY_CLAIMS.some((pattern) => pattern.test(normalized))) {
     throw new Error('El modelo afirmó autoridad global inexistente del ledger.');
   }
 
   return {
     ...answer,
+    dataQuality: !context.ledger.ledgerAuthority && answer.dataQuality === 'authoritative'
+      ? 'operational_only'
+      : answer.dataQuality,
     entities,
     warnings: context.ledger.ledgerAuthority
       ? answer.warnings
@@ -237,13 +260,61 @@ function validateClosedWorld(answer: OperationsAssistantAnswer, context: AiOpera
   };
 }
 
-export function createAiOperationsAssistant(options: GroqOptions) {
+type AiOperationsOptions = GroqOptions & {
+  wait?: (milliseconds: number) => Promise<void>;
+  now?: () => number;
+};
+
+async function requestWithSingleRateLimitRetry(
+  options: AiOperationsOptions,
+  request: StructuredRequest,
+): Promise<unknown> {
+  const now = options.now ?? Date.now;
+  const wait = options.wait ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  const deadline = now() + options.timeoutMs;
+
+  try {
+    return await requestStructuredOutput(options, request);
+  } catch (error) {
+    if (!(error instanceof GroqHttpError) || error.status !== 429) throw error;
+    const retryAfterMs = error.retryAfterSeconds === undefined ? undefined : error.retryAfterSeconds * 1_000;
+    const remainingBeforeWait = deadline - now();
+    if (retryAfterMs === undefined || retryAfterMs >= remainingBeforeWait) throw error;
+    await wait(retryAfterMs);
+    const remainingAfterWait = Math.floor(deadline - now());
+    if (remainingAfterWait <= 0) throw error;
+    return requestStructuredOutput({ ...options, timeoutMs: remainingAfterWait }, request);
+  }
+}
+
+function controlledRateLimitError(
+  error: GroqHttpError,
+  contextMetrics: ReturnType<typeof measureAiOperationsContext>,
+): Error & { status: number; details?: unknown } {
+  console.warn('[ai] límite temporal del asistente operativo:', {
+    status: error.status,
+    retryAfterSeconds: error.retryAfterSeconds,
+    ...error.rateLimitHeaders,
+    contextMetrics,
+  });
+  return Object.assign(
+    new Error('El asistente alcanzó un límite temporal. Reintentá en unos segundos.'),
+    {
+      status: 429,
+      ...(error.retryAfterSeconds === undefined
+        ? {}
+        : { details: { retryAfterSeconds: Math.ceil(error.retryAfterSeconds) } }),
+    },
+  );
+}
+
+export function createAiOperationsAssistant(options: AiOperationsOptions) {
   return async function answerOperationsQuestion(
     question: string,
     context: AiOperationsContext,
   ): Promise<OperationsAssistantAnswer> {
     try {
-      const raw = await requestStructuredOutput(options, {
+      const raw = await requestWithSingleRateLimitRetry(options, {
         schemaName: 'papastock_operations_answer',
         jsonSchema,
         system: [
@@ -252,7 +323,8 @@ export function createAiOperationsAssistant(options: GroqOptions) {
           'No inventes lotes, ubicaciones, movimientos, cantidades, fechas ni causalidades.',
           'Nunca propongas ni ejecutes SQL, migraciones, escrituras, transferencias, recepciones o correcciones.',
           'Diferenciá stock_records operativo del ledger reconstruido.',
-          'Si ledgerAuthority es false, no afirmes autoridad global del ledger; podés describir una coordenada MATCH de forma específica.',
+          'Si ledgerAuthority es false, dataQuality DEBE ser operational_only o incomplete, nunca authoritative.',
+          'Si ledgerAuthority es false, no afirmes autoridad global del ledger; una coordenada MATCH individual puede describirse como conciliada, pero eso NO implica autoridad global.',
           'Las entidades deben usar IDs exactos del contexto.',
           'Respondé exclusivamente con el JSON Schema solicitado.',
         ],
@@ -260,6 +332,9 @@ export function createAiOperationsAssistant(options: GroqOptions) {
       });
       return validateClosedWorld(operationsAnswerSchema.parse(raw), context);
     } catch (error) {
+      if (error instanceof GroqHttpError && error.status === 429) {
+        throw controlledRateLimitError(error, measureAiOperationsContext(context));
+      }
       console.warn('[ai] asistente operativo no disponible:', error instanceof Error ? error.message : 'respuesta inválida');
       throw Object.assign(new Error('El asistente de inventario no está disponible en este momento.'), { status: 502 });
     }

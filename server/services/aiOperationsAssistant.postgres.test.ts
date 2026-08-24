@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrationRunner';
 import { applyShowcaseDataset } from '../db/showcaseDataset';
 import { PapaStockRepository } from '../repositories/papaStockRepository';
-import { buildAiOperationsContext } from './aiOperationsAssistant';
+import { buildAiOperationsContext, measureAiOperationsContext } from './aiOperationsAssistant';
 
 const testDatabaseUrl = process.env.PAPASTOCK_TEST_DATABASE_URL;
 const describePostgres = testDatabaseUrl ? describe : describe.skip;
@@ -76,5 +76,17 @@ describePostgres.sequential('asistente operativo con PostgreSQL real 001-006', (
     expect(context.ledger.classifications.filter((row) => row.lotCode.startsWith('SHOW-'))).toHaveLength(5);
     expect(context.ledger.classifications.filter((row) => row.lotCode.startsWith('SHOW-')).every((row) => row.classification === 'MATCH')).toBe(true);
     expect(context.ledger.ledgerAuthority).toBe(false);
+    expect(measureAiOperationsContext(context)).toMatchObject({
+      counts: {
+        lots: 5,
+        stockRecords: 7,
+        movements: 7,
+        movementItems: 8,
+        traceability: 3,
+        discrepancies: 0,
+        stockCounts: 0,
+      },
+    });
+    expect(measureAiOperationsContext(context).jsonBytes).toBeLessThan(50_000);
   }, 30_000);
 });
