@@ -371,12 +371,31 @@ describe('API PapaStock', () => {
 
   it('consulta el asistente read-only usando el snapshot PostgreSQL y permanece detrás de auth', async () => {
     repository.loadSnapshot.mockClear();
+    repository.insertTraceabilityEvent.mockClear();
+    repository.executeStockTransfer.mockClear();
+    repository.executeReception.mockClear();
+    repository.executeLotCorrection.mockClear();
+    repository.executeStockCount.mockClear();
+    repository.executePlanillaImport.mockClear();
+    repository.executeStockVerification.mockClear();
     const data = (await protectedPost(app, '/api/ai/operations')
       .send({ question: '¿Cuánto stock hay de A-204?' })
       .expect(200)).body.data;
     expect(data).toMatchObject({ dataQuality: 'operational_only', confidence: 'high' });
     expect(repository.loadSnapshot).toHaveBeenCalledOnce();
     expect(answerOperationsQuestion).toHaveBeenCalledOnce();
+    const assistantCall = answerOperationsQuestion.mock.calls.at(-1) as unknown as [string, unknown];
+    expect(assistantCall[1]).toMatchObject({
+      intent: 'LOT_STOCK',
+      lots: [{ id: 'lot', code: 'A-204' }],
+    });
+    expect(repository.insertTraceabilityEvent).not.toHaveBeenCalled();
+    expect(repository.executeStockTransfer).not.toHaveBeenCalled();
+    expect(repository.executeReception).not.toHaveBeenCalled();
+    expect(repository.executeLotCorrection).not.toHaveBeenCalled();
+    expect(repository.executeStockCount).not.toHaveBeenCalled();
+    expect(repository.executePlanillaImport).not.toHaveBeenCalled();
+    expect(repository.executeStockVerification).not.toHaveBeenCalled();
     await protectedPost(app, '/api/ai/operations').send({ question: 'x' }).expect(400);
   });
 
@@ -393,6 +412,21 @@ describe('API PapaStock', () => {
       error: 'El asistente alcanzó un límite temporal. Reintentá en unos segundos.',
       details: { retryAfterSeconds: 2 },
     });
+  });
+
+  it('preserva un 413 controlado del asistente sin exponer contenido', async () => {
+    answerOperationsQuestion.mockRejectedValueOnce(Object.assign(
+      new Error('La consulta excede el límite seguro del asistente. Refiná la pregunta o contactá al administrador.'),
+      { status: 413, details: { code: 'AI_REQUEST_BODY_BUDGET_EXCEEDED' } },
+    ));
+    const response = await protectedPost(app, '/api/ai/operations')
+      .send({ question: '¿Cuánto stock hay de SHOW-001?' })
+      .expect(413);
+    expect(response.body).toEqual({
+      error: 'La consulta excede el límite seguro del asistente. Refiná la pregunta o contactá al administrador.',
+      details: { code: 'AI_REQUEST_BODY_BUDGET_EXCEEDED' },
+    });
+    expect(JSON.stringify(response.body)).not.toContain('SHOW-001');
   });
 
   it('rechaza mutaciones cross-site incluso con sesión y el logout invalida la sesión', async () => {

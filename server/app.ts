@@ -232,6 +232,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     apiKey: config.groqApiKey,
     model: config.aiModel,
     timeoutMs: config.groqTimeoutMs,
+    maxRequestBodyBytes: config.groqMaxRequestBodyBytes,
   };
   const parseTraceabilityIntent = dependencies.parseTraceabilityIntent
     ?? createTraceabilityIntentParser(groqOptions);
@@ -340,7 +341,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     try {
       if (!repository) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
       const { question } = operationsQuestionSchema.parse(request.body);
-      const context = buildAiOperationsContext(await repository.loadSnapshot());
+      const context = buildAiOperationsContext(question, await repository.loadSnapshot());
       response.json({ data: await answerOperationsQuestion(question, context) });
     } catch (error) { next(error); }
   });

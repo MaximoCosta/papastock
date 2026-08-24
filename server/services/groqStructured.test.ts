@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GroqHttpError, requestStructuredOutput } from './groqStructured';
+import {
+  GroqHttpError,
+  GroqRequestBodyLimitError,
+  requestStructuredOutput,
+  serializeStructuredRequest,
+} from './groqStructured';
 
 const request = {
   schemaName: 'fixture',
@@ -56,5 +61,54 @@ describe('cliente Groq Structured Output', () => {
     }), { status: 200 })) as unknown as typeof fetch;
     await expect(requestStructuredOutput({ apiKey: 'fixture', model: 'fixture', timeoutMs: 100, fetchImpl }, request))
       .resolves.toEqual({ ok: true });
+  });
+
+  it('calcula requestBodyBytes sobre el JSON final exacto enviado', async () => {
+    let sentBody = '';
+    const fetchImpl = vi.fn(async (_url, init) => {
+      sentBody = String(init?.body ?? '');
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ ok: true }) } }],
+      }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const serialized = serializeStructuredRequest('model-fixture', request);
+    await requestStructuredOutput({ apiKey: 'fixture', model: 'model-fixture', timeoutMs: 100, fetchImpl }, request);
+    expect(sentBody).toBe(serialized.body);
+    expect(serialized.metrics.requestBodyBytes).toBe(Buffer.byteLength(sentBody, 'utf8'));
+    expect(serialized.metrics).toMatchObject({
+      systemPromptBytes: Buffer.byteLength('system-fixture', 'utf8'),
+      schemaBytes: Buffer.byteLength(JSON.stringify(request.jsonSchema), 'utf8'),
+    });
+  });
+
+  it('bloquea localmente un body sobre presupuesto antes del fetch', async () => {
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    await expect(requestStructuredOutput({
+      apiKey: 'fixture', model: 'model-fixture', timeoutMs: 100, maxRequestBodyBytes: 10, fetchImpl,
+    }, request)).rejects.toBeInstanceOf(GroqRequestBodyLimitError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('preserva diagnóstico seguro de un 413 sin conservar el body completo', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: { code: 'request_too_large', type: 'tokens', message: 'Requested 7282 tokens; limit 6000.' },
+      ignored: 'sensitive-context-fixture',
+    }), {
+      status: 413,
+      headers: { 'content-type': 'application/json', 'content-length': '147', 'x-unrelated-header': 'ignored' },
+    })) as unknown as typeof fetch;
+    let caught: unknown;
+    try {
+      await requestStructuredOutput({ apiKey: 'fixture', model: 'model-fixture', timeoutMs: 100, fetchImpl }, request);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({
+      status: 413,
+      responseError: { code: 'request_too_large', type: 'tokens', message: 'Requested 7282 tokens; limit 6000.' },
+      safeHeaders: { 'content-type': 'application/json', 'content-length': '147' },
+    });
+    expect((caught as GroqHttpError).safeHeaders).not.toHaveProperty('x-unrelated-header');
+    expect(JSON.stringify(caught)).not.toContain('sensitive-context-fixture');
   });
 });

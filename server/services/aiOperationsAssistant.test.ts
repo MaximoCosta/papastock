@@ -154,4 +154,34 @@ describe('asistente operativo read-only', () => {
       'Resumen', buildAiOperationsContext(snapshot),
     )).rejects.toMatchObject({ status: 502, message: 'El asistente de inventario no está disponible en este momento.' });
   });
+
+  it('trata 413 como no reintentable y preserva sólo diagnóstico seguro', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: { code: 'request_too_large', type: 'tokens', message: 'Request exceeds the account token limit.' },
+    }), { status: 413, headers: { 'content-type': 'application/json', 'content-length': '123' } })) as unknown as typeof fetch;
+    const wait = vi.fn(async () => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await expect(createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl, wait })(
+      '¿Cuánto stock hay de SHOW-001?',
+      buildAiOperationsContext('¿Cuánto stock hay de SHOW-001?', snapshot),
+    )).rejects.toMatchObject({ status: 413, details: { code: 'AI_UPSTREAM_REQUEST_TOO_LARGE' } });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(wait).not.toHaveBeenCalled();
+    expect(JSON.stringify(warn.mock.calls)).toContain('request_too_large');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('stock-show');
+    warn.mockRestore();
+  });
+
+  it('no llama a Groq cuando el JSON final excede el presupuesto de bytes', async () => {
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await expect(createAiOperationsAssistant({
+      apiKey: 'test', model: 'test', timeoutMs: 100, maxRequestBodyBytes: 100, fetchImpl,
+    })(
+      '¿Cuánto stock hay de SHOW-001?',
+      buildAiOperationsContext('¿Cuánto stock hay de SHOW-001?', snapshot),
+    )).rejects.toMatchObject({ status: 413, details: { code: 'AI_REQUEST_BODY_BUDGET_EXCEEDED' } });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
