@@ -139,7 +139,9 @@ export function verifyLedgerAuthority(input: LedgerVerifierInput): LedgerVerific
   const ledger = new Map<string, number>();
   const addDelta = (lotId: string, locationId: string, unit: string, quantity: number) => {
     const key = coordinateKey(lotId, locationId, unit);
-    ledger.set(key, roundQuantity((ledger.get(key) ?? 0) + quantity));
+    const balance = roundQuantity((ledger.get(key) ?? 0) + quantity);
+    if (balance === 0) ledger.delete(key);
+    else ledger.set(key, balance);
   };
 
   for (const movement of input.movements) {

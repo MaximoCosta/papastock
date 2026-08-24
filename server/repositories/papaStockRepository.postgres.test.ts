@@ -28,7 +28,7 @@ describePostgres.sequential('PapaStockRepository con PostgreSQL real', () => {
     const client = await pool.connect();
     try {
       const migrationsDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../migrations');
-      await runMigrations(client, migrationsDirectory);
+      await runMigrations(client, migrationsDirectory, { to: '007_opening_balance.sql' });
     } finally {
       client.release();
     }

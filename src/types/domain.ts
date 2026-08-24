@@ -55,7 +55,7 @@ export interface StockRecord {
 }
 
 export type MovementStatus = 'completed' | 'pending' | 'cancelled';
-export type MovementKind = 'transfer' | 'correction' | 'import';
+export type MovementKind = 'transfer' | 'correction' | 'import' | 'opening_balance';
 export type ReceptionStatus = 'not_applicable' | 'pending' | 'received' | 'needs_reconciliation';
 export type DiscrepancyStatus = 'open' | 'investigating' | 'resolved';
 export type DiscrepancyType = 'reception_shortfall' | 'reception_unallocated' | 'physical_count';

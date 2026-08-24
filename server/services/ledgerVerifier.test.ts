@@ -148,4 +148,55 @@ describe('verificador canónico de ledger', () => {
     input.stockRecords = [{ id: 'stock', lotId: 'lot-a', locationId: 'destination', unit: 'kg', declaredQuantity: 10, verifiedQuantity: 10, verificationPending: false }];
     expect(verifyLedgerAuthority(input).ledgerAuthority).toBe(true);
   });
+
+  it('no conserva una coordenada fantasma cuando el saldo final es cero y no hay stock_record', () => {
+    const input = baseInput();
+    input.movements = [
+      { id: 'opening', reference: 'OB', kind: 'opening_balance', status: 'completed', destinationLocationId: 'origin' },
+      transfer(),
+    ];
+    input.movementItems = [
+      { id: 'opening-item', movementId: 'opening', lotId: 'lot-a', quantity: 10, unit: 'kg' },
+      { id: 'transfer-item', movementId: 'movement-transfer', lotId: 'lot-a', quantity: 10, unit: 'kg' },
+    ];
+    input.stockRecords = [{
+      id: 'destination-stock', lotId: 'lot-a', locationId: 'destination', unit: 'kg',
+      declaredQuantity: 10, verifiedQuantity: 10, verificationPending: false,
+    }];
+
+    const result = verifyLedgerAuthority(input);
+    expect(result.coordinates).toEqual([expect.objectContaining({
+      locationId: 'destination', ledgerBalance: 10, classification: 'MATCH',
+    })]);
+    expect(result.ledgerAuthority).toBe(true);
+  });
+
+  it('conserva SHOW-* MATCH y balances negativos reales al eliminar sólo net-zero sin stock', () => {
+    const input = baseInput();
+    input.lots[0].code = 'SHOW-001';
+    input.movements = [
+      { id: 'opening', reference: 'OB', kind: 'opening_balance', status: 'completed', destinationLocationId: 'origin' },
+      transfer(),
+      { ...transfer(), id: 'negative-transfer', reference: 'MV-NEG' },
+    ];
+    input.movementItems = [
+      { id: 'opening-item', movementId: 'opening', lotId: 'lot-a', quantity: 10, unit: 'kg' },
+      { id: 'show-transfer-item', movementId: 'movement-transfer', lotId: 'lot-a', quantity: 10, unit: 'kg' },
+      { id: 'negative-item', movementId: 'negative-transfer', lotId: 'lot-b', quantity: 3, unit: 'kg' },
+    ];
+    input.stockRecords = [{
+      id: 'show-stock', lotId: 'lot-a', locationId: 'destination', unit: 'kg',
+      declaredQuantity: 10, verifiedQuantity: 10, verificationPending: false,
+    }];
+
+    const result = verifyLedgerAuthority(input);
+    expect(result.coordinates.filter((row) => row.lotCode.startsWith('SHOW-'))).toEqual([
+      expect.objectContaining({ locationId: 'destination', ledgerBalance: 10, classification: 'MATCH' }),
+    ]);
+    expect(result.coordinates.find((row) => row.lotId === 'lot-b' && row.locationId === 'origin')).toMatchObject({
+      ledgerBalance: -3,
+      classification: 'INVALID_NEGATIVE_BALANCE',
+    });
+    expect(result.ledgerAuthority).toBe(false);
+  });
 });
