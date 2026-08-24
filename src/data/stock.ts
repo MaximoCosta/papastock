@@ -12,4 +12,6 @@ export const stockRecords: StockRecord[] = [
   { id: 'stock-f301', lotId: 'lot-f301', locationId: 'loc-warehouse', shelfId: 'shelf-w-b1', declaredQuantity: 17000, verifiedQuantity: 0, updatedAt: '2026-08-21T11:45:00-03:00', verificationPending: true },
   { id: 'stock-g512', lotId: 'lot-g512', locationId: 'loc-south', shelfId: 'shelf-s-b1', declaredQuantity: 21000, verifiedQuantity: 21000, updatedAt: '2026-08-20T18:00:00-03:00' },
   { id: 'stock-h118', lotId: 'lot-h118', locationId: 'loc-central', shelfId: 'shelf-c-b1', declaredQuantity: 13500, verifiedQuantity: 13500, updatedAt: '2026-08-21T07:50:00-03:00' },
+  { id: 'stock-300-oriente', lotId: 'lot-300', locationId: 'loc-oriente', declaredQuantity: 500, verifiedQuantity: 500, updatedAt: '2026-08-22T12:00:00-03:00', unit: 'bags' },
+  { id: 'stock-301-oriente', lotId: 'lot-301', locationId: 'loc-oriente', declaredQuantity: 300, verifiedQuantity: 300, updatedAt: '2026-08-22T12:00:00-03:00', unit: 'bags' },
 ];

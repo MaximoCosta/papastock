@@ -10,8 +10,9 @@ import {
   buildPlanillaImportFromFile,
   buildStockIntakePlan,
   fold,
-  PROTECTED_DEMO_LOT_CODES,
+  PLANILLA_LIMITS,
   resolveLocationSpec,
+  validatePlanillaUpload,
 } from './planillaImport';
 
 function snapshot(): PapaStockSnapshot {
@@ -35,6 +36,14 @@ function workbookBuffer(sheets: Record<string, unknown[][]>): Buffer {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }
 
+function legacyWorkbookBuffer(sheets: Record<string, unknown[][]>): Buffer {
+  const workbook = XLSX.utils.book_new();
+  for (const [name, rows] of Object.entries(sheets)) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), name);
+  }
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xls' }) as Buffer;
+}
+
 describe('planillaImport', () => {
   it('resuelve alias operativos de frigoríficos y galpón', () => {
     expect(resolveLocationSpec('dospanca')).toMatchObject({ name: 'Dos Panca', type: 'cold_storage' });
@@ -42,7 +51,7 @@ describe('planillaImport', () => {
     expect(fold('Frigoríficos')).toBe('frigorificos');
   });
 
-  it('parsea ingresos de campo, omite filas vacías y no toca lotes de demo', () => {
+  it('parsea ingresos de campo y omite filas vacías sin reglas especiales por código de lote', () => {
     const buffer = workbookBuffer({
       'De campo a Frío': [
         ['Remito', 'Fecha', 'Variedad', 'Lote', 'Kgs.', 'Transporte', 'Destino', 'Bolsas', 'Observaciones / DTV'],
@@ -66,8 +75,8 @@ describe('planillaImport', () => {
     const plan = buildPlanillaImportFromFile(buffer, 'Planilla de movimientos 2026.xlsx', snapshot());
 
     expect(plan.preview.valid).toBe(true);
-    expect(plan.preview.movementCount).toBe(3);
-    expect(plan.preview.sample.map((row) => row.lotCode).sort()).toEqual(['224', '241', '300']);
+    expect(plan.preview.movementCount).toBe(4);
+    expect(plan.preview.sample.map((row) => row.lotCode).sort()).toEqual(['224', '241', '300', 'A-204']);
     expect(plan.preview.sample.find((row) => row.lotCode === '241')).toMatchObject({
       originName: 'Campo',
       destinationName: 'Dos Panca',
@@ -77,12 +86,11 @@ describe('planillaImport', () => {
     expect(plan.preview.sample.find((row) => row.lotCode === '300')?.destinationName).toBe('Galpón Principal');
     expect(plan.preview.existingLocations).toContain('Galpón Principal');
     expect(plan.preview.newLocations.map((item) => item.name)).toEqual(expect.arrayContaining(['Campo', 'Dos Panca', 'Planta Santa Ana']));
-    expect(plan.preview.newLots.map((item) => item.code)).toEqual(expect.arrayContaining(['241', '300', '224']));
+    expect(plan.preview.newLots.map((item) => item.code)).toEqual(expect.arrayContaining(['241', '224']));
+    expect(plan.preview.existingLots).toContain('300');
     expect(plan.preview.skippedSheets).toContain('Stocks');
-    expect(plan.preview.issues.some((issue) => issue.code === 'PROTECTED_DEMO_LOT')).toBe(true);
     expect(plan.preview.issues.some((issue) => issue.code === 'MISSING_QUANTITY')).toBe(true);
-    expect(PROTECTED_DEMO_LOT_CODES.has('A-204')).toBe(true);
-    expect(plan.stockLotCodes).not.toContain('A-204');
+    expect(plan.stockLotCodes).toContain('A-204');
   });
 
   it('genera referencias estables para el mismo remito con varios lotes', () => {
@@ -114,7 +122,36 @@ describe('planillaImport', () => {
     });
   });
 
-  it('carga stock por formulario con los campos de la planilla y bloquea A-204', () => {
+  it('mantiene compatibilidad con XLS binario legado', () => {
+    const buffer = legacyWorkbookBuffer({
+      'De campo a Frío': [
+        ['Remito', 'Fecha', 'Variedad', 'Lote', 'Kgs.', 'Destino'],
+        [1001, new Date('2026-03-09T00:00:00Z'), 'spunta', 310, 10200, 'galpon'],
+      ],
+    });
+    const plan = buildPlanillaImportFromFile(buffer, 'movimientos.xls', snapshot());
+    expect(plan.preview).toMatchObject({ valid: true, movementCount: 1 });
+  });
+
+  it('rechaza firma o MIME incompatibles antes del parseo', () => {
+    expect(() => validatePlanillaUpload(Buffer.from('no es zip'), 'movimientos.xlsx')).toThrow('firma ZIP');
+    const xlsx = workbookBuffer({ Datos: [['Lote']] });
+    expect(() => validatePlanillaUpload(xlsx, 'movimientos.xlsx', 'text/csv')).toThrow('tipo de contenido');
+    expect(() => validatePlanillaUpload(Buffer.from([0xff, 0xfe]), 'movimientos.csv', 'text/csv')).toThrow('UTF-8');
+  });
+
+  it('aplica límites previos de tamaño, hojas y columnas con fixtures benignos', () => {
+    expect(() => validatePlanillaUpload(Buffer.alloc(PLANILLA_LIMITS.maxFileBytes + 1), 'movimientos.csv')).toThrow('4 MB');
+
+    const manySheets: Record<string, unknown[][]> = {};
+    for (let index = 0; index <= PLANILLA_LIMITS.maxSheets; index += 1) manySheets[`Hoja ${index}`] = [['Lote']];
+    expect(() => buildPlanillaImportFromFile(workbookBuffer(manySheets), 'muchas-hojas.xlsx', snapshot())).toThrow('límite');
+
+    const wide = [Array.from({ length: PLANILLA_LIMITS.maxColumnsPerSheet + 1 }, (_value, index) => `C${index}`)];
+    expect(() => buildPlanillaImportFromFile(workbookBuffer({ Datos: wide }), 'columnas.xlsx', snapshot())).toThrow('columnas');
+  });
+
+  it('carga stock por formulario con los campos de la planilla sin distinguir lotes demo', () => {
     const accepted = buildStockIntakePlan({
       lotCode: '241',
       variety: 'Agata',
@@ -137,15 +174,15 @@ describe('planillaImport', () => {
       bags: 705,
     });
 
-    const blocked = buildStockIntakePlan({
+    const existingLot = buildStockIntakePlan({
       lotCode: 'A-204',
       variety: 'Innovator',
       quantityKg: 1000,
       date: '2026-03-09',
       destination: 'Dos Panca',
     }, snapshot());
-    expect(blocked.preview.valid).toBe(false);
-    expect(blocked.preview.issues.some((issue) => issue.code === 'PROTECTED_DEMO_LOT')).toBe(true);
+    expect(existingLot.preview.valid).toBe(true);
+    expect(existingLot.preview.sample[0]?.lotCode).toBe('A-204');
   });
 
   const operationalFile = 'C:/Users/Usser/Downloads/Planilla de movimientos 2026.xls';
@@ -154,7 +191,6 @@ describe('planillaImport', () => {
     expect(plan.preview.valid).toBe(true);
     expect(plan.preview.movementCount).toBeGreaterThan(300);
     expect(plan.preview.newLots.length).toBeGreaterThan(20);
-    expect(plan.stockLotCodes).not.toEqual(expect.arrayContaining(['A-204', 'A-310']));
     expect(plan.preview.sheets.some((sheet) => sheet.name.includes('campo') || sheet.name.includes('Frío') || sheet.imported > 0)).toBe(true);
   });
 });

@@ -11,10 +11,9 @@ URL: `https://papastock.onrender.com`
 
 Hacelo **10 minutos antes**, no en vivo.
 
-Al abrir la app aparece un **login ficticio**. Usuario `operador`, contraseña
-`papasud`. No autentica contra el servidor: solo abre la sesión de demo en el
-navegador. La sesión vive en `sessionStorage` y se cierra con **Salir** en la
-barra superior.
+Al abrir la app aparece el login operativo. Usá la cuenta configurada mediante
+`PAPASTOCK_AUTH_USERNAME` y `PAPASTOCK_AUTH_PASSWORD_HASH` en Render. Express
+valida la identidad y entrega una cookie HttpOnly; **Salir** revoca la sesión.
 
 ### 1. Despertar el servicio
 
@@ -39,23 +38,26 @@ curl https://papastock.onrender.com/health
 `/health` no consulta la base: responde OK aunque PostgreSQL esté caído. **No
 alcanza como chequeo.**
 
+`/ready` consulta PostgreSQL con timeout. Devuelve `{"status":"ready"}` o 503
+con `{"status":"unavailable"}`. Render todavía usa `/health` hasta que el cambio
+de `healthCheckPath` sea aprobado y desplegado por separado.
+
 ### 3. Comprobar la base de datos
 
-```bash
-curl https://papastock.onrender.com/api/snapshot
-```
-
-Tiene que responder `"source": "database"`. Si devuelve 503 o error, la app va a
-funcionar en fallback mock.
+Después de iniciar sesión, el dashboard tiene que mostrar `PostgreSQL`. El
+endpoint `/api/snapshot` exige una sesión válida y ya no es público.
 
 ### 4. Comprobar que la UI no está en mock
 
 Abrí el dashboard. Abajo a la derecha, en “Última consolidación”, tiene que decir
-**PostgreSQL**. Si dice **fallback mock**:
+**PostgreSQL**. Si dice **API no disponible**:
 
-- la app está leyendo datos mock;
+- la app no está mostrando datos operativos;
 - aparece un aviso de advertencia;
-- **N01 queda deshabilitado** (el botón “Interpretar y validar” no se puede usar).
+- las mutaciones quedan deshabilitadas.
+
+Si dice **Mock explícito**, el build fue iniciado deliberadamente con
+`VITE_DATA_SOURCE=mock`; nunca es consecuencia automática de una caída.
 
 Verificá también que no haya un `VITE_DATA_SOURCE=mock` metido en el build.
 
@@ -99,7 +101,8 @@ a usar.
 
 No importes la planilla real de movimientos durante la demo: suma lotes y
 ubicaciones operativas, pero no altera A-204 ni A-310. El botón está en
-`/stock?tab=movimientos`.
+`/stock`. Además, el upload está temporalmente deshabilitado en producción por
+hardening del parser; la carga manual de stock sigue disponible.
 
 ---
 
@@ -223,8 +226,9 @@ fitosanitario” faltante. Sirven **H-118, B-221, D-405, E-090, G-512** y **C-10
    `El lote fue tratado con Mancozeb el 18 de agosto.`
 4. “Interpretar información” → revisar producto y fecha extraídos.
 5. Confirmar → se persiste en `traceability_events` → **5 de 5**.
-6. “Generar proforma” → se abre el documento en `/documents/:id`, listo para
-   imprimir o exportar a PDF.
+6. “Emitir paquete documental” → se abre la proforma en `/documents/:id`, con
+   navegación a factura, lista de empaque y remito. También se puede emitir
+   cada documento por separado. Listo para imprimir o exportar a PDF.
 
 > Esto también escribe en la base: consume un lote por ensayo. Reservá uno para la
 > presentación en vivo y ensayá con otro.
@@ -263,10 +267,11 @@ registrado como pendiente en `docs/PROJECT_CONTEXT.md` §20. Hasta que exista,
   contra datos reales del lote y de su trazabilidad. No la decide un modelo.
 - El texto libre sólo **propone** un dato estructurado; el operador lo confirma
   antes de que se persista.
-- La proforma se arma exclusivamente con datos trazables de cada lote. Si hay
-  varios, el documento lista una fila por lote y el total de la operación.
+- La documentación se arma con datos trazables de cada lote más empaque, precio,
+  comprador y transportista. Si hay varios lotes, el documento lista una fila
+  por lote y el total de la operación.
 - Aclarar que los requisitos son simulados para la demo (la propia pantalla lo
-  dice) y que la proforma es un documento no fiscal.
+  dice) y que proforma/factura son documentos no fiscales.
 
 ---
 
@@ -287,17 +292,16 @@ server-side y devuelve `engine: heuristic`.
 
 ### Si la base falla
 
-El frontend carga un snapshot mock completo y lo identifica:
+El frontend no reemplaza el estado real por un snapshot demo:
 
 - aviso de advertencia visible en la UI;
-- el dashboard dice **“fallback mock”** en lugar de “PostgreSQL”;
-- **N01 queda deshabilitado**: no se puede mover stock contra datos mock.
+- el dashboard dice **“API no disponible”**;
+- no hay lotes ni stock presentados como si fueran reales;
+- las operaciones quedan deshabilitadas.
 
-El mock replica el seed, así que **N02 y N03 se pueden demostrar igual**: A-204
-mantiene −1.000 kg con `MV-1032`, y A-310 vuelve a estar en **4/5** (el mock no
-tiene el tratamiento). Los cambios son temporales y se pierden al recargar.
-
-Si querés forzar este modo a propósito para un ensayo local: `VITE_DATA_SOURCE=mock`.
+Para un ensayo separado se puede iniciar explícitamente con
+`VITE_DATA_SOURCE=mock`. Ese modo conserva A-204/MV-1032 y A-310 4/5, se etiqueta
+como mock y sus cambios son temporales.
 
 ### Si Render está dormido
 

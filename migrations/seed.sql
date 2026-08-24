@@ -2,7 +2,9 @@ insert into public.locations (id, name, type) values
   ('loc-north', 'Frigorífico Norte', 'cold_storage'),
   ('loc-south', 'Frigorífico Sur', 'cold_storage'),
   ('loc-central', 'Frigorífico Central', 'cold_storage'),
-  ('loc-warehouse', 'Galpón Principal', 'warehouse')
+  ('loc-warehouse', 'Galpón Principal', 'warehouse'),
+  ('loc-oriente', 'Campo Oriente', 'warehouse'),
+  ('loc-frig-a', 'Frigorífico A', 'cold_storage')
 on conflict (id) do update set name = excluded.name, type = excluded.type;
 
 insert into public.lots (id, code, variety, campaign, producer, origin, harvest_date) values
@@ -15,7 +17,9 @@ insert into public.lots (id, code, variety, campaign, producer, origin, harvest_
   ('lot-e090', 'E-090', 'Atlantic', '2025/26', 'Pampa Fértil', 'Tandil, Buenos Aires, Argentina', '2026-07-12'),
   ('lot-f301', 'F-301', 'Innovator', '2025/26', 'La Esperanza Agro', 'Balcarce, Buenos Aires, Argentina', '2026-08-06'),
   ('lot-g512', 'G-512', 'Russet', '2025/26', 'Establecimiento El Ombú', 'Balcarce, Buenos Aires, Argentina', '2026-07-23'),
-  ('lot-h118', 'H-118', 'Spunta', '2025/26', 'Los Aromos', 'Mar del Plata, Buenos Aires, Argentina', '2026-08-10')
+  ('lot-h118', 'H-118', 'Spunta', '2025/26', 'Los Aromos', 'Mar del Plata, Buenos Aires, Argentina', '2026-08-10'),
+  ('lot-300', '300', 'Spunta', '2025/26', 'Papasud', 'Balcarce, Buenos Aires, Argentina', '2026-07-30'),
+  ('lot-301', '301', 'Spunta', '2025/26', 'Papasud', 'Balcarce, Buenos Aires, Argentina', '2026-07-30')
 on conflict (id) do update set
   code = excluded.code,
   variety = excluded.variety,
@@ -45,6 +49,20 @@ on conflict (id) do update set
   verification_pending = excluded.verification_pending,
   updated_at = excluded.updated_at;
 
+insert into public.stock_records (
+  id, lot_id, location_id, declared_quantity, verified_quantity, verification_pending, updated_at, unit
+) values
+  ('stock-300-oriente', 'lot-300', 'loc-oriente', 500, 500, false, '2026-08-22T12:00:00-03:00', 'bags'),
+  ('stock-301-oriente', 'lot-301', 'loc-oriente', 300, 300, false, '2026-08-22T12:00:00-03:00', 'bags')
+on conflict (id) do update set
+  lot_id = excluded.lot_id,
+  location_id = excluded.location_id,
+  declared_quantity = excluded.declared_quantity,
+  verified_quantity = excluded.verified_quantity,
+  verification_pending = excluded.verification_pending,
+  updated_at = excluded.updated_at,
+  unit = excluded.unit;
+
 insert into public.movements (
   id, reference, lot_id, origin_location_id, destination_location_id, quantity, movement_date, status
 ) values
@@ -60,6 +78,26 @@ on conflict (id) do update set
   quantity = excluded.quantity,
   movement_date = excluded.movement_date,
   status = excluded.status;
+
+-- El seed puede ejecutarse después de 003, cuando su backfill legacy ya ocurrió.
+-- Materializa las líneas canónicas de estos movimientos sin duplicarlas si una
+-- base existente ya las tiene.
+insert into public.movement_items (
+  id, movement_id, lot_id, dispatched_quantity, unit, sort_order, data
+)
+select seeded.id, seeded.movement_id, seeded.lot_id, seeded.quantity, 'kg', 0, '{"source":"seed"}'::jsonb
+from (values
+  ('mitem-movement-1032', 'movement-1032', 'lot-a204', 1000::numeric),
+  ('mitem-movement-1028', 'movement-1028', 'lot-a204', 8000::numeric),
+  ('mitem-movement-1016', 'movement-1016', 'lot-a310', 22000::numeric),
+  ('mitem-movement-1037', 'movement-1037', 'lot-c102', 500::numeric)
+) as seeded(id, movement_id, lot_id, quantity)
+where not exists (
+  select 1
+  from public.movement_items existing
+  where existing.movement_id = seeded.movement_id
+)
+on conflict (id) do nothing;
 
 insert into public.traceability_events (id, lot_id, event_type, event_date, location_id, data) values
   ('trace-a204-planting', 'lot-a204', 'planting', '2026-03-10', null, '{"seedBatch":"SEM-882","plot":"Lote 14"}'),

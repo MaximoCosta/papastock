@@ -1,7 +1,6 @@
 import { ArrowRight, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Button } from '../components/common/Button';
-import { DEMO_OPERATOR } from '../state/demoSession';
 import { useDemoSession } from '../state/DemoSessionContext';
 
 export function LoginPage() {
@@ -15,8 +14,7 @@ export function LoginPage() {
     event.preventDefault();
     setIsSigningIn(true);
     setError(undefined);
-    await new Promise((resolve) => window.setTimeout(resolve, 420));
-    const ok = signIn(username, password);
+    const ok = await signIn(username, password);
     if (!ok) setError('Usuario o contraseña incorrectos.');
     setIsSigningIn(false);
   }
@@ -51,14 +49,8 @@ export function LoginPage() {
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6e746b]">Acceso operativo</p>
           <h2 className="mt-2 text-[20px] font-semibold tracking-[-0.02em] text-[#20231f]">Ingresar a PapaStock</h2>
           <p className="mt-2 text-[12px] leading-5 text-[#6b7068]">
-            Entorno de demostración para la hackathon. No hay autenticación real detrás de este formulario.
+            La identidad se valida en el backend. La sesión queda en una cookie segura no accesible desde JavaScript.
           </p>
-
-          <div className="mt-5 border border-[#dce8de] bg-[#f4f8f4] px-4 py-3 text-[11px] text-[#315a40]">
-            <p className="font-bold uppercase tracking-[0.08em]">Credenciales de demo</p>
-            <p className="tabular mt-1.5">Usuario <span className="font-semibold">{DEMO_OPERATOR.username}</span></p>
-            <p className="tabular">Contraseña <span className="font-semibold">{DEMO_OPERATOR.password}</span></p>
-          </div>
 
           <form onSubmit={(event) => void submit(event)} className="mt-5 space-y-3">
             <label>
@@ -68,7 +60,7 @@ export function LoginPage() {
                 autoComplete="username"
                 value={username}
                 onChange={(event) => { setUsername(event.target.value); setError(undefined); }}
-                placeholder={DEMO_OPERATOR.username}
+                placeholder="Usuario operativo"
               />
             </label>
             <label>
@@ -93,7 +85,7 @@ export function LoginPage() {
           </form>
 
           <p className="mt-5 flex items-center gap-2 text-[10px] text-[#747970]">
-            <LockKeyhole size={12} /> Acceso de demostración · sin servidor de identidad
+            <LockKeyhole size={12} /> Sesión HttpOnly validada por Express
           </p>
           <p className="mt-2 flex items-center gap-2 text-[10px] text-[#747970]">
             <ShieldCheck size={12} /> Las operaciones de stock siguen validándose en el backend

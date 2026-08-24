@@ -15,6 +15,8 @@ import type {
   Transporter,
 } from '../types/domain';
 import type { GeneratedDocument } from '../types/export';
+import { isExplicitMockMode } from '../config/dataMode';
+import { useDemoSession } from './DemoSessionContext';
 
 export interface AddShelfUnitInput {
   locationId: string;
@@ -45,6 +47,7 @@ interface AppDataContextValue {
   actionError?: string;
   addTraceabilityEvent: (event: TraceabilityEvent) => Promise<TraceabilityEvent>;
   addGeneratedDocument: (document: GeneratedDocument) => void;
+  addGeneratedDocuments: (documents: GeneratedDocument[]) => void;
   applyStockCorrections: (corrections: StockControlCorrection[]) => void;
   applyStockVerification: (correction: StockControlCorrection, event?: TraceabilityEvent) => void;
   addMovement: (movement: Movement) => void;
@@ -66,6 +69,7 @@ interface AppDataContextValue {
 const AppDataContext = createContext<AppDataContextValue | undefined>(undefined);
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
+  const { session, isCheckingSession } = useDemoSession();
   const [locations, setLocations] = useState<Location[]>([]);
   const [shelfUnits, setShelfUnits] = useState<ShelfUnit[]>([]);
   const [shelves, setShelves] = useState<Shelf[]>([]);
@@ -74,13 +78,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [movements, setMovements] = useState<Movement[]>([]);
   const [transporters, setTransporters] = useState<Transporter[]>([]);
   const [traceabilityEvents, setTraceabilityEvents] = useState<TraceabilityEvent[]>([]);
-  const [dataSource, setDataSource] = useState<DataSource>('mock');
+  const [dataSource, setDataSource] = useState<DataSource>(isExplicitMockMode() ? 'mock' : 'unavailable');
   const [isLoading, setIsLoading] = useState(true);
   const [dataWarning, setDataWarning] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [generatedDocuments, setGeneratedDocuments] = useState<GeneratedDocument[]>(loadStoredDocuments);
 
   const refreshData = useCallback(async () => {
+    if (!session) return;
     setIsLoading(true);
     const result = await loadPapaStockSnapshot();
     setLocations(result.data.locations);
@@ -94,11 +99,25 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setDataSource(result.source);
     setDataWarning(result.warning);
     setIsLoading(false);
-  }, []);
+  }, [session]);
 
   useEffect(() => {
-    void refreshData();
-  }, [refreshData]);
+    if (isCheckingSession) return;
+    if (session) {
+      void refreshData();
+      return;
+    }
+    setLocations([]);
+    setShelfUnits([]);
+    setShelves([]);
+    setLots([]);
+    setStockRecords([]);
+    setMovements([]);
+    setTransporters([]);
+    setTraceabilityEvents([]);
+    setDataSource(isExplicitMockMode() ? 'mock' : 'unavailable');
+    setIsLoading(false);
+  }, [isCheckingSession, refreshData, session]);
 
   useEffect(() => {
     persistDocuments(generatedDocuments);
@@ -132,6 +151,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (equivalent) return equivalent;
 
       try {
+        if (dataSource === 'unavailable') throw new Error('La fuente operativa no está disponible.');
         const saved = dataSource === 'database' ? await insertTraceabilityEvent(event) : event;
         setTraceabilityEvents((current) => {
           const withoutEquivalentEvent = current.filter(
@@ -148,6 +168,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     },
     addGeneratedDocument: (document) => {
       setGeneratedDocuments((current) => [document, ...current]);
+    },
+    addGeneratedDocuments: (documents) => {
+      if (documents.length === 0) return;
+      setGeneratedDocuments((current) => [...documents, ...current]);
     },
     applyStockCorrections: (corrections) => {
       if (corrections.length === 0) return;
@@ -168,7 +192,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const now = new Date().toISOString();
       setStockRecords((current) => current.map((record) => (
         record.id === correction.stockRecordId
-          ? { ...record, verifiedQuantity: correction.countedQuantity, verificationPending: false, updatedAt: now }
+          ? {
+              ...record,
+              verifiedQuantity: correction.countedQuantity,
+              verificationPending: false,
+              updatedAt: now,
+              version: correction.newVersion ?? record.version,
+            }
           : record
       )));
       if (!event) return;
@@ -183,6 +213,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setMovements((current) => [movement, ...current]);
     },
     addShelfUnit: (input) => {
+      if (dataSource !== 'mock') {
+        const message = 'Las estanterías sólo se editan en modo mock hasta contar con persistencia.';
+        setActionError(message);
+        throw new Error(message);
+      }
       const levels = Math.max(1, Math.min(6, Math.round(input.levelCount) || 1));
       const unitId = `unit-${Date.now()}`;
       const unit: ShelfUnit = {
@@ -211,6 +246,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       return unit;
     },
     removeShelfUnit: (unitId) => {
+      if (dataSource !== 'mock') {
+        setActionError('Las estanterías sólo se editan en modo mock hasta contar con persistencia.');
+        return;
+      }
       setShelves((currentShelves) => {
         const levelIds = new Set(currentShelves.filter((shelf) => shelf.shelfUnitId === unitId).map((shelf) => shelf.id));
         setStockRecords((current) => current.map((record) => (
@@ -223,6 +262,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setShelfUnits((current) => current.filter((unit) => unit.id !== unitId));
     },
     assignStockToShelf: (stockRecordId, shelfId) => {
+      if (dataSource !== 'mock') {
+        setActionError('La asignación a estantes sólo está disponible en modo mock hasta contar con persistencia.');
+        return;
+      }
       setStockRecords((current) => {
         const shelf = shelfId
           ? shelves.find((item) => item.id === shelfId)
@@ -239,11 +282,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       });
     },
     addTransporter: (input) => {
+      if (dataSource !== 'mock') {
+        const message = 'Los transportistas sólo se editan en modo mock hasta contar con persistencia.';
+        setActionError(message);
+        throw new Error(message);
+      }
       const transporter: Transporter = { ...input, id: `tr-${Date.now()}` };
       setTransporters((current) => [transporter, ...current]);
       return transporter;
     },
     updateTransporter: (id, input) => {
+      if (dataSource !== 'mock') {
+        setActionError('Los transportistas sólo se editan en modo mock hasta contar con persistencia.');
+        return;
+      }
       setTransporters((current) => current.map((item) => (item.id === id ? { ...input, id } : item)));
     },
     applyImportedSnapshot: (applied) => {

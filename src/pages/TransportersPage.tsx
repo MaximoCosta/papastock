@@ -28,7 +28,7 @@ const emptyForm: TransporterInput = {
 };
 
 export function TransportersPage() {
-  const { transporters, addTransporter, updateTransporter } = useAppData();
+  const { transporters, dataSource, addTransporter, updateTransporter } = useAppData();
   const [selectedId, setSelectedId] = useState<string | undefined>(transporters[0]?.id);
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -85,8 +85,14 @@ export function TransportersPage() {
         eyebrow="Logística"
         title="Transportistas"
         description="Perfiles con datos fiscales, contacto y flota para reutilizar en movimientos y exportaciones."
-        actions={<Button onClick={startCreate}><Plus size={14} /> Nuevo transportista</Button>}
+        actions={<Button onClick={startCreate} disabled={dataSource !== 'mock'}><Plus size={14} /> Nuevo transportista</Button>}
       />
+
+      {dataSource !== 'mock' && (
+        <div className="mb-4 border border-[#d8dad3] bg-white p-4 text-[11px] text-[#5f645d]">
+          Los transportistas permanecen vacíos en modo database hasta contar con persistencia PostgreSQL.
+        </div>
+      )}
 
       <div className="grid grid-cols-[0.95fr_1.05fr] gap-4 max-[1100px]:grid-cols-1">
         <div className="overflow-hidden border border-[#d8dad3] bg-white">

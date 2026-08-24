@@ -58,10 +58,11 @@ La aplicación se organiza en tres niveles de valor:
 
 ```text
 texto libre
-  → POST /api/ai/movement-intent   (Groq o parser local → intención estructurada)
+  → POST /api/ai/movement-intent   (Groq o parser local → remito + N líneas)
   → POST /api/movements/preview    (validación determinística, sin escritura)
   → confirmación humana en la UI
   → POST /api/movements            (revalida con filas bloqueadas + BEGIN/COMMIT)
+  → POST /api/movements/:id/reception  (opcional, después, dispatched ≠ received)
 ```
 
 La IA **solo extrae datos**. No autoriza, no confirma y no escribe. La escritura
@@ -79,22 +80,58 @@ ocurre en una única transacción PostgreSQL disparada por un click humano.
 | `server/services/stockTransfer.ts` | `buildStockTransferPreview` — validación determinística canónica de N01 |
 | `server/repositories/papaStockRepository.ts` | `previewStockTransfer` y `executeStockTransfer` (transacción) |
 
+### Modelo de movimiento
+
+```text
+Movement                    reference = MV-N01-…   remito_number = 315
+ ├── MovementItem L300      400 bags despachadas
+ └── MovementItem L301      200 bags despachadas
+```
+
+- `reference` es el ID interno del sistema.
+- `remito_number` es el número de papel de Papasud. **No es unique global**:
+  puede repetirse entre series, ubicaciones o años. Hay índice para búsqueda.
+- `movements.lot_id` y `movements.quantity` quedan **legacy nullable**. Los
+  movimientos viejos se backfillearon a `movement_items`. Los nuevos multi-lote
+  dejan `lot_id` null y sólo llenan quantity si todas las líneas comparten unidad.
+- Un viaje = un `movements` + N `movement_items`. No se crean dos movimientos
+  que casualmente comparten remito.
+
+### Unidades
+
+Cada `stock_record` y cada `movement_item` tiene `unit` ∈ {`kg`, `bags`}.
+La unique de stock pasó a `(lot_id, location_id, unit)`. **Groq no convierte
+bolsas a kilos.** Si hace falta kg y no hay peso por bolsa, se conservan bolsas.
+
 ### Transacción de `executeStockTransfer`
 
 1. `begin`
-2. `select … from public.lots … for share` + `select … from public.stock_records … for update`
-3. `buildStockTransferPreview` se vuelve a ejecutar sobre las filas bloqueadas.
-   Si falla → `rollback` + HTTP 409 con los códigos de error.
-4. `update stock_records` en origen: resta `quantityKg` a declarado **y** verificado.
-5. `insert … on conflict (lot_id, location_id) do update` en destino: suma la cantidad.
-6. `insert into movements` con `status = 'completed'`, `movement_date = current_date`
-   y `reference = MV-N01-<8 hex mayúsculas>`.
-7. `commit`
+2. `select … from public.lots … order by id for share` de todos los lotes
+3. `select … from public.stock_records … order by id for update` de esos lotes
+4. `buildStockTransferPreview` sobre las filas bloqueadas. Si **cualquier**
+   línea falla → `rollback` + HTTP 409. No hay descuento parcial.
+5. Por cada línea: resta origen y suma destino en la misma unidad.
+6. `insert into movements` (`reference` interna, `remito_number` operativo,
+   `reception_status = pending`).
+7. `insert into movement_items` (una fila por lote).
+8. `commit`
+
+### Recepción y corrección
+
+- `POST /api/movements/:id/reception` registra `received_quantity` o un total.
+  El despacho original no se pisa. Si sólo se conoce el total (600 → 595) y no
+  el reparto por lote, `reception_status = needs_reconciliation` y se crea
+  `discrepancies.type = reception_unallocated`. No se inventa distribución.
+- `POST /api/movements/corrections` crea un movimiento `kind = correction`
+  que referencia al original (`corrects_movement_id`). Restaura un lote y
+  descuenta el otro. El movimiento original queda intacto.
+- Discrepancia ≠ stock bajo. El umbral de stock bajo es una constante
+  (`src/lib/stockAlerts.ts`); TODO persistirlo.
 
 ### Restricciones vigentes de N01
 
 - La UI deshabilita el botón si `dataSource !== 'database'`: **no se puede mover
-  stock en fallback mock**.
+  stock en modo mock explícito**.
 - El preview bloquea el movimiento si el lote tiene discrepancia o verificación
   pendiente (`UNRESOLVED_DISCREPANCY`), lo que hace que **A-204, C-102 y F-301
   estén bloqueados para N01** por diseño.
@@ -117,6 +154,12 @@ Stock → Movimientos → seleccionar .xls/.xlsx
   → confirmación humana en la UI
   → POST /api/imports/planilla           (reparsea + transacción PostgreSQL)
 ```
+
+Por hardening de seguridad, los dos endpoints de upload están temporalmente
+deshabilitados cuando `NODE_ENV=production`. El parser local conserva soporte
+para CSV, XLS y XLSX con SheetJS 0.20.3 vendorado, validación de firma/MIME y
+límites de tamaño, hojas, filas, columnas y celdas. La carga manual JSON no está
+afectada.
 
 Hojas importables: `De campo a Frío`, `Ingreso Tolvas Santa Ana`, `Env a Frio`,
 `Ret Frio`, `P.Chica`, `Ingreso Trevelin`, `Entregas a clientes 2026`. Hojas de
@@ -182,13 +225,14 @@ incompleta y el escenario de demo está consumido.**
 
 ```text
 /exports/new
-  → elegir uno o más lotes con su peso neto (default A-310, 18.000 kg)
-  → país (default Brasil)
+  → uno o más lotes con peso neto (default A-310, 18.000 kg), país (default Brasil),
+    empaque y condiciones comerciales
   → validateExport determinístico por lote contra src/data/requirements.ts
   → si falta el tratamiento en algún lote: MissingDataPanel (texto libre → parser → confirmar)
   → POST /api/traceability  (persiste el evento treatment en PostgreSQL, un lote a la vez)
   → revalidación → todos los requisitos de todos los lotes
-  → generar proforma / factura / remito (mockDocumentService) → sessionStorage → /documents/:id
+  → emitir paquete (proforma, factura, lista de empaque, remito) o cada uno
+    por separado → sessionStorage → /documents/:id
 ```
 
 La operación es una lista de líneas (`ExportLotLine`: `lotId` + `quantity`). Los lotes
@@ -243,9 +287,12 @@ pendiente (§20). Ver `docs/DEMO.md` para la alternativa no destructiva.
   Groq sólo se usa en N01 (intent) y N02 (discrepancias).
 - `POST /api/traceability` acepta **únicamente** `type: 'treatment'`
   (`z.literal('treatment')`). Cualquier otro tipo devuelve 400.
-- La proforma generada vive en `sessionStorage`, no en PostgreSQL.
+- La proforma, factura, lista de empaque y remito viven en `sessionStorage`, no
+  en PostgreSQL.
 - La `ExportOperation` se construye en memoria en `NewExportPage` y no se guarda
   en ningún lado.
+- Los documentos de exportación incluyen empaque, precios, comprador fiscal y
+  trazabilidad del lote, pero siguen siendo de demostración (no fiscales).
 
 ---
 
@@ -276,20 +323,23 @@ BFF adicional, no hay Supabase, no hay funciones serverless.
 - En desarrollo: monta Vite en `middlewareMode` sobre el mismo Express, por lo
   que `npm run dev` levanta todo en `http://localhost:3000`.
 - El navegador nunca recibe `DATABASE_URL` ni `GROQ_API_KEY`.
-- En desarrollo, el frontend puede apuntar a un backend Spring Boot externo
-  (`VITE_DATA_SOURCE=api`, `VITE_API_BASE_URL=https://papasudbackend.onrender.com`
-  o `http://localhost:8080`). Vite proxifica `/api` hacia esa URL. Snapshot,
-  N01, N02 y `POST /api/traceability` usan esa base; importar planilla y cargar
-  stock siguen en Express. Si `VITE_API_BASE_URL` está vacío, `/api` queda en
-  Express como hasta ahora.
+- En producción todo `/api` usa Express same-origin. En desarrollo,
+  `VITE_API_BASE_URL` permite optar explícitamente por un backend alternativo;
+  sin esa variable también se usa Express.
 
 ### Rutas de la SPA (`src/App.tsx`)
 
-`/` · `/stock` · `/lots` · `/lots/:id` · `/movements/new` · `/exports` (redirige a
+`/` · `/stock` · `/stock/control` · `/locations` · `/warehouse` · `/lots` ·
+`/lots/:id` · `/movements` · `/movements/new` · `/exports` (redirige a
 `/exports/new`) · `/exports/new` · `/documents` · `/documents/:id` · `*`
 
-Hay un **login ficticio de demo** (`operador` / `papasud`) que tapa la SPA hasta
-que hay sesión en `sessionStorage`. No es autenticación real ni protege la API.
+Las pestañas internas de stock se reemplazaron por páginas. Las URLs viejas
+`/stock?tab=ubicaciones|modelo|movimientos|control` redirigen a la página
+correspondiente.
+
+Express valida una cuenta operadora configurada por entorno. La sesión es opaca,
+vive server-side y se transporta en una cookie HttpOnly, SameSite=Strict y Secure
+en producción. Reiniciar la única instancia invalida las sesiones activas.
 
 ---
 
@@ -300,14 +350,21 @@ existen hoy.
 
 | Método | Ruta | Nivel | Efecto | Notas |
 | --- | --- | --- | --- | --- |
-| GET | `/health` | — | ninguno | Devuelve exactamente `{ "status": "ok" }`. Usado como `healthCheckPath` de Render. No consulta la base. |
+| GET | `/health` | — | ninguno | Liveness: devuelve exactamente `{ "status": "ok" }`. Render todavía usa esta ruta. |
+| GET | `/ready` | — | ninguno | Readiness: comprueba PostgreSQL con timeout; devuelve 200 o 503 sin detalles internos. |
+| POST | `/api/auth/login` | — | sesión | Valida la cuenta operadora y emite cookie HttpOnly. |
+| GET | `/api/auth/session` | — | ninguno | Devuelve la identidad de la sesión válida. |
+| POST | `/api/auth/logout` | — | sesión | Revoca la sesión y limpia la cookie. |
 | GET | `/api/snapshot` | — | lectura | Snapshot completo: locations, lots, stockRecords, movements, traceabilityEvents. Responde `{ data, source: 'database' }`. 503 si no hay `DATABASE_URL`. |
 | GET | `/api/lots/:id` | — | lectura | Acepta id o code (case-insensitive). Filtra el snapshot al lote. 404 si no existe. |
 | POST | `/api/traceability` | N03 | **escribe** | Sólo `type: 'treatment'`. Inserta en `traceability_events`. 201. Violación de unicidad → 409. |
 | POST | `/api/ai/discrepancy` | N02 | ninguno | Groq con Structured Outputs, fallback heurístico. Devuelve `{ data: { engine, … } }`. No requiere base. |
 | POST | `/api/ai/movement-intent` | N01 | ninguno | Texto (8–500 chars) → intención estructurada + `engine`. Carga el snapshot para dar contexto de lotes/ubicaciones al modelo. |
-| POST | `/api/movements/preview` | N01 | ninguno | Valida la intención contra el snapshot. Devuelve `StockTransferPreview` con `valid`, `errors`, `originStock`. **Nunca escribe.** |
-| POST | `/api/movements` | N01 | **escribe** | Revalida con filas bloqueadas y ejecuta la transferencia en una transacción. 201 o 409 con los errores de validación. |
+| POST | `/api/movements/preview` | N01 | ninguno | Valida la intención multi-lote. Devuelve `lines[]` con stock antes/después. **Nunca escribe.** |
+| POST | `/api/movements` | N01 | **escribe** | Revalida con filas bloqueadas y ejecuta el viaje completo en una transacción. 201 o 409. |
+| POST | `/api/movements/:id/reception` | N01 | **escribe** | Registra recibido vs despachado. Crea discrepancia si difieren. |
+| POST | `/api/movements/corrections` | N01 | **escribe** | Reasignación auditable entre lotes. No pisa el movimiento original. |
+| POST | `/api/stock-counts` | N02 | **escribe** | Conteo físico persistido. No usa `event_date` como identidad. |
 | POST | `/api/imports/planilla/preview` | migración | ninguno | Recibe el Excel (`.xls`/`.xlsx`, body binario ≤ 4 MB). Parser determinístico en `server/services/planillaImport.ts`. Devuelve conteos, lotes/ubicaciones a crear, sample y filas omitidas. **Nunca escribe.** |
 | POST | `/api/imports/planilla` | migración | **escribe** | Reparsea el mismo archivo, pide confirmación humana en la UI y persiste lotes, ubicaciones, movimientos y stock de esos lotes en una transacción. No toca A-204 / A-310 / C-102 / F-301. Idempotente por `movements.reference`. |
 | POST | `/api/stock/intake/preview` | operación | ninguno | Formulario de ingreso (lote, variedad, kilos, destino, remito, bolsas, calibre, DTV, etc.). Valida sin escribir. |
@@ -324,14 +381,16 @@ existen hoy.
 - Manejador de errores central: `ZodError` → 400 con `z.treeifyError`;
   código PostgreSQL `23505` → 409; `error.status` respetado; ≥500 se loguea con
   prefijo `[api]` y se responde con un mensaje genérico.
-- No hay autenticación, autorización ni rate limiting. Es una limitación
-  deliberada de la demo, documentada en `docs/render-deploy.md`.
+- Toda la API de inventario requiere autenticación y permisos server-side.
+  Login/logout además validan same-origin en requests mutantes. Sigue pendiente
+  rate limiting.
 
 ---
 
 ## 8. PostgreSQL
 
-Schema en `migrations/001_initial_schema.sql` más `migrations/002_movement_import_metadata.sql`. Todo en el esquema `public`.
+Schema en `migrations/001_initial_schema.sql`, `002_movement_import_metadata.sql`
+y `003_multi_lot_core.sql`. Todo en el esquema `public`.
 
 ### Tablas reales
 
@@ -376,7 +435,9 @@ nombres de columnas de base.**
 - calcula SHA-256 de cada archivo y lo compara con `schema_migrations.checksum`;
 - **si una migración ya aplicada cambió de contenido, lanza error y el deploy
   falla**;
-- aplica las pendientes, cada una en su propia transacción.
+- aplica las pendientes, cada una en su propia transacción;
+- valida que el historial aplicado sea un prefijo continuo y rechaza huecos;
+- permite cortes controlados con `--to` y `--only`, sin saltar dependencias.
 
 Reglas:
 
@@ -385,8 +446,15 @@ Reglas:
 - Para cambios de schema: crear `migrations/002_*.sql`, `003_*.sql`, etc.
 - Rollback de schema: nueva migración correctiva, nunca revertir a mano.
 
-Comandos: `npm run db:migrate` (idempotente, corre en `preDeployCommand`) y
-`npm run db:seed` (manual, deliberadamente **no** automático).
+Comandos:
+
+- `npm run db:migrate`: todas las pendientes; idempotente y usado por `preDeployCommand`.
+- `npm run db:migrate -- --to 004_correction_invariants.sql`: todas las pendientes hasta 004 inclusive.
+- `npm run db:migrate -- --only 005_reception_idempotency.sql`: sólo 005, siempre que sea exactamente la próxima pendiente.
+- `npm run db:seed`: manual, deliberadamente **no** automático.
+
+El seed materializa también los `movement_items` de sus movimientos legacy y
+puede repetirse sin duplicar líneas.
 
 ---
 
@@ -521,25 +589,23 @@ las heurísticas del servidor.
 
 ## 12. Fuente de datos
 
-**PostgreSQL es la fuente principal.** Existe un fallback mock para resiliencia
-de la demo.
+**PostgreSQL es la fuente principal.** El modo mock es explícito y aislado.
 
 `src/repositories/dataRepository.ts` → `loadPapaStockSnapshot`:
 
 1. si `VITE_DATA_SOURCE=mock`, devuelve el mock con `source: 'mock'` y warning;
-2. si no, hace `GET {VITE_API_BASE_URL}/api/snapshot` (o `/api/snapshot` si la
-   base está vacía), valida la forma del payload y que haya locations, lots y
-   stockRecords, y normaliza nulos/`confirmed` del contrato Spring Boot;
-3. ante cualquier fallo, devuelve el mock **completo** con `source: 'mock'` y un
-   warning que explica el error.
+2. si no, hace `GET /api/snapshot` same-origin en producción, valida y normaliza
+   el payload sin alterar cantidades;
+3. ante cualquier fallo, devuelve arrays vacíos con `source: 'unavailable'` y un
+   warning. Nunca sustituye PostgreSQL por datos demo.
 
 El mock vive en `src/data/` (`locations.ts`, `lots.ts`, `stock.ts`,
 `movements.ts`, `traceability.ts`) y **replica el seed de PostgreSQL**.
 
 Reglas:
 
-- El fallback es **atómico**: o todo viene de la base, o todo viene del mock.
-  **Nunca mezclar registros de base con registros mock silenciosamente.**
+- Los datos mock sólo existen con `VITE_DATA_SOURCE=mock`. Las respuestas de base
+  no pasan por `presentStockForOralDemo` ni se completan con catálogos mock.
 - `dataSource` se expone en el contexto de la app y se muestra en la UI.
 - Las mutaciones se comportan según la fuente:
   `AppDataContext.addTraceabilityEvent` sólo llama a la API si
@@ -681,10 +747,10 @@ Leyenda: ✅ implementado · 🟡 parcial · 🧪 demo/mock · 🔴 falta
 | N03 catálogo de requisitos | 🧪 | `src/data/requirements.ts`, mock, sólo Brasil |
 | N03 dato faltante por texto libre | 🟡 | Funciona, pero el parser es local (regex + delay), no Groq |
 | N03 persistencia del tratamiento | ✅ | `POST /api/traceability` → `traceability_events` |
-| N03 proforma | 🧪 | `mockDocumentService`, documento no fiscal |
+| N03 proforma / factura / remito / lista de empaque | 🧪 | `mockDocumentService`; paquete documental no fiscal, con empaque y precios |
 | Documentos generados | 🟡 | Sólo `sessionStorage` (`papastock.documents.v1`); se pierden al cerrar la pestaña |
 | `ExportOperation` | 🔴 | Se construye en memoria y nunca se guarda |
-| Snapshot con fallback mock | ✅ | Atómico, identificado en la UI |
+| Snapshot mock explícito | ✅ | Aislado mediante `VITE_DATA_SOURCE=mock` e identificado en la UI |
 | Trazabilidad (lectura) | ✅ | Timeline en la ficha de lote desde PostgreSQL |
 | Dashboard / stock / lotes | ✅ | Métricas derivadas del snapshot |
 | Escenario de reset de demo | 🔴 | No existe forma segura de volver A-310 a 4/5 |
@@ -716,7 +782,8 @@ Leyenda: ✅ implementado · 🟡 parcial · 🧪 demo/mock · 🔴 falta
   `ValidationResult` renderizado en pantalla. No hay tabla, ni endpoint, ni
   registro de auditoría de intentos de despacho.
 - **`ExportOperation`.** Se arma en `NewExportPage` con `buildExportOperation`
-  (`id: EXP-<timestamp>`, `items[]` por lote) sólo para alimentar los documentos.
+  (`id: EXP-<timestamp>`, `items[]` por lote) sólo para alimentar el paquete
+  documental.
 - **Análisis de discrepancia.** Los resultados de Groq/heurística viven en el
   estado del componente. No se guardan ni se auditan.
 
@@ -729,12 +796,13 @@ Verificado contra el schema actual: no existen tablas `dispatches`,
 
 - `DATABASE_URL` es server-side. `server/config.ts` la valida (protocolo
   `postgres:`/`postgresql:`, host y nombre de base) y la exige en producción.
-- `GROQ_API_KEY` es server-side, `sync: false` en Render, nunca versionada.
+- `GROQ_API_KEY` es server-side y `sync: false` en Render. Una clave expuesta
+  históricamente debe revocarse; `.env` ya no se trackea.
 - **Todas** las queries son parametrizadas. No hay concatenación de SQL en el
   repositorio; los únicos valores dinámicos van por `$n`.
 - **Ningún secreto en variables `VITE_*`**: todo lo que empieza con `VITE_` se
   inlinea en el bundle del navegador. Las únicas `VITE_*` son `VITE_DATA_SOURCE`
-  (mock vs API) y `VITE_API_BASE_URL` (origen público del backend Spring Boot,
+  (mock explícito) y `VITE_API_BASE_URL` (override exclusivo de desarrollo,
   no un secreto).
 - `.env` está cubierto por `.gitignore` (`*.local` y ausencia de `.env`
   versionado); el repositorio sólo tiene `.env.example` con placeholders.
@@ -742,9 +810,8 @@ Verificado contra el schema actual: no existen tablas `dispatches`,
   Shell.
 - Cuerpo de request limitado a 64 kb; `x-powered-by` deshabilitado; los errores
   ≥500 no filtran detalles internos al cliente.
-- **Faltante conocido:** no hay autenticación, autorización ni rate limiting.
-  Cualquier persona con la URL puede llamar a las mutaciones y a los endpoints de
-  IA. Aceptable para una demo de hackathon, inaceptable en producción.
+- La autenticación usa password scrypt, sesiones opacas aleatorias, cookie
+  HttpOnly y permisos explícitos. Sigue pendiente rate limiting global.
 
 ---
 
@@ -774,11 +841,15 @@ patrones visuales existentes.
 Runner: **Vitest** (`npm test` → `vitest run`). Sin configuración propia de
 Vitest: usa `vite.config.ts`.
 
-**Resultado real al 2026-08-22: 9 archivos, 35 tests, 35 pasando.**
+**Resultado real al 2026-08-23: 24 archivos, 126 tests pasando, 1 skipped.**
 
 | Archivo | Tests | Qué cubre |
 | --- | --- | --- |
-| `server/app.test.ts` | 5 | Contrato HTTP con repositorio y servicios mockeados: `/health` exacto, snapshot con `source: 'database'`, rechazo 400 de trazabilidad fuera de contrato, análisis estructurado, y que interpretar/previsualizar **no** ejecute la transferencia |
+| `server/app.test.ts` | 18 | Contrato HTTP, autenticación, permisos, CSRF/origin, atributos de cookie, logout y flujos operativos existentes. |
+| `server/auth.test.ts` | 3 | Password scrypt, sesión opaca, revocación y expiración. |
+| `src/repositories/dataRepository.test.ts` | 3 | PostgreSQL sin overlays mock, API caída sin sustitución y mock sólo explícito. |
+| `src/services/aiService.test.ts` | 3 | IA hardcodeada y planilla simulada aisladas al modo mock. |
+| `src/services/apiClient.test.ts` | 5 | Adaptadores y garantía same-origin en producción con backend alternativo sólo en desarrollo. |
 | `server/repositories/papaStockRepository.test.ts` | 3 | Proyección del snapshot desde 5 queries, transferencia dentro de `BEGIN/COMMIT` actualizando ambos extremos, y `rollback` cuando la validación cambió |
 | `server/services/discrepancyHeuristic.test.ts` | 5 | Los cinco caminos de la heurística canónica, incluido “no inventar evidencia” |
 | `server/services/groqDiscrepancy.test.ts` | 6 | Respuesta válida → `engine: 'llm'`; fallback ante JSON inválido, referencia inventada, HTTP 429 y timeout; sin clave no hay llamada de red |
@@ -786,7 +857,8 @@ Vitest: usa `vite.config.ts`.
 | `server/services/stockTransfer.test.ts` | 4 | Aprobación sin escritura, bloqueo de A-204 por discrepancia, stock insuficiente y ubicaciones iguales, tolerancia a nombres sin acentos |
 | `src/lib/validateDispatch.test.ts` | 3 | Bloqueo por discrepancia, bloqueo por stock verificado insuficiente, despacho seguro |
 | `src/lib/validateExport.test.ts` | 7 | A-310 en 4/5, 5/5 tras treatment, procedencia, exceso de stock, origen demo, y validación por lote en operaciones de varios lotes |
-| `src/services/documentService.test.ts` | 2 | `items[]` de proforma multi-lote: una fila por lote, pesos separados, total agregado |
+| `src/lib/documentPacking.test.ts` | 4 | Bultos homogéneos, remanente en el último bulto, marcas de embarque y vigencia UTC |
+| `src/services/documentService.test.ts` | 3 | Proforma completa (precio, empaque, trazabilidad), `buildExportItems` sin agrupar lotes, y paquete multi-lote |
 | `src/repositories/mappers.test.ts` | 4 | Mapeo de filas `snake_case`, mapeo de `data` jsonb, discrepancia de A-204 y métricas agregadas, determinismo de `getStockStatus` |
 
 Notas:
@@ -820,8 +892,9 @@ Orden sugerido. Reevaluar contra el código antes de empezar cualquiera.
 3. **Resolución humana de discrepancias** (§4). Cerrar el ciclo de N02: permitir
    que un operador confirme o cancele `MV-1032` y conciliar el stock, con
    auditoría. Hoy la IA explica pero nadie puede resolver.
-4. **Persistencia de despachos** (§16). Tabla + endpoint + validación server-side.
-   Hoy `validateDispatch` es sólo cliente y no deja rastro.
+4. **Despacho de `LotDetailPage`** sigue siendo DEMO (sessionStorage). El
+   movimiento real vive en `/movements/new`. No conectar ese formulario al
+   backend sin reutilizar `executeStockTransfer`.
 5. **Persistencia de `export_operation` y documentos generados** (§16). Sacar las
    proformas de `sessionStorage`.
 6. **Voz para N01** (§3). Reutilizando `/api/ai/movement-intent` → preview →

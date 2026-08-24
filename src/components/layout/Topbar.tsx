@@ -5,7 +5,13 @@ import { useDemoSession } from '../../state/DemoSessionContext';
 const sectionTitles: Record<string, string> = {
   '/': 'Control operativo',
   '/stock': 'Stock consolidado',
+  '/stock/control': 'Control de stock',
+  '/locations': 'Ubicaciones',
+  '/warehouse': 'Modelo de depósito',
   '/lots': 'Lotes y trazabilidad',
+  '/movements': 'Movimientos',
+  '/movements/new': 'Movimiento de stock',
+  '/transporters': 'Transportistas',
   '/exports/new': 'Preparación de exportación',
   '/documents': 'Documentación emitida',
 };
@@ -34,7 +40,7 @@ export function Topbar() {
         <CircleUserRound size={21} className="text-[#526158]" strokeWidth={1.6} />
         <button
           type="button"
-          onClick={signOut}
+          onClick={() => void signOut()}
           className="inline-flex h-8 items-center gap-1.5 border border-[#d7d9d2] px-2.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[#5c635c] hover:bg-[#f4f5f1]"
         >
           <LogOut size={12} /> Salir

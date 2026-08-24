@@ -41,6 +41,7 @@ export function StockVerificationForm({
 
   const preview = useMemo(() => buildStockVerificationPreview({
     stockRecordId,
+    expectedVersion: selected?.version ?? 0,
     countedQuantity: Number(countedQuantity.replace(',', '.')),
     date,
     bags: bags.trim() ? Number(bags.replace(',', '.')) : undefined,
@@ -68,6 +69,7 @@ export function StockVerificationForm({
     try {
       await onVerified(await confirmStockVerification({
         stockRecordId: preview.stockRecordId,
+        expectedVersion: preview.expectedVersion,
         countedQuantity: preview.countedQuantity,
         date: preview.date,
         bags: preview.bags,

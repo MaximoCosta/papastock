@@ -22,7 +22,9 @@ export function hardcodedDiscrepancyAnalysis(
   const gap = Math.abs(difference);
   const matching = movements.find((movement) => movement.reference === DEMO_MOVEMENT || movement.quantity === gap);
   const intakes = movements
-    .filter((movement) => movement.status === 'completed' && movement.quantity > 0)
+    .filter((movement): movement is Movement & { quantity: number } => (
+      movement.status === 'completed' && typeof movement.quantity === 'number' && movement.quantity > 0
+    ))
     .sort((a, b) => a.date.localeCompare(b.date) || a.reference.localeCompare(b.reference));
   const intakeLine = intakes.length > 0
     ? intakes.map((movement) => `${kg(movement.quantity)} (${movement.reference})`).join(' + ')
