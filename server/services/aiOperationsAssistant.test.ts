@@ -316,6 +316,72 @@ describe('asistente operativo read-only', () => {
     warn.mockRestore();
   });
 
+  it('LOT_HISTORY incluye hechos de stock y rechaza MATCH como igualdad declarado/verificado', async () => {
+    const historySnapshot: PapaStockSnapshot = {
+      locations: [
+        { id: 'loc-oriente', name: 'Campo Oriente', type: 'warehouse' },
+        { id: 'loc-frig-a', name: 'Frigorífico A', type: 'cold_storage' },
+      ],
+      shelfUnits: [], shelves: [], transporters: [],
+      lots: [snapshot.lots[0]],
+      stockRecords: [
+        snapshot.stockRecords[0],
+        {
+          id: 'stock-show-frig', lotId: 'lot-show-001', locationId: 'loc-frig-a',
+          declaredQuantity: 2_250, verifiedQuantity: 2_250, unit: 'kg', updatedAt: '2026-08-24',
+        },
+      ],
+      movements: snapshot.movements,
+      traceabilityEvents: [], discrepancies: [], stockCounts: [],
+    };
+    const question = '¿Qué pasó con SHOW-001?';
+    const context = buildAiOperationsContext(question, historySnapshot, '2026-08-24T12:00:00.000Z');
+    expect(context.stockFacts[0]).toMatchObject({
+      declaredQuantity: 10_250, verifiedQuantity: 10_150, difference: -100,
+    });
+
+    let sentBody = '';
+    const coincidente = vi.fn(async (_url, init) => {
+      sentBody = String(init?.body ?? '');
+      return envelope({
+        answer: 'SHOW-001 terminó con balances coincidentes en el ledger.',
+        confidence: 'high',
+        dataQuality: 'authoritative',
+        entities: [{ type: 'lot', id: 'lot-show-001', label: 'SHOW-001' }],
+        warnings: [],
+        evidence: [{ source: 'ledger', description: 'MATCH en Campo Oriente.' }],
+      });
+    }) as unknown as typeof fetch;
+    await expect(createAiOperationsAssistant({
+      apiKey: 'fixture', model: 'openai/gpt-oss-20b', timeoutMs: 100, fetchImpl: coincidente,
+    })(question, context)).rejects.toMatchObject({ status: 502 });
+    const payload = JSON.parse(sentBody) as { messages: Array<{ content: string }> };
+    expect(payload.messages[0].content).toContain(
+      'Nunca interpretes ledger MATCH como prueba de que el stock declarado y el verificado coinciden.',
+    );
+    expect(JSON.parse(payload.messages[1].content).context.stockFacts[0].locations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ locationName: 'Campo Oriente', declaredQuantity: 8_000, verifiedQuantity: 7_900, difference: -100 }),
+      ]),
+    );
+
+    const grounded = vi.fn(async () => envelope({
+      answer: 'Campo Oriente: 8.000 kg declarados, 7.900 kg verificados, diferencia -100 kg. Frigorífico A: 2.250 kg declarados y verificados. El ledger MATCH coincide con el stock declarado, no con la verificación física.',
+      confidence: 'high',
+      dataQuality: 'authoritative',
+      entities: [{ type: 'lot', id: 'lot-show-001', label: 'SHOW-001' }],
+      warnings: [],
+      evidence: [{ source: 'stock_records', description: 'SHOW-001: 10.250 kg declarados, 10.150 kg verificados.' }],
+    })) as unknown as typeof fetch;
+    const answer = await createAiOperationsAssistant({
+      apiKey: 'fixture', model: 'openai/gpt-oss-20b', timeoutMs: 100, fetchImpl: grounded,
+    })(question, context);
+    expect(answer.answer).toContain('8.000 kg declarados');
+    expect(answer.answer).toContain('7.900 kg verificados');
+    expect(answer.answer).toContain('-100 kg');
+    expect(answer.answer).toContain('coincide con el stock declarado');
+  });
+
   it('trata 413 como no reintentable y preserva sólo diagnóstico seguro', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       error: { code: 'request_too_large', type: 'tokens', message: 'Request exceeds the account token limit.' },

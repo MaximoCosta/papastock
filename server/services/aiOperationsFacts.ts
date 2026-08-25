@@ -22,7 +22,49 @@ export interface LotStockFact {
   locations: LotStockLocationFact[];
 }
 
-export function buildLotStockFacts(context: AiOperationsContext): LotStockFact[] {
+export interface LotStockFactSource {
+  lots: Array<{ id: string; code: string }>;
+  locations: Array<{ id: string; name: string }>;
+  stockRecords: Array<{
+    lotId: string;
+    locationId: string;
+    declaredQuantity: number;
+    verifiedQuantity: number;
+    verificationPending: boolean;
+    unit: QuantityUnit;
+  }>;
+}
+
+export interface LotHistoryStockLocationFact extends LotStockLocationFact {
+  difference: number;
+}
+
+export interface LotHistoryStockFact {
+  lotId: string;
+  lotCode: string;
+  unit: QuantityUnit;
+  declaredQuantity: number;
+  verifiedQuantity: number;
+  difference: number;
+  locations: LotHistoryStockLocationFact[];
+}
+
+export function toLotHistoryStockFacts(facts: LotStockFact[]): LotHistoryStockFact[] {
+  return facts.map((fact) => ({
+    lotId: fact.lotId,
+    lotCode: fact.lotCode,
+    unit: fact.unit,
+    declaredQuantity: fact.totalDeclared,
+    verifiedQuantity: fact.totalVerified,
+    difference: fact.difference,
+    locations: fact.locations.map((location) => ({
+      ...location,
+      difference: location.verifiedQuantity - location.declaredQuantity,
+    })),
+  }));
+}
+
+export function buildLotStockFacts(context: LotStockFactSource): LotStockFact[] {
   const lots = new Map(context.lots.map((lot) => [lot.id, lot]));
   const locations = new Map(context.locations.map((location) => [location.id, location]));
   const groups = new Map<string, LotStockFact>();

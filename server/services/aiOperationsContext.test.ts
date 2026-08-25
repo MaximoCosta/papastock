@@ -125,6 +125,24 @@ describe('proyección determinística del contexto operativo', () => {
     expect(context.traceability.map((event) => event.id)).toEqual(['trace-show-001']);
     expect(JSON.stringify(context)).not.toContain('IRRELEVANT-999');
     expect(JSON.stringify(context)).not.toContain('trace-other');
+    expect(context.stockFacts).toEqual([{
+      lotId: 'lot-show-001',
+      lotCode: 'SHOW-001',
+      unit: 'kg',
+      declaredQuantity: 10_250,
+      verifiedQuantity: 10_150,
+      difference: -100,
+      locations: [
+        {
+          locationId: 'loc-oriente', locationName: 'Campo Oriente',
+          declaredQuantity: 8_000, verifiedQuantity: 7_900, difference: -100, verificationPending: false,
+        },
+        {
+          locationId: 'loc-frig-a', locationName: 'Frigorífico A',
+          declaredQuantity: 2_250, verifiedQuantity: 2_250, difference: 0, verificationPending: false,
+        },
+      ],
+    }]);
   });
 
   it('la proyección es determinística aunque cambie el orden del snapshot', () => {

@@ -13,7 +13,7 @@ import {
   type GroqOptions,
   type StructuredRequest,
 } from './groqStructured';
-import { buildCanonicalLotStockAnswer } from './aiOperationsFacts';
+import { buildCanonicalLotStockAnswer, buildLotStockFacts } from './aiOperationsFacts';
 
 export { buildAiOperationsContext, measureAiOperationsContext } from './aiOperationsContext';
 export type { AiOperationsContext, AiOperationsIntent } from './aiOperationsContext';
@@ -23,6 +23,12 @@ const GLOBAL_AUTHORITY_CLAIMS = [
   /\bel ledger (?:confirma|valida|reconstruye) (?:todo(?: el inventario)?|todos? los saldos|los saldos|el inventario(?: completo)?)\b/,
   /\bel historial(?: de movimientos)? (?:confirma|valida|reconstruye) (?:completamente|por completo|todo) (?:el inventario|los saldos)\b/,
 ];
+const MATCH_AS_VERIFIED_CLAIMS = [
+  /\bbalances coincidentes\b/,
+  /\bbalances coinciden\b/,
+  /\bdeclarado y (?:el )?verificado coinciden\b/,
+];
+const LOT_HISTORY_STOCK_GROUNDING = 'Nunca interpretes ledger MATCH como prueba de que el stock declarado y el verificado coinciden. Si declaredKg != verifiedKg, mencioná la discrepancia explícitamente. Los valores numéricos calculados por PapaStock son hechos autoritativos.';
 
 export const operationsAnswerSchema = z.object({
   answer: z.string().trim().min(1).max(4_000),
@@ -105,6 +111,15 @@ function validateClosedWorld(answer: OperationsAssistantAnswer, context: AiOpera
   const normalized = answer.answer.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   if (!context.ledger.ledgerAuthority && GLOBAL_AUTHORITY_CLAIMS.some((pattern) => pattern.test(normalized))) {
     throw new Error('El modelo afirmó autoridad global inexistente del ledger.');
+  }
+  if (context.intent === 'LOT_HISTORY') {
+    const hasDeclaredVerifiedGap = buildLotStockFacts(context).some((fact) => (
+      fact.difference !== 0
+      || fact.locations.some((location) => location.declaredQuantity !== location.verifiedQuantity)
+    ));
+    if (hasDeclaredVerifiedGap && MATCH_AS_VERIFIED_CLAIMS.some((pattern) => pattern.test(normalized))) {
+      throw new Error('El modelo interpretó ledger MATCH como igualdad entre stock declarado y verificado.');
+    }
   }
 
   return {
@@ -228,7 +243,9 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
     const request: StructuredRequest = {
       schemaName: 'papastock_operations_answer',
       jsonSchema,
-      system: operationsSystemPrompt,
+      system: context.intent === 'LOT_HISTORY'
+        ? [...operationsSystemPrompt, LOT_HISTORY_STOCK_GROUNDING]
+        : operationsSystemPrompt,
       user: { question, context },
     };
     const requestMetrics = serializeStructuredRequest(options.model, request).metrics;

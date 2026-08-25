@@ -68,6 +68,28 @@ describe('hechos canónicos del stock para IA', () => {
     });
   });
 
+  it('proyecta stockFacts de LOT_HISTORY con diferencia declarado vs verificado', () => {
+    const context = buildAiOperationsContext(
+      '¿Qué pasó con SHOW-001?', snapshot, '2026-08-24T12:00:00.000Z',
+    );
+    expect(context.intent).toBe('LOT_HISTORY');
+    const kg = context.stockFacts.find((fact) => fact.unit === 'kg');
+    expect(kg).toMatchObject({
+      lotCode: 'SHOW-001',
+      declaredQuantity: 10_250,
+      verifiedQuantity: 10_150,
+      difference: -100,
+    });
+    expect(kg?.locations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        locationName: 'Campo Oriente', declaredQuantity: 8_000, verifiedQuantity: 7_900, difference: -100,
+      }),
+      expect.objectContaining({
+        locationName: 'Frigorífico A', declaredQuantity: 2_250, verifiedQuantity: 2_250, difference: 0,
+      }),
+    ]));
+  });
+
   it('no depende de texto generado por Groq', () => {
     const context = buildAiOperationsContext('Stock de SHOW-001', snapshot);
     expect(buildLotStockFacts(context).map((fact) => [fact.unit, fact.totalDeclared])).toEqual([

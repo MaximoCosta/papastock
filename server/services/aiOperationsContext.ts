@@ -1,5 +1,6 @@
 import { stockUnit } from '../../src/lib/quantity';
 import type { PapaStockSnapshot } from '../../src/repositories/dataRepository';
+import { buildLotStockFacts, toLotHistoryStockFacts } from './aiOperationsFacts';
 import { verifyLedgerAuthority } from './ledgerVerifier';
 
 export type AiOperationsIntent =
@@ -368,6 +369,9 @@ export function buildAiOperationsContext(
       blockingIssues: ledger.blockingIssues.length,
       classificationCounts: ledger.classificationCounts,
     },
+    stockFacts: intent === 'LOT_HISTORY'
+      ? toLotHistoryStockFacts(buildLotStockFacts({ lots, locations, stockRecords }))
+      : [],
   };
 }
 

@@ -6,12 +6,12 @@
   "strict": true,
   "questionBytes": 26,
   "localShowcase": {
-    "contextBytes": 3801,
-    "systemPromptBytes": 994,
+    "contextBytes": 4265,
+    "systemPromptBytes": 1236,
     "schemaBytes": 926,
-    "messagesBytes": 5406,
-    "requestBodyBytes": 6508,
-    "estimatedInputTokens": 1627
+    "messagesBytes": 6166,
+    "requestBodyBytes": 7268,
+    "estimatedInputTokens": 1817
   },
   "production": {
     "contextBytes": 3916,
@@ -24,7 +24,7 @@
   "byteDelta": {
     "contextBytes": 115,
     "requestBodyBytes": 21,
-    "note": "Context delta is full production snapshot summary/ledger totals vs showcase-only. Local request grew after adding evidence.source=traceability and one prompt line; still under the 20000-byte budget."
+    "note": "Local request grew after adding LOT_HISTORY stockFacts and MATCH-vs-verified grounding prompt. Schema bytes unchanged. Still under the 20000-byte budget."
   },
   "counts": {
     "lots": 1,
