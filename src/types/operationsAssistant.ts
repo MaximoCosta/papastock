@@ -1,7 +1,7 @@
 export type OperationsDataQuality = 'authoritative' | 'operational_only' | 'incomplete';
 export type OperationsConfidence = 'high' | 'medium' | 'low';
 export type OperationsEntityType = 'lot' | 'location' | 'movement';
-export type OperationsEvidenceSource = 'stock_records' | 'movements' | 'ledger';
+export type OperationsEvidenceSource = 'stock_records' | 'movements' | 'ledger' | 'traceability';
 
 export interface OperationsAssistantEntity {
   type: OperationsEntityType;

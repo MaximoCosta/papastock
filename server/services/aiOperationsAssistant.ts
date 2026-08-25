@@ -35,7 +35,7 @@ export const operationsAnswerSchema = z.object({
   })).max(30),
   warnings: z.array(z.string().trim().min(1).max(500)).max(20),
   evidence: z.array(z.object({
-    source: z.enum(['stock_records', 'movements', 'ledger']),
+    source: z.enum(['stock_records', 'movements', 'ledger', 'traceability']),
     description: z.string().trim().min(1).max(500),
   })).min(1).max(30),
 });
@@ -64,7 +64,7 @@ const jsonSchema = {
       items: {
         type: 'object', additionalProperties: false, required: ['source', 'description'],
         properties: {
-          source: { type: 'string', enum: ['stock_records', 'movements', 'ledger'] },
+          source: { type: 'string', enum: ['stock_records', 'movements', 'ledger', 'traceability'] },
           description: { type: 'string' },
         },
       },
@@ -82,6 +82,7 @@ const operationsSystemPrompt = [
   'Si ledgerAuthority es false, no afirmes autoridad global del ledger; una coordenada MATCH individual puede describirse como conciliada, pero eso NO implica autoridad global.',
   'Si ledgerAuthority es true y la evidencia responde completamente la pregunta, dataQuality puede ser authoritative.',
   'Las entidades deben usar IDs exactos del contexto.',
+  'Los eventos de traceability deben citarse usando evidence.source="traceability".',
   'Respondé exclusivamente con el JSON Schema solicitado.',
 ];
 
