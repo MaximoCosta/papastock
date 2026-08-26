@@ -13,6 +13,7 @@ describe('PapaStockRepository', () => {
       { rowCount: 0, rows: [] },
       { rowCount: 0, rows: [] },
       { rowCount: 0, rows: [] },
+      { rowCount: 1, rows: [{ transporters: 'transporters', shelf_units: 'shelf_units', shelves: 'shelves' }] },
       { rowCount: 0, rows: [] },
       { rowCount: 0, rows: [] },
       { rowCount: 0, rows: [] },
@@ -53,6 +54,29 @@ describe('PapaStockRepository', () => {
     expect(query).toHaveBeenCalledWith('rollback');
     expect(query).not.toHaveBeenCalledWith('commit');
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('devuelve catálogos vacíos si aún no existe la migración operativa', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.startsWith('begin') || sql === 'commit' || sql === 'rollback') return { rowCount: 0, rows: [] };
+      if (sql.includes('to_regclass')) {
+        return { rowCount: 1, rows: [{ transporters: null, shelf_units: null, shelves: null }] };
+      }
+      if (sql.includes('from public.locations')) return { rowCount: 1, rows: [{ id: 'loc', name: 'Sur', type: 'cold_storage', created_at: 'x' }] };
+      if (sql.includes('from public.lots')) return { rowCount: 1, rows: [{ id: 'lot', code: 'A-204', variety: 'I', campaign: '25/26', producer: 'P', origin: 'O', harvest_date: null, created_at: 'x' }] };
+      if (sql.includes('from public.stock_records')) return { rowCount: 1, rows: [{ id: 'stock', lot_id: 'lot', location_id: 'loc', declared_quantity: '25000', verified_quantity: '24000', verification_pending: false, updated_at: 'x' }] };
+      if (sql.includes('from public.transporters') || sql.includes('from public.shelf_units') || sql.includes('from public.shelves')) {
+        throw new Error('catalog table should not be queried when to_regclass is null');
+      }
+      return { rowCount: 0, rows: [] };
+    });
+    const repository = new PapaStockRepository({ connect: async () => ({ query, release: vi.fn() }) } as unknown as pg.Pool);
+
+    const result = await repository.loadSnapshot();
+    expect(result.transporters).toEqual([]);
+    expect(result.shelfUnits).toEqual([]);
+    expect(result.shelves).toEqual([]);
+    expect(query).toHaveBeenCalledWith('commit');
   });
 
   it('confirma una transferencia dentro de BEGIN/COMMIT y actualiza ambos extremos', async () => {

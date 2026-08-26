@@ -462,7 +462,7 @@ Reglas:
 
 Comandos:
 
-- `npm run db:migrate`: todas las pendientes; idempotente y usado por `preDeployCommand`.
+- `npm run db:migrate -- --apply-production`: todas las pendientes en Render; sin el flag el pre-deploy no aplica schema.
 - `npm run db:migrate -- --to 004_correction_invariants.sql`: todas las pendientes hasta 004 inclusive.
 - `npm run db:migrate -- --only 005_reception_idempotency.sql`: sólo 005, siempre que sea exactamente la próxima pendiente.
 - `npm run db:seed`: manual, deliberadamente **no** automático.
@@ -498,7 +498,7 @@ Antes de tocar `render.yaml` o aplicar el Blueprint hay que resolver tres cosas
 que están enredadas entre sí:
 
 1. Render **restringe `preDeployCommand` a servicios pagos**. El Blueprint usa
-   `preDeployCommand: npm run db:migrate`. En plan Free, las migraciones deben
+   `preDeployCommand: npm run db:migrate -- --apply-production`. En plan Free, las migraciones deben
    correr de otra forma (por ejemplo, manualmente desde el Shell de Render).
 2. `scripts/validate-render.mjs` **afirma explícitamente `web.plan !== 'free'`**.
    Cambiar el plan a `free` en `render.yaml` hace fallar `npm run render:validate`.
@@ -513,7 +513,7 @@ discrepancia para que una persona la resuelva conscientemente.
 
 - `runtime: node`, `numInstances: 1`, `autoDeployTrigger: commit`
 - `buildCommand: npm ci && npm run build`
-- `preDeployCommand: npm run db:migrate`
+- `preDeployCommand: npm run db:migrate -- --apply-production`
 - `startCommand: npm start`
 - `healthCheckPath: /health`
 - Variables: `NODE_ENV=production`, `DATABASE_URL` (desde `papastock-db`,

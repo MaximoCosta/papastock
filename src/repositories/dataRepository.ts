@@ -89,6 +89,7 @@ export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
   const timeout = globalThis.setTimeout(() => controller.abort(), 12_000);
   try {
     const response = await fetch(apiUrl('/api/snapshot'), {
+      credentials: 'include',
       headers: { accept: 'application/json' },
       signal: controller.signal,
     });

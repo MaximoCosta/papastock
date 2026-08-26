@@ -50,8 +50,8 @@ Luego verificar en UI:
 
 ## Operación
 
-- Migraciones: `preDeployCommand: npm run db:migrate`; checksum impide editar migraciones ya aplicadas.
-  Para una ventana controlada se puede usar `npm run db:migrate -- --to <archivo>`.
+- Migraciones: `preDeployCommand: npm run db:migrate -- --apply-production`; checksum impide editar migraciones ya aplicadas.
+  Para una ventana controlada se puede usar `npm run db:migrate -- --apply-production --to <archivo>`.
   `--only <archivo>` sólo acepta la próxima migración pendiente y nunca salta dependencias.
 - Seed/reseed: `npm run db:seed`, manual e idempotente.
 - Secretos: rotar las claves desde Environment; no usar variables `VITE_*` para secretos.

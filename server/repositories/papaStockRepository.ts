@@ -57,6 +57,17 @@ import {
   mapTransporter,
 } from './mappers';
 
+const emptyQueryResult = { rows: [], rowCount: 0 };
+
+async function queryCatalogIfPresent<T>(
+  client: pg.PoolClient,
+  present: string | null | undefined,
+  sql: string,
+): Promise<{ rows: T[] }> {
+  if (!present) return emptyQueryResult;
+  return client.query<T>(sql);
+}
+
 function attachMovements(rows: MovementRow[], itemRows: MovementItemRow[]): Movement[] {
   const itemsByMovement = new Map<string, ReturnType<typeof mapMovementItem>[]>();
   for (const row of itemRows) {
@@ -85,9 +96,28 @@ export class PapaStockRepository {
       const traceability = await client.query<TraceabilityEventRow>('select * from public.traceability_events order by event_date, id');
       const discrepancies = await client.query<DiscrepancyRow>('select * from public.discrepancies order by created_at desc, id');
       const counts = await client.query<StockCountRow>('select * from public.stock_counts order by counted_at desc, id');
-      const transporters = await client.query<TransporterRow>('select * from public.transporters order by company_name, id');
-      const shelfUnits = await client.query<ShelfUnitRow>('select * from public.shelf_units order by location_id, code');
-      const shelves = await client.query<ShelfRow>('select * from public.shelves order by location_id, code');
+      const catalogs = await client.query<{ transporters: string | null; shelf_units: string | null; shelves: string | null }>(
+        `select
+          to_regclass('public.transporters')::text as transporters,
+          to_regclass('public.shelf_units')::text as shelf_units,
+          to_regclass('public.shelves')::text as shelves`,
+      );
+      const catalog = catalogs.rows[0];
+      const transporters = await queryCatalogIfPresent<TransporterRow>(
+        client,
+        catalog?.transporters,
+        'select * from public.transporters order by company_name, id',
+      );
+      const shelfUnits = await queryCatalogIfPresent<ShelfUnitRow>(
+        client,
+        catalog?.shelf_units,
+        'select * from public.shelf_units order by location_id, code',
+      );
+      const shelves = await queryCatalogIfPresent<ShelfRow>(
+        client,
+        catalog?.shelves,
+        'select * from public.shelves order by location_id, code',
+      );
 
       if (!locations.rowCount || !lots.rowCount || !stock.rowCount) {
         throw new Error('La base existe pero el seed operativo está incompleto.');

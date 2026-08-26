@@ -20,9 +20,10 @@ const remoteSnapshot = {
 describe('loadPapaStockSnapshot', () => {
   it('preserva exactamente el stock PostgreSQL y no inyecta catálogos mock', async () => {
     vi.stubEnv('VITE_DATA_SOURCE', '');
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: remoteSnapshot }), {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: remoteSnapshot }), {
       status: 200, headers: { 'content-type': 'application/json' },
-    })));
+    }));
+    vi.stubGlobal('fetch', fetchMock);
 
     const result = await loadPapaStockSnapshot();
     expect(result.source).toBe('database');
@@ -30,6 +31,9 @@ describe('loadPapaStockSnapshot', () => {
     expect(result.data.shelves).toEqual([]);
     expect(result.data.shelfUnits).toEqual([]);
     expect(result.data.transporters).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith('/api/snapshot', expect.objectContaining({
+      credentials: 'include',
+    }));
   });
 
   it('no sustituye una API caída por el dataset demo', async () => {
