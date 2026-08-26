@@ -35,11 +35,11 @@ insert into public.stock_records (
   ('stock-a310', 'lot-a310', 'loc-central', 22000, 22000, false, '2026-08-21T09:15:00-03:00'),
   ('stock-b118', 'lot-b118', 'loc-north', 14500, 14500, false, '2026-08-20T17:20:00-03:00'),
   ('stock-c102', 'lot-c102', 'loc-warehouse', 18500, 18000, false, '2026-08-21T08:40:00-03:00'),
-  ('stock-b221', 'lot-b221', 'loc-south', 16000, 16000, false, '2026-08-20T14:05:00-03:00'),
-  ('stock-d405', 'lot-d405', 'loc-central', 19500, 19500, false, '2026-08-20T12:10:00-03:00'),
-  ('stock-e090', 'lot-e090', 'loc-north', 12500, 12500, false, '2026-08-19T16:55:00-03:00'),
+  ('stock-b221', 'lot-b221', 'loc-south', 16000, 15200, false, '2026-08-20T14:05:00-03:00'),
+  ('stock-d405', 'lot-d405', 'loc-central', 19500, 18700, false, '2026-08-20T12:10:00-03:00'),
+  ('stock-e090', 'lot-e090', 'loc-north', 12500, 11300, false, '2026-08-19T16:55:00-03:00'),
   ('stock-f301', 'lot-f301', 'loc-warehouse', 17000, 0, true, '2026-08-21T11:45:00-03:00'),
-  ('stock-g512', 'lot-g512', 'loc-south', 21000, 21000, false, '2026-08-20T18:00:00-03:00'),
+  ('stock-g512', 'lot-g512', 'loc-south', 21000, 19800, false, '2026-08-20T18:00:00-03:00'),
   ('stock-h118', 'lot-h118', 'loc-central', 13500, 13500, false, '2026-08-21T07:50:00-03:00')
 on conflict (id) do update set
   lot_id = excluded.lot_id,
@@ -69,7 +69,12 @@ insert into public.movements (
   ('movement-1032', 'MV-1032', 'lot-a204', 'loc-north', 'loc-south', 1000, '2026-08-20', 'pending'),
   ('movement-1028', 'MV-1028', 'lot-a204', 'loc-warehouse', 'loc-south', 8000, '2026-08-18', 'completed'),
   ('movement-1016', 'MV-1016', 'lot-a310', 'loc-warehouse', 'loc-central', 22000, '2026-08-10', 'completed'),
-  ('movement-1037', 'MV-1037', 'lot-c102', 'loc-warehouse', 'loc-central', 500, '2026-08-21', 'cancelled')
+  ('movement-1037', 'MV-1037', 'lot-c102', 'loc-warehouse', 'loc-central', 500, '2026-08-21', 'cancelled'),
+  ('movement-1044', 'MV-1044', 'lot-g512', 'loc-central', 'loc-south', 21000, '2026-08-17', 'completed'),
+  ('movement-1051', 'MV-1051', 'lot-b221', 'loc-central', 'loc-south', 800, '2026-08-19', 'pending'),
+  ('movement-1052', 'MV-1052', 'lot-d405', 'loc-north', 'loc-central', 500, '2026-08-19', 'pending'),
+  ('movement-1053', 'MV-1053', 'lot-d405', 'loc-warehouse', 'loc-central', 300, '2026-08-20', 'pending'),
+  ('movement-1054', 'MV-1054', 'lot-e090', 'loc-north', 'loc-south', 350, '2026-08-18', 'pending')
 on conflict (id) do update set
   reference = excluded.reference,
   lot_id = excluded.lot_id,
@@ -90,7 +95,12 @@ from (values
   ('mitem-movement-1032', 'movement-1032', 'lot-a204', 1000::numeric),
   ('mitem-movement-1028', 'movement-1028', 'lot-a204', 8000::numeric),
   ('mitem-movement-1016', 'movement-1016', 'lot-a310', 22000::numeric),
-  ('mitem-movement-1037', 'movement-1037', 'lot-c102', 500::numeric)
+  ('mitem-movement-1037', 'movement-1037', 'lot-c102', 500::numeric),
+  ('mitem-movement-1044', 'movement-1044', 'lot-g512', 21000::numeric),
+  ('mitem-movement-1051', 'movement-1051', 'lot-b221', 800::numeric),
+  ('mitem-movement-1052', 'movement-1052', 'lot-d405', 500::numeric),
+  ('mitem-movement-1053', 'movement-1053', 'lot-d405', 300::numeric),
+  ('mitem-movement-1054', 'movement-1054', 'lot-e090', 350::numeric)
 ) as seeded(id, movement_id, lot_id, quantity)
 where not exists (
   select 1
@@ -109,7 +119,11 @@ insert into public.traceability_events (id, lot_id, event_type, event_date, loca
   ('trace-a310-harvest', 'lot-a310', 'harvest', '2026-07-28', null, '{"netWeight":22000}'),
   ('trace-a310-verify', 'lot-a310', 'stock_verification', '2026-08-21', 'loc-central', '{"verifiedQuantity":22000}'),
   ('trace-c102-planting', 'lot-c102', 'planting', '2026-03-05', null, '{"seedBatch":"SEM-791"}'),
-  ('trace-c102-harvest', 'lot-c102', 'harvest', '2026-07-15', null, '{"netWeight":18500}')
+  ('trace-c102-harvest', 'lot-c102', 'harvest', '2026-07-15', null, '{"netWeight":18500}'),
+  ('trace-b221-verify', 'lot-b221', 'stock_verification', '2026-08-21', 'loc-south', '{"verifiedQuantity":15200}'),
+  ('trace-d405-verify', 'lot-d405', 'stock_verification', '2026-08-21', 'loc-central', '{"verifiedQuantity":18700}'),
+  ('trace-e090-verify', 'lot-e090', 'stock_verification', '2026-08-20', 'loc-north', '{"verifiedQuantity":11300}'),
+  ('trace-g512-verify', 'lot-g512', 'stock_verification', '2026-08-21', 'loc-south', '{"verifiedQuantity":19800}')
 on conflict (id) do update set
   lot_id = excluded.lot_id,
   event_type = excluded.event_type,

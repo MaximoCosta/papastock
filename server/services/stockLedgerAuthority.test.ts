@@ -55,7 +55,7 @@ describe('auditoría de autoridad del ledger para H4', () => {
 
   it('demuestra saldos sin eventos de apertura', () => {
     const audit = fixtureAudit();
-    expect(audit.coordinates.find((row) => row.lotCode === 'B-221')).toMatchObject({ candidateOpeningBalance: 16000 });
+    expect(audit.coordinates.find((row) => row.lotCode === 'B-221' && row.locationId === 'loc-south')).toMatchObject({ candidateOpeningBalance: 15200 });
     expect(audit.coordinates.find((row) => row.lotCode === '300')).toMatchObject({ candidateOpeningBalance: 500, unit: 'bags' });
   });
 

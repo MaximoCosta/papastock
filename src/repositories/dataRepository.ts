@@ -8,7 +8,7 @@ import { shelfUnits as mockShelfUnits } from '../data/shelfUnits';
 import { stockRecords as mockStockRecords } from '../data/stock';
 import { transporters as mockTransporters } from '../data/transporters';
 import { apiFetch, apiRequest, normalizeSnapshot, traceabilityBody } from '../services/apiClient';
-import { presentStockForOralDemo } from '../lib/demoStockPresentation';
+import { presentStockForOralDemo, projectOralDemoSnapshot } from '../lib/demoStockPresentation';
 import type { Discrepancy, Location, Lot, Movement, Shelf, ShelfUnit, StockCount, StockRecord, TraceabilityEvent, Transporter } from '../types/domain';
 
 export type DataSource = 'database' | 'mock' | 'unavailable';
@@ -94,7 +94,7 @@ export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
     if (!isSnapshot(payload.data) || !payload.data.locations.length || !payload.data.lots.length || !payload.data.stockRecords.length) {
       throw new Error('snapshot remoto inválido o sin seed');
     }
-    const snapshot = normalizeSnapshot(payload.data);
+    const snapshot = projectOralDemoSnapshot(normalizeSnapshot(payload.data));
     return {
       data: snapshot,
       source: 'database',

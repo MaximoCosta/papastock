@@ -76,7 +76,7 @@ export function Sidebar() {
   const { dataSource, isLoading } = useAppData();
 
   return (
-    <aside className="app-sidebar fixed inset-y-0 left-0 z-30 flex w-[236px] flex-col border-r border-[#173629] bg-[#1e4331] text-white max-[900px]:w-[76px]">
+    <aside className="app-sidebar fixed inset-y-0 left-0 z-30 flex w-[236px] flex-col overflow-hidden border-r border-[#173629] bg-[#1e4331] text-white max-[900px]:w-[76px]">
       <div className="flex h-[78px] items-center gap-3 border-b border-white/10 px-5 max-[900px]:justify-center max-[900px]:px-2">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/20 bg-white/[0.07] text-[13px] font-bold tracking-[-0.02em] text-[#c8ddcb]">
           PS

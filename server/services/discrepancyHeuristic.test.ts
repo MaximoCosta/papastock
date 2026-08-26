@@ -1,4 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { locations } from '../../src/data/locations';
+import { lots } from '../../src/data/lots';
+import { movements as demoMovements } from '../../src/data/movements';
+import { stockRecords } from '../../src/data/stock';
+import { movementTouchesLot } from '../../src/lib/movements';
+import { getStockViews } from '../../src/services/stockService';
 import type { Movement } from '../../src/types/domain';
 import { analyzeWithHeuristic, type DiscrepancyInput } from './discrepancyHeuristic';
 
@@ -45,5 +51,26 @@ describe('heurística canónica de discrepancias', () => {
     expect(result).toMatchObject({ explainedQuantity: 0, unexplainedQuantity: 700 });
     expect(result).not.toHaveProperty('relatedMovementReference');
     expect(result.hypotheses[0].movementReferences).toEqual([]);
+  });
+
+  it('cubre las seis discrepancias de demo con evidencia distinta', () => {
+    const views = getStockViews(stockRecords, lots, locations);
+    const analyze = (code: string) => {
+      const lot = lots.find((item) => item.code === code)!;
+      const stock = views.find((view) => view.lotId === lot.id)!;
+      return analyzeWithHeuristic({
+        lot: { id: lot.id, code: lot.code },
+        stock,
+        movements: demoMovements.filter((movement) => movementTouchesLot(movement, lot.id)),
+        traceability: [],
+      });
+    };
+
+    expect(analyze('A-204')).toMatchObject({ relatedMovementReference: 'MV-1032', explainedQuantity: 1000, unexplainedQuantity: 0 });
+    expect(analyze('B-221')).toMatchObject({ relatedMovementReference: 'MV-1051', explainedQuantity: 800, unexplainedQuantity: 0 });
+    expect(analyze('D-405')).toMatchObject({ relatedMovementReference: 'MV-1053 + MV-1052', explainedQuantity: 800, unexplainedQuantity: 0 });
+    expect(analyze('E-090')).toMatchObject({ relatedMovementReference: 'MV-1054', explainedQuantity: 350, unexplainedQuantity: 850 });
+    expect(analyze('C-102')).toMatchObject({ explainedQuantity: 0, unexplainedQuantity: 500 });
+    expect(analyze('G-512')).toMatchObject({ explainedQuantity: 0, unexplainedQuantity: 1200 });
   });
 });

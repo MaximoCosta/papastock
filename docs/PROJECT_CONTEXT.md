@@ -133,8 +133,8 @@ bolsas a kilos.** Si hace falta kg y no hay peso por bolsa, se conservan bolsas.
 - La UI deshabilita el botón si `dataSource !== 'database'`: **no se puede mover
   stock en modo mock explícito**.
 - El preview bloquea el movimiento si el lote tiene discrepancia o verificación
-  pendiente (`UNRESOLVED_DISCREPANCY`), lo que hace que **A-204, C-102 y F-301
-  estén bloqueados para N01** por diseño.
+  pendiente (`UNRESOLVED_DISCREPANCY`), lo que hace que **A-204, C-102, B-221,
+  D-405, E-090, G-512 y F-301 estén bloqueados para N01** por diseño.
 - El texto debe tener entre 8 y 500 caracteres.
 
 ### Voz
@@ -644,17 +644,20 @@ las heurísticas del servidor.
 
 1. si `VITE_DATA_SOURCE=mock`, devuelve el mock con `source: 'mock'` y warning;
 2. si no, hace `GET /api/snapshot` same-origin en producción, valida y normaliza
-   el payload sin alterar cantidades;
+   el payload, y **proyecta las 6 discrepancias de demo oral** (A-204, B-221,
+   C-102, D-405, E-090, G-512) más los movimientos pendientes asociados. El resto
+   de lotes queda como vino de PostgreSQL. No se escriben esas cantidades.
 3. ante cualquier fallo, devuelve arrays vacíos con `source: 'unavailable'` y un
-   warning. Nunca sustituye PostgreSQL por datos demo.
+   warning. Nunca sustituye PostgreSQL por el dataset mock completo.
 
 El mock vive en `src/data/` (`locations.ts`, `lots.ts`, `stock.ts`,
 `movements.ts`, `traceability.ts`) y **replica el seed de PostgreSQL**.
 
 Reglas:
 
-- Los datos mock sólo existen con `VITE_DATA_SOURCE=mock`. Las respuestas de base
-  no pasan por `presentStockForOralDemo` ni se completan con catálogos mock.
+- Los datos mock sólo existen con `VITE_DATA_SOURCE=mock`. El snapshot de base
+  no se completa con catálogos mock (estantes, transportistas). Sí se proyectan
+  las 6 discrepancias de la demo oral sobre lotes existentes.
 - `dataSource` se expone en el contexto de la app y se muestra en la UI.
 - Las mutaciones se comportan según la fuente:
   `AppDataContext.addTraceabilityEvent` sólo llama a la API si
@@ -714,25 +717,31 @@ Ubicaciones: `loc-north` Frigorífico Norte, `loc-south` Frigorífico Sur,
 | **A-310** | Frigorífico Central | 22.000 | 22.000 | ✅ verificado |
 | **B-118** | Frigorífico Norte | **14.400** | **14.400** | ✅ verificado (era 14.500) |
 | **B-118** | **Galpón Principal** | **100** | **100** | ✅ registro nuevo, creado por N01 |
-| B-221 | Frigorífico Sur | 16.000 | 16.000 | ✅ verificado |
+| B-221 | Frigorífico Sur | 16.000 | 15.200 | 🔴 discrepancia −800 |
 | C-102 | Galpón Principal | 18.500 | 18.000 | 🔴 discrepancia −500 |
-| D-405 | Frigorífico Central | 19.500 | 19.500 | ✅ verificado |
-| E-090 | Frigorífico Norte | 12.500 | 12.500 | ✅ verificado |
+| D-405 | Frigorífico Central | 19.500 | 18.700 | 🔴 discrepancia −800 |
+| E-090 | Frigorífico Norte | 12.500 | 11.300 | 🔴 discrepancia −1.200 |
 | F-301 | Galpón Principal | 17.000 | 0 | 🟡 verificación pendiente |
-| G-512 | Frigorífico Sur | 21.000 | 21.000 | ✅ verificado |
+| G-512 | Frigorífico Sur | 21.000 | 19.800 | 🔴 discrepancia −1.200 |
 | H-118 | Frigorífico Central | 13.500 | 13.500 | ✅ verificado |
 
-Hay **dos** lotes con discrepancia (A-204 y C-102) y **uno** con verificación
-pendiente (F-301). Los tres están bloqueados para N01 y para despacho.
+Hay **seis** lotes con discrepancia (A-204, B-221, C-102, D-405, E-090, G-512) y
+**uno** con verificación pendiente (F-301). Todos ellos están bloqueados para
+N01 y para despacho.
 
 ### Movimientos
 
 | Referencia | Lote | Ruta | Cantidad | Fecha | Estado |
 | --- | --- | --- | --- | --- | --- |
-| **`MV-N01-DA6EA5DC`** | B-118 | Norte → Galpón Principal | 100 kg | 2026-08-22 | completed |
+| `MV-N01-DA6EA5DC` | B-118 | Norte → Galpón Principal | 100 kg | 2026-08-22 | completed |
 | `MV-1037` | C-102 | Galpón → Central | 500 kg | 2026-08-21 | cancelled |
 | **`MV-1032`** | A-204 | Norte → Sur | 1.000 kg | 2026-08-20 | **pending** |
+| `MV-1053` | D-405 | Galpón → Central | 300 kg | 2026-08-20 | **pending** |
+| `MV-1051` | B-221 | Central → Sur | 800 kg | 2026-08-19 | **pending** |
+| `MV-1052` | D-405 | Norte → Central | 500 kg | 2026-08-19 | **pending** |
 | `MV-1028` | A-204 | Galpón → Sur | 8.000 kg | 2026-08-18 | completed |
+| `MV-1054` | E-090 | Norte → Sur | 350 kg | 2026-08-18 | **pending** |
+| `MV-1044` | G-512 | Central → Sur | 21.000 kg | 2026-08-17 | completed |
 | `MV-1016` | A-310 | Galpón → Central | 22.000 kg | 2026-08-10 | completed |
 
 ### El movimiento N01 de prueba ya modificó la base real
@@ -758,8 +767,10 @@ consultá `/api/snapshot`, no el seed.
   **`treatment` Mancozeb 2026-08-18, insertado por la demo N03** (id
   `trace-d65ac952-…`, `origin: operator_confirmation`).
 - **C-102** — 2 eventos: `planting` (SEM-791), `harvest` (18.500).
-- El resto de los lotes (B-118, B-221, D-405, E-090, F-301, G-512, H-118) **no
-  tiene ningún evento de trazabilidad**.
+- **B-221 / D-405 / E-090 / G-512** — verificación de stock alineada con el
+  verificado de cada discrepancia de demo.
+- El resto de los lotes (B-118, F-301, H-118) **no tiene ningún evento de
+  trazabilidad**.
 
 ### Lotes sensibles — no romper
 
@@ -769,7 +780,8 @@ consultá `/api/snapshot`, no el seed.
 | **A-310** | Demo N03 | Ya está en 5/5; borrar sus eventos base o su stock |
 | **MV-1032** | Evidencia que la IA debe encontrar | Cambiar cantidad, estado o ubicaciones |
 | **B-118** | Lote seguro de N01, ya usado una vez | Nada crítico, pero cada corrida lo modifica |
-| **C-102 / F-301** | Segundo caso de discrepancia y caso pendiente | Alimentan las métricas del dashboard y el test de `getOperationalMetrics` |
+| **C-102 / F-301** | Segundo caso de discrepancia (cancelado) y caso pendiente | Alimentan las métricas del dashboard |
+| **B-221 / D-405 / E-090 / G-512** | Discrepancias extra para el relato de IA | Cambiar declarado/verificado o los pendientes `MV-1051`–`MV-1054` |
 
 ---
 
