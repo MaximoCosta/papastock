@@ -285,7 +285,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     app.get('/ready', (_request, response) => response.json({ status: 'ready', mode: config.backendMode }));
     app.use(createProxyMiddleware({
       target: config.apiUpstream,
-      changeOrigin: false,
+      changeOrigin: true,
       xfwd: true,
       proxyTimeout: 15_000,
       timeout: 15_000,
