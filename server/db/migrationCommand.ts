@@ -12,6 +12,7 @@ export interface MigrationCommandOptions {
   log?: (message: string) => void;
   loadDatabase?: () => Promise<MigrationDatabase>;
   migrate?: (client: PoolClient, directory: string, selection: MigrationSelection) => Promise<string[]>;
+  render?: boolean;
 }
 
 export interface ParsedMigrationCommand {
@@ -39,7 +40,8 @@ export async function runMigrationCommand(options: MigrationCommandOptions): Pro
 }> {
   const parsed = parseMigrationCommandArgs(options.args);
   const log = options.log ?? console.log;
-  if (options.nodeEnv === 'production' && !parsed.applyProduction) {
+  const onRender = options.render ?? process.env.RENDER === 'true';
+  if (options.nodeEnv === 'production' && !parsed.applyProduction && !onRender) {
     log('Migraciones de producción omitidas: se requiere --apply-production.');
     return { skipped: true, applied: [] };
   }

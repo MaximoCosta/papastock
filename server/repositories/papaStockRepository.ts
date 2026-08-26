@@ -178,48 +178,58 @@ export class PapaStockRepository {
 
   async upsertTransporter(id: string | undefined, input: TransporterInput): Promise<Transporter> {
     const transporterId = id ?? `tr-${randomUUID()}`;
-    const result = await this.database.query<TransporterRow>(
-      `insert into public.transporters (
-         id, company_name, trade_name, cuit, contact_name, phone, email, address, city, province,
-         license_plate, vehicle_type, capacity_kg, insurance_policy, notes, active
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-       on conflict (id) do update set
-         company_name = excluded.company_name,
-         trade_name = excluded.trade_name,
-         cuit = excluded.cuit,
-         contact_name = excluded.contact_name,
-         phone = excluded.phone,
-         email = excluded.email,
-         address = excluded.address,
-         city = excluded.city,
-         province = excluded.province,
-         license_plate = excluded.license_plate,
-         vehicle_type = excluded.vehicle_type,
-         capacity_kg = excluded.capacity_kg,
-         insurance_policy = excluded.insurance_policy,
-         notes = excluded.notes,
-         active = excluded.active
-       returning *`,
-      [
-        transporterId,
-        input.companyName,
-        input.tradeName || null,
-        input.cuit,
-        input.contactName,
-        input.phone,
-        input.email,
-        input.address,
-        input.city,
-        input.province,
-        input.licensePlate,
-        input.vehicleType,
-        input.capacityKg,
-        input.insurancePolicy || null,
-        input.notes || null,
-        input.active,
-      ],
-    );
-    return mapTransporter(result.rows[0]);
+    try {
+      const result = await this.database.query<TransporterRow>(
+        `insert into public.transporters (
+           id, company_name, trade_name, cuit, contact_name, phone, email, address, city, province,
+           license_plate, vehicle_type, capacity_kg, insurance_policy, notes, active
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         on conflict (id) do update set
+           company_name = excluded.company_name,
+           trade_name = excluded.trade_name,
+           cuit = excluded.cuit,
+           contact_name = excluded.contact_name,
+           phone = excluded.phone,
+           email = excluded.email,
+           address = excluded.address,
+           city = excluded.city,
+           province = excluded.province,
+           license_plate = excluded.license_plate,
+           vehicle_type = excluded.vehicle_type,
+           capacity_kg = excluded.capacity_kg,
+           insurance_policy = excluded.insurance_policy,
+           notes = excluded.notes,
+           active = excluded.active
+         returning *`,
+        [
+          transporterId,
+          input.companyName,
+          input.tradeName || null,
+          input.cuit,
+          input.contactName,
+          input.phone,
+          input.email,
+          input.address,
+          input.city,
+          input.province,
+          input.licensePlate,
+          input.vehicleType,
+          input.capacityKg,
+          input.insurancePolicy || null,
+          input.notes || null,
+          input.active,
+        ],
+      );
+      const row = result.rows[0];
+      if (!row) throw Object.assign(new Error('No se pudo guardar el transportista.'), { status: 500 });
+      return mapTransporter(row);
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? String((error as { code: unknown }).code) : undefined;
+      if (code === '42P01') {
+        throw Object.assign(new Error('El esquema de la base no está al día.'), { status: 503, code: '42P01' });
+      }
+      throw error;
+    }
   }
 
   async insertShelfUnit(input: ShelfUnitInput): Promise<{ unit: ShelfUnit; shelves: Shelf[] }> {

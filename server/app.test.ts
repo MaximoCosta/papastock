@@ -236,6 +236,31 @@ describe('API PapaStock', () => {
     expect(payload.data.lots.map((lot: { code: string }) => lot.code)).toContain('A-204');
   });
 
+  it('crea un transportista y avisa si falta el catálogo', async () => {
+    const body = {
+      companyName: 'Andina',
+      cuit: '30-71234567-8',
+      contactName: 'Marcos',
+      phone: '2266',
+      email: 'despachos@andina.test',
+      address: 'Ruta 226',
+      city: 'Balcarce',
+      province: 'Buenos Aires',
+      licensePlate: 'AB834CD',
+      vehicleType: 'Camión',
+      capacityKg: 28000,
+      active: true,
+    };
+    const created = await protectedPost(app, '/api/transporters').send(body).expect(201);
+    expect(created.body.data).toMatchObject({ id: 'tr-new', companyName: 'Andina' });
+
+    repository.upsertTransporter.mockRejectedValueOnce(
+      Object.assign(new Error('relation "transporters" does not exist'), { code: '42P01' }),
+    );
+    const missing = await protectedPost(app, '/api/transporters').send(body).expect(503);
+    expect(missing.body.error).toBe('El esquema de la base no está al día.');
+  });
+
   it('rechaza una mutación de trazabilidad fuera del contrato', async () => {
     await protectedPost(app, '/api/traceability').send({ lotId: 'lot', type: 'harvest', date: '2026-08-20', data: {} }).expect(400);
   });

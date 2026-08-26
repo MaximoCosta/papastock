@@ -79,6 +79,28 @@ describe('PapaStockRepository', () => {
     expect(query).toHaveBeenCalledWith('commit');
   });
 
+  it('señala el schema incompleto si no existe la tabla de transportistas', async () => {
+    const query = vi.fn(async () => {
+      throw Object.assign(new Error('relation "transporters" does not exist'), { code: '42P01' });
+    });
+    const repository = new PapaStockRepository({ query } as unknown as pg.Pool);
+
+    await expect(repository.upsertTransporter(undefined, {
+      companyName: 'Andina',
+      cuit: '30-71234567-8',
+      contactName: 'Marcos',
+      phone: '123',
+      email: 'a@b.com',
+      address: 'Ruta 226',
+      city: 'Balcarce',
+      province: 'Buenos Aires',
+      licensePlate: 'AB834CD',
+      vehicleType: 'Camión',
+      capacityKg: 28000,
+      active: true,
+    })).rejects.toMatchObject({ status: 503, code: '42P01' });
+  });
+
   it('confirma una transferencia dentro de BEGIN/COMMIT y actualiza ambos extremos', async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql === 'begin' || sql === 'commit' || sql === 'rollback') return { rows: [] };

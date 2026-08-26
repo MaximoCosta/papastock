@@ -57,23 +57,27 @@ export function TransportersPage() {
     event.preventDefault();
     if (!form.companyName.trim() || !form.cuit.trim() || !form.licensePlate.trim()) return;
 
-    if (creating) {
-      const created = await addTransporter({
-        ...form,
-        companyName: form.companyName.trim(),
-        cuit: form.cuit.trim(),
-        licensePlate: form.licensePlate.trim().toUpperCase(),
-      });
-      setSelectedId(created.id);
-      setCreating(false);
-    } else if (editing && selected) {
-      await updateTransporter(selected.id, {
-        ...form,
-        companyName: form.companyName.trim(),
-        cuit: form.cuit.trim(),
-        licensePlate: form.licensePlate.trim().toUpperCase(),
-      });
-      setEditing(false);
+    try {
+      if (creating) {
+        const created = await addTransporter({
+          ...form,
+          companyName: form.companyName.trim(),
+          cuit: form.cuit.trim(),
+          licensePlate: form.licensePlate.trim().toUpperCase(),
+        });
+        setSelectedId(created.id);
+        setCreating(false);
+      } else if (editing && selected) {
+        await updateTransporter(selected.id, {
+          ...form,
+          companyName: form.companyName.trim(),
+          cuit: form.cuit.trim(),
+          licensePlate: form.licensePlate.trim().toUpperCase(),
+        });
+        setEditing(false);
+      }
+    } catch {
+      return;
     }
   }
 

@@ -585,6 +585,9 @@ export function createApp(dependencies: AppDependencies = {}) {
   app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
     if (error instanceof z.ZodError) return response.status(400).json({ error: 'Solicitud inválida.', details: z.treeifyError(error) });
     const candidate = error as { status?: number; code?: string; message?: string; details?: unknown };
+    if (candidate.code === '42P01') {
+      return response.status(503).json({ error: 'El esquema de la base no está al día.' });
+    }
     const status = candidate.status ?? (candidate.code === '23505' ? 409 : 500);
     if (status >= 500) console.error('[api]', error);
     const retryAfterSeconds = status === 429 && candidate.details && typeof candidate.details === 'object'

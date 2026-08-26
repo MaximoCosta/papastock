@@ -31,6 +31,24 @@ describe('comando seguro de migraciones', () => {
     expect(execution.migrate).not.toHaveBeenCalled();
   });
 
+  it('aplica migraciones en Render aunque falte --apply-production', async () => {
+    const execution = fakeExecution();
+    const log = vi.fn();
+
+    await expect(runMigrationCommand({
+      args: [],
+      nodeEnv: 'production',
+      migrationsDirectory: 'migrations',
+      log,
+      render: true,
+      loadDatabase: execution.loadDatabase,
+      migrate: execution.migrate,
+    })).resolves.toEqual({ skipped: false, applied: ['004_correction_invariants.sql'] });
+
+    expect(execution.migrate).toHaveBeenCalledOnce();
+    expect(log).toHaveBeenCalledWith('Migraciones aplicadas: 004_correction_invariants.sql');
+  });
+
   it('ejecuta normalmente en producción con --apply-production sin requerir auth', async () => {
     const execution = fakeExecution();
     vi.stubEnv('NODE_ENV', 'production');

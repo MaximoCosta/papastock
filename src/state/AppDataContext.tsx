@@ -296,32 +296,44 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     },
     addTransporter: async (input) => {
       setActionError(undefined);
-      if (dataSource === 'database') {
-        const created = await createTransporter(input);
-        setTransporters((current) => [created, ...current]);
-        return created;
-      }
-      if (dataSource !== 'mock') {
-        const message = 'La fuente operativa no está disponible.';
+      try {
+        if (dataSource === 'database') {
+          const created = await createTransporter(input);
+          setTransporters((current) => [created, ...current]);
+          return created;
+        }
+        if (dataSource !== 'mock') {
+          const message = 'La fuente operativa no está disponible.';
+          setActionError(message);
+          throw new Error(message);
+        }
+        const transporter: Transporter = { ...input, id: `tr-${Date.now()}` };
+        setTransporters((current) => [transporter, ...current]);
+        return transporter;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo guardar el transportista.';
         setActionError(message);
-        throw new Error(message);
+        throw error;
       }
-      const transporter: Transporter = { ...input, id: `tr-${Date.now()}` };
-      setTransporters((current) => [transporter, ...current]);
-      return transporter;
     },
     updateTransporter: async (id, input) => {
       setActionError(undefined);
-      if (dataSource === 'database') {
-        const updated = await updateTransporterRemote(id, input);
-        setTransporters((current) => current.map((item) => (item.id === id ? updated : item)));
-        return;
+      try {
+        if (dataSource === 'database') {
+          const updated = await updateTransporterRemote(id, input);
+          setTransporters((current) => current.map((item) => (item.id === id ? updated : item)));
+          return;
+        }
+        if (dataSource !== 'mock') {
+          setActionError('La fuente operativa no está disponible.');
+          return;
+        }
+        setTransporters((current) => current.map((item) => (item.id === id ? { ...input, id } : item)));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo actualizar el transportista.';
+        setActionError(message);
+        throw error;
       }
-      if (dataSource !== 'mock') {
-        setActionError('La fuente operativa no está disponible.');
-        return;
-      }
-      setTransporters((current) => current.map((item) => (item.id === id ? { ...input, id } : item)));
     },
     applyImportedSnapshot: (applied) => {
       setLocations(applied.locations);
