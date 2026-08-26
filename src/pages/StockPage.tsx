@@ -132,8 +132,8 @@ export function StockPage() {
         <div className="grid grid-cols-[minmax(240px,1fr)_220px_190px_auto] items-center gap-3 max-[1100px]:grid-cols-1">
           <label className="relative">
             <span className="sr-only">Buscar por lote</span>
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737970]" />
-            <input className="field min-h-10 pl-9 text-[12px]" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por lote..." />
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#737970]" />
+            <input className="field field-leading-icon min-h-10 text-[12px]" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por lote..." />
           </label>
           <label>
             <span className="sr-only">Filtrar por ubicación</span>

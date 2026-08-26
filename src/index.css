@@ -113,6 +113,10 @@ textarea:focus-visible {
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
+.field-leading-icon {
+  padding-left: 2.5rem;
+}
+
 .field:focus {
   border-color: #587762;
   box-shadow: 0 0 0 3px rgba(35, 75, 55, 0.09);
