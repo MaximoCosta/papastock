@@ -23,5 +23,5 @@ export interface OperationsAssistantAnswer {
   entities: OperationsAssistantEntity[];
   warnings: string[];
   evidence: OperationsAssistantEvidence[];
-  engine?: 'llm' | 'heuristic';
+  engine?: 'llm' | 'heuristic' | 'deterministic';
 }

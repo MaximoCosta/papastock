@@ -360,7 +360,7 @@ existen hoy.
 | GET | `/health` | — | ninguno | Liveness: devuelve exactamente `{ "status": "ok" }`. Render todavía usa esta ruta. |
 | GET | `/ready` | — | ninguno | Readiness: comprueba PostgreSQL con timeout; devuelve 200 o 503 sin detalles internos. |
 | POST | `/api/auth/login` | — | sesión | Valida la cuenta operadora y emite cookie HttpOnly. |
-| GET | `/api/auth/session` | — | ninguno | Devuelve la identidad de la sesión válida. |
+| GET | `/api/auth/session` | — | ninguno | 200 con la identidad, o `{ data: null }` si no hay sesión. |
 | POST | `/api/auth/logout` | — | sesión | Revoca la sesión y limpia la cookie. |
 | GET | `/api/snapshot` | — | lectura | Snapshot completo: locations, lots, stockRecords, movements, traceabilityEvents. Responde `{ data, source: 'database' }`. 503 si no hay `DATABASE_URL`. |
 | GET | `/api/lots/:id` | — | lectura | Acepta id o code (case-insensitive). Filtra el snapshot al lote. 404 si no existe. |

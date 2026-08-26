@@ -300,8 +300,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   });
   app.get('/api/auth/session', (request, response) => {
     const identity = auth.readSession(auth.tokenFrom(request));
-    if (!identity) return response.status(401).json({ error: 'Autenticación requerida.' });
-    return response.json({ data: identity });
+    return response.json({ data: identity ?? null });
   });
   app.post('/api/auth/logout', (request, response) => {
     auth.revokeSession(auth.tokenFrom(request));

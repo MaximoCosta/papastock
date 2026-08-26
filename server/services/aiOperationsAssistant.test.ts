@@ -62,6 +62,8 @@ describe('asistente operativo read-only', () => {
     );
 
     expect(fetchImpl).not.toHaveBeenCalled();
+    expect(answer.engine).toBe('deterministic');
+    expect(answer.warnings[0]).toContain('Hecho canónico');
     expect(answer.answer).toContain('10.250 kg de stock declarado');
     expect(answer.answer).toContain('10.150 kg');
     expect(answer.answer).toContain('-100 kg');
@@ -85,6 +87,17 @@ describe('asistente operativo read-only', () => {
     );
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(`${answer.answer} ${answer.warnings.join(' ')}`).toContain('verificación pendiente');
+  });
+
+  it('cae a heurística y avisa si falta GROQ_API_KEY', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const answer = await createAiOperationsAssistant({ model: 'test', timeoutMs: 100 })(
+      'Dame un resumen operativo',
+      buildAiOperationsContext('Dame un resumen operativo', snapshot),
+    );
+    expect(answer.engine).toBe('heuristic');
+    expect(answer.warnings.some((item) => item.includes('GROQ_API_KEY no está configurada'))).toBe(true);
+    warn.mockRestore();
   });
 
   it('construye contexto desde snapshot y distingue SHOW-* MATCH de la autoridad global', () => {

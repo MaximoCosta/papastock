@@ -3,7 +3,7 @@ import type { OperationsAssistantAnswer } from '../../src/types/operationsAssist
 import type { AiOperationsContext } from './aiOperationsContext';
 import { buildCanonicalLotStockAnswer } from './aiOperationsFacts';
 
-const HEURISTIC_WARNING = 'Respuesta heurística: Groq no estuvo disponible. Los datos salen del snapshot PostgreSQL y no se modificó stock.';
+export const HEURISTIC_WARNING = 'Respuesta heurística: Groq no estuvo disponible. Los datos salen del snapshot PostgreSQL y no se modificó stock.';
 
 function entitiesFrom(context: AiOperationsContext): OperationsAssistantAnswer['entities'] {
   return [

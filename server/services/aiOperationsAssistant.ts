@@ -14,7 +14,7 @@ import {
   type StructuredRequest,
 } from './groqStructured';
 import { buildCanonicalLotStockAnswer } from './aiOperationsFacts';
-import { buildHeuristicOperationsAnswer } from './aiOperationsHeuristic';
+import { buildHeuristicOperationsAnswer, HEURISTIC_WARNING } from './aiOperationsHeuristic';
 
 export { buildAiOperationsContext, measureAiOperationsContext } from './aiOperationsContext';
 export type { AiOperationsContext, AiOperationsIntent } from './aiOperationsContext';
@@ -294,10 +294,18 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
         contextBytes: contextMetrics.contextBytes,
         selectedCounts: contextMetrics.counts,
       });
-      return validateClosedWorld(
+      const canonical = validateClosedWorld(
         withEvidenceLabels(operationsAnswerSchema.parse(buildCanonicalLotStockAnswer(context))),
         context,
       );
+      return {
+        ...canonical,
+        engine: 'deterministic',
+        warnings: [
+          'Hecho canónico calculado por PapaStock desde PostgreSQL. No pasó por Groq ni usa datos mock.',
+          ...canonical.warnings,
+        ],
+      };
     }
 
     const request: StructuredRequest = {
@@ -337,7 +345,17 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
       }
       if (error instanceof GroqHttpError) logControlledUpstreamError(error, contextMetrics);
       console.warn('[ai] asistente operativo en heurística:', error instanceof Error ? error.message : 'respuesta inválida');
-      return validateClosedWorld(buildHeuristicOperationsAnswer(context), context);
+      const fallback = validateClosedWorld(buildHeuristicOperationsAnswer(context), context);
+      if (error instanceof Error && error.message === 'GROQ_API_KEY ausente.') {
+        return {
+          ...fallback,
+          warnings: [
+            'Respuesta heurística: GROQ_API_KEY no está configurada en el servidor. Los datos salen del snapshot PostgreSQL; no es un dataset mock.',
+            ...fallback.warnings.filter((warning) => warning !== HEURISTIC_WARNING),
+          ],
+        };
+      }
+      return fallback;
     }
   };
 }

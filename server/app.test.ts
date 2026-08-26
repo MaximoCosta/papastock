@@ -138,6 +138,14 @@ describe('API PapaStock', () => {
     expect((await request(app).get('/health').expect(200)).body).toEqual({ status: 'ok' });
   });
 
+  it('consulta la sesión sin tratar la ausencia como error HTTP', async () => {
+    expect((await request(app).get('/api/auth/session').expect(200)).body).toEqual({ data: null });
+    expect((await protectedGet(app, '/api/auth/session').expect(200)).body.data).toMatchObject({
+      username: TEST_USERNAME,
+      role: 'operator',
+    });
+  });
+
   it('separa readiness de liveness sin exponer el error de PostgreSQL', async () => {
     const ready = createApp({ auth, checkReadiness: vi.fn(async () => undefined) });
     expect((await request(ready).get('/ready').expect(200)).body).toEqual({ status: 'ready' });

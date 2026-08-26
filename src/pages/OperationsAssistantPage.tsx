@@ -53,7 +53,7 @@ export function OperationsAssistantPage() {
       <PageHeader
         eyebrow="Consulta read-only"
         title="Asistente de inventario"
-        description="Consulta el snapshot operativo de PostgreSQL. El asistente explica; nunca modifica stock ni autoriza operaciones."
+        description="Consulta el snapshot operativo de PostgreSQL. Preguntas de stock de un lote se resuelven con hechos canónicos; el resto las interpreta Groq. El asistente nunca modifica stock."
       />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
@@ -100,7 +100,9 @@ export function OperationsAssistantPage() {
                 <StatusBadge tone={answer.dataQuality === 'authoritative' ? 'success' : 'warning'}>
                   {qualityLabel[answer.dataQuality]}
                 </StatusBadge>
-                {answer.engine === 'heuristic' && <StatusBadge tone="warning">Heurística</StatusBadge>}
+                <StatusBadge tone={answer.engine === 'heuristic' ? 'warning' : 'success'}>
+                  {answer.engine === 'llm' ? 'IA · Groq' : answer.engine === 'deterministic' ? 'Hecho canónico' : answer.engine === 'heuristic' ? 'Heurística · Groq no disponible' : 'Respuesta operativa'}
+                </StatusBadge>
                 <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#737970]">Confianza {answer.confidence}</span>
               </div>
               <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#283129]">{answer.answer}</p>
