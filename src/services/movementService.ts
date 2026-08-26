@@ -2,39 +2,38 @@ import type {
   MovementIntent,
   MovementInterpretation,
   StockTransferPreview,
-} from '../types/domain';import {
-  apiUrl,
+} from '../types/domain';
+import {
+  apiRequest,
   movementIntentBody,
   normalizeMovementInterpretation,
   normalizeTransferPreview,
-  readApiData,
 } from './apiClient';
 
 export async function interpretMovement(text: string): Promise<MovementInterpretation> {
-  const response = await fetch(apiUrl('/api/ai/movement-intent'), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({ text }),
-  });
-  return normalizeMovementInterpretation(await readApiData(response, 'No se pudo interpretar la orden.'));
+  return normalizeMovementInterpretation(
+    await apiRequest('/api/ai/movement-intent', 'No se pudo interpretar la orden.', {
+      method: 'POST',
+      body: { text },
+    }),
+  );
 }
 
 export async function previewMovement(intent: MovementIntent): Promise<StockTransferPreview> {
-  const response = await fetch(apiUrl('/api/movements/preview'), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(movementIntentBody(intent)),
-  });
-  return normalizeTransferPreview(await readApiData(response, 'No se pudo validar el movimiento.'));
+  return normalizeTransferPreview(
+    await apiRequest('/api/movements/preview', 'No se pudo validar el movimiento.', {
+      method: 'POST',
+      body: movementIntentBody(intent),
+    }),
+  );
 }
 
 export async function confirmMovement(intent: MovementIntent): Promise<{ reference: string; remitoNumber?: string; id?: string }> {
-  const response = await fetch(apiUrl('/api/movements'), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(movementIntentBody(intent)),
-  });
-  const payload = await readApiData<Record<string, unknown>>(response, 'No se pudo registrar el movimiento.');
+  const payload = await apiRequest<Record<string, unknown>>(
+    '/api/movements',
+    'No se pudo registrar el movimiento.',
+    { method: 'POST', body: movementIntentBody(intent) },
+  );
   if (typeof payload.reference === 'string' && payload.reference) {
     return {
       reference: payload.reference,
@@ -52,12 +51,13 @@ export async function receiveMovement(movementId: string, body: {
   receivedTotal?: number;
   unit?: 'bags' | 'kg';
 }, idempotencyKey: string) {
-  const response = await fetch(apiUrl(`/api/movements/${movementId}/reception`), {
+  // El backend exige esta clave: repetir el request con la misma key no vuelve a aplicar
+  // la recepción, así un reintento por timeout no duplica stock.
+  return apiRequest(`/api/movements/${movementId}/reception`, 'No se pudo registrar la recepción.', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json', 'Idempotency-Key': idempotencyKey },
-    body: JSON.stringify(body),
+    body,
+    headers: { 'Idempotency-Key': idempotencyKey },
   });
-  return readApiData(response, 'No se pudo registrar la recepción.');
 }
 
 export async function correctMovement(body: {
@@ -68,12 +68,10 @@ export async function correctMovement(body: {
   quantity: number;
   unit: 'bags' | 'kg';
 }) {
-  const response = await fetch(apiUrl('/api/movements/corrections'), {
+  return apiRequest('/api/movements/corrections', 'No se pudo registrar la corrección.', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(body),
+    body,
   });
-  return readApiData(response, 'No se pudo registrar la corrección.');
 }
 
 export async function createStockCount(body: {
@@ -86,10 +84,8 @@ export async function createStockCount(body: {
   date: string;
   notes?: string;
 }) {
-  const response = await fetch(apiUrl('/api/stock-counts'), {
+  return apiRequest('/api/stock-counts', 'No se pudo registrar el conteo.', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(body),
+    body,
   });
-  return readApiData(response, 'No se pudo registrar el conteo.');
 }

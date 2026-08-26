@@ -1,34 +1,26 @@
 import type { PlanillaImportConfirmation, PlanillaImportPreview } from '../types/domain';
-import { apiUrl } from './apiClient';
+import { apiRequest } from './apiClient';
 
-async function readResponse<T>(response: Response, fallback: string): Promise<T> {
-  const payload = await response.json().catch(() => ({})) as { data?: T; error?: string };
-  if (!response.ok || !payload.data) throw new Error(payload.error ?? fallback);
-  return payload.data;
-}
-
-function uploadHeaders(file: File): HeadersInit {
+/** La planilla viaja como cuerpo crudo, con su propio content-type y el nombre en un header. */
+function uploadHeaders(file: File): Record<string, string> {
   return {
     'content-type': file.type || 'application/octet-stream',
     'x-filename': encodeURIComponent(file.name),
-    accept: 'application/json',
   };
 }
 
 export async function previewPlanillaImport(file: File): Promise<PlanillaImportPreview> {
-  const response = await fetch(apiUrl('/api/imports/planilla/preview'), {
-    method: 'POST',
-    headers: uploadHeaders(file),
-    body: file,
-  });
-  return readResponse(response, 'No se pudo leer la planilla.');
+  return apiRequest<PlanillaImportPreview>(
+    '/api/imports/planilla/preview',
+    'No se pudo leer la planilla.',
+    { method: 'POST', rawBody: file, headers: uploadHeaders(file) },
+  );
 }
 
 export async function confirmPlanillaImport(file: File): Promise<PlanillaImportConfirmation> {
-  const response = await fetch(apiUrl('/api/imports/planilla'), {
-    method: 'POST',
-    headers: uploadHeaders(file),
-    body: file,
-  });
-  return readResponse(response, 'No se pudo importar la planilla.');
+  return apiRequest<PlanillaImportConfirmation>(
+    '/api/imports/planilla',
+    'No se pudo importar la planilla.',
+    { method: 'POST', rawBody: file, headers: uploadHeaders(file) },
+  );
 }

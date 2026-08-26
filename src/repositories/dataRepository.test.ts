@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { apiUrl } from '../services/apiClient';
 import { loadPapaStockSnapshot } from './dataRepository';
 
 afterEach(() => {
@@ -31,7 +32,7 @@ describe('loadPapaStockSnapshot', () => {
     expect(result.data.shelves).toEqual([]);
     expect(result.data.shelfUnits).toEqual([]);
     expect(result.data.transporters).toEqual([]);
-    expect(fetchMock).toHaveBeenCalledWith('/api/snapshot', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith(apiUrl('/api/snapshot'), expect.objectContaining({
       credentials: 'include',
     }));
   });

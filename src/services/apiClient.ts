@@ -50,6 +50,67 @@ export async function readApiData<T>(response: Response, fallback: string): Prom
   return payload.data;
 }
 
+/**
+ * Cliente HTTP único de la app.
+ *
+ * Todas las llamadas mandan la cookie de sesión. Antes sólo 6 de 25 lo hacían, lo que
+ * funcionaba de casualidad porque la API vivía en el mismo origen: apenas pasa a otro
+ * origen (dev contra Java, staging), las que faltaban devuelven 401.
+ * `credentials: 'include'` es inocuo same-origin, así que producción no cambia.
+ */
+export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(apiUrl(path), {
+    ...init,
+    credentials: 'include',
+    headers: { accept: 'application/json', ...(init.headers ?? {}) },
+  });
+}
+
+export interface ApiRequestOptions {
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  /** Se serializa como JSON. Para binarios usar `rawBody`. */
+  body?: unknown;
+  /** Cuerpo crudo (File, Blob, FormData) con sus propios headers. */
+  rawBody?: BodyInit;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
+/** Hace la llamada y devuelve el contenido de `data`, o lanza con el mensaje del backend. */
+export async function apiRequest<T>(
+  path: string,
+  fallback: string,
+  options: ApiRequestOptions = {},
+): Promise<T> {
+  const { method = 'GET', body, rawBody, headers = {}, signal } = options;
+  const sendsJson = rawBody === undefined && body !== undefined;
+  const response = await apiFetch(path, {
+    method,
+    signal,
+    headers: sendsJson ? { 'content-type': 'application/json', ...headers } : headers,
+    body: rawBody ?? (body === undefined ? undefined : JSON.stringify(body)),
+  });
+  return readApiData<T>(response, fallback);
+}
+
+/** Para endpoints que responden 204 y no traen envelope. */
+export async function apiRequestVoid(
+  path: string,
+  fallback: string,
+  options: ApiRequestOptions = {},
+): Promise<void> {
+  const { method = 'POST', body, headers = {}, signal } = options;
+  const response = await apiFetch(path, {
+    method,
+    signal,
+    headers: body === undefined ? headers : { 'content-type': 'application/json', ...headers },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok && response.status !== 204) {
+    await readApiData(response, fallback);
+  }
+}
+
 export function toIsoDateTime(date: string): string {
   return /T/.test(date) ? date : `${date}T12:00:00Z`;
 }
