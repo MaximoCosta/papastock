@@ -3,7 +3,7 @@ import { config } from '../config';
 
 const { Pool } = pg;
 
-export const pool = config.databaseUrl
+export const pool = config.backendMode === 'legacy' && config.databaseUrl
   ? new Pool({
       connectionString: config.databaseUrl,
       max: 10,

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "express": "^5.2.1",
+    "http-proxy-middleware": "^3.0.7",
     "lucide-react": "1.33.0",
     "pg": "^8.23.0",
     "react": "19.2.8",

@@ -51,6 +51,8 @@ export function groqRuntimeStatus(
 
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
+  backendMode: (process.env.PAPASTOCK_BACKEND_MODE?.trim().toLowerCase() || 'legacy') as 'legacy' | 'java',
+  apiUpstream: process.env.PAPASTOCK_API_UPSTREAM?.trim().replace(/\/$/, ''),
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: normalizeDatabaseUrl(process.env.DATABASE_URL),
   groqApiKey: process.env.GROQ_API_KEY?.trim(),
@@ -82,6 +84,13 @@ if (!Number.isInteger(config.groqMaxRequestBodyBytes)
 
 export function assertProductionServerConfig(candidate: PapaStockConfig = config): void {
   if (candidate.nodeEnv !== 'production') return;
+  if (!['legacy', 'java'].includes(candidate.backendMode)) {
+    throw new Error('PAPASTOCK_BACKEND_MODE debe ser java o legacy.');
+  }
+  if (candidate.backendMode === 'java' && !candidate.apiUpstream) {
+    throw new Error('PAPASTOCK_API_UPSTREAM es obligatoria en modo java.');
+  }
+  if (candidate.backendMode === 'java') return;
   if (!candidate.databaseUrl) {
     throw new Error('DATABASE_URL es obligatoria en producción.');
   }

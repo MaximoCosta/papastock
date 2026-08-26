@@ -11,7 +11,7 @@ const app = createApp();
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 if (config.nodeEnv === 'production') {
-  await verifyDatabaseConnection();
+  if (config.backendMode === 'legacy') await verifyDatabaseConnection();
   const clientDirectory = path.join(repositoryRoot, 'dist');
   app.use(express.static(clientDirectory, { index: false, maxAge: '1h' }));
   app.use((request, response, next) => {

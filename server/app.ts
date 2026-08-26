@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { z } from 'zod';
 import { AuthService, createSameOriginGuard, requireAuthentication, requirePermission } from './auth';
 import { config, groqRuntimeStatus } from './config';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { pool, verifyDatabaseReadiness } from './db/pool';
 import { PapaStockRepository } from './repositories/papaStockRepository';
 import { createDiscrepancyAnalyzer } from './services/groqDiscrepancy';
@@ -276,8 +277,33 @@ export function createApp(dependencies: AppDependencies = {}) {
     ?? createAiOperationsAssistant(groqOptions);
 
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '64kb' }));
   app.get('/health', (_request, response) => response.json({ status: 'ok' }));
+  if (config.backendMode === 'java') {
+    if (!config.apiUpstream) throw new Error('PAPASTOCK_API_UPSTREAM es obligatoria en modo java.');
+    app.get('/ready', (_request, response) => response.json({ status: 'ready', mode: config.backendMode }));
+    app.use(createProxyMiddleware({
+      target: config.apiUpstream,
+      changeOrigin: false,
+      xfwd: true,
+      proxyTimeout: 15_000,
+      timeout: 15_000,
+      pathFilter: (pathname: string) => pathname === '/api' || pathname.startsWith('/api/'),
+      on: {
+        proxyReq: (proxyReq, request) => {
+          proxyReq.setHeader('x-papastock-gateway', 'papastock');
+          proxyReq.setHeader('x-forwarded-host', request.headers.host ?? 'papastock.onrender.com');
+        },
+        error: (error, _request, response) => {
+          const targetResponse = response as Response;
+          if (!targetResponse.headersSent) targetResponse.writeHead(502, { 'content-type': 'application/json' });
+          targetResponse.end(JSON.stringify({ error: 'Backend Java no disponible.', detail: error.message }));
+        },
+      },
+    }));
+    app.use('/api', (_request, response) => response.status(502).json({ error: 'Backend Java no disponible.' }));
+    return app;
+  }
+  app.use(express.json({ limit: '64kb' }));
   app.get('/ready', async (_request, response) => {
     try {
       await checkReadiness();
