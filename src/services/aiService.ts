@@ -9,12 +9,8 @@ import type {
   TraceabilityIntent,
 } from '../types/export';
 import { hardcodedDiscrepancyAnalysis } from '../lib/demoDiscrepancyAnalysis';
-<<<<<<< Updated upstream
-import { apiFetch, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
-=======
 import { analyzeWithHeuristic } from '../../server/services/discrepancyHeuristic';
-import { apiUrl, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
->>>>>>> Stashed changes
+import { apiFetch, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
 
 export interface AIService {
   analyzeDiscrepancy(
@@ -135,16 +131,10 @@ const httpAIService: AIService = {
       return demoAnalysis;
     }
 
-<<<<<<< Updated upstream
-    const response = await apiFetch('/api/ai/discrepancy', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-=======
     try {
-      const response = await fetch(apiUrl('/api/ai/discrepancy'), {
+      const response = await apiFetch('/api/ai/discrepancy', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           lot: { id: stock.lot.id, code: stock.lot.code },
           stock: {
@@ -167,7 +157,6 @@ const httpAIService: AIService = {
       return payload;
     } catch {
       return analyzeWithHeuristic({
->>>>>>> Stashed changes
         lot: { id: stock.lot.id, code: stock.lot.code },
         stock,
         movements: lotMovements,
