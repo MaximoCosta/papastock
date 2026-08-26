@@ -26,6 +26,10 @@ const evidenceSourceLabel = {
   traceability: 'Trazabilidad',
 } as const;
 
+function evidenceLabel(source: string): string {
+  return evidenceSourceLabel[source as keyof typeof evidenceSourceLabel] ?? 'Referencia';
+}
+
 export function OperationsAssistantPage() {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<OperationsAssistantAnswer>();
@@ -72,7 +76,7 @@ export function OperationsAssistantPage() {
               <span className="flex h-9 w-9 items-center justify-center border border-[#b9cbbd] bg-[#edf4ee] text-[#28543b]"><Bot size={18} /></span>
               <div>
                 <p className="text-[12px] font-bold text-[#273029]">Contexto operacional cerrado</p>
-                <p className="mt-0.5 text-[10px] text-[#6d736b]">PostgreSQL → Express → Groq</p>
+                <p className="mt-0.5 text-[10px] text-[#6d736b]">PostgreSQL → Java → Groq</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -89,18 +93,11 @@ export function OperationsAssistantPage() {
             <div className="mx-5 mt-5 flex gap-3 border border-[#e2c48a] bg-[#fbf6ea] p-4 text-[12px] leading-5 text-[#755516]" role="status">
               <AlertTriangle className="mt-0.5 shrink-0" size={16} />
               <div>
-                <p className="font-bold text-[#5f4512]">GROQ_API_KEY no está en Express</p>
+                <p className="font-bold text-[#5f4512]">Groq no está configurado en el backend</p>
                 <p className="mt-1">
-                  Ponerla en el frontend (variables <code>VITE_*</code>, Netlify o el bundle de Vite) no configura Groq.
-                  Tiene que estar en Render → Web Service <strong>papastock</strong> → Environment, con el nombre exacto
-                  {' '}<code>GROQ_API_KEY</code>, y hay que redesplegar.
+                  La clave debe estar configurada en el backend Java de Render. No pongas secretos en variables
+                  <code> VITE_*</code>, Netlify ni el bundle del navegador.
                 </p>
-                {groqStatus.frontendKeyIgnored && (
-                  <p className="mt-1">
-                    El servidor ve una <code>VITE_GROQ_API_KEY</code> y la ignora. Rotá esa clave: Vite puede haberla
-                    incluido en el JavaScript del navegador.
-                  </p>
-                )}
               </div>
             </div>
           )}
@@ -133,13 +130,15 @@ export function OperationsAssistantPage() {
           {answer && (
             <article className="mx-5 mb-5 border border-[#cdd7ce] bg-[#f5f8f4] p-5" aria-live="polite">
               <div className="mb-4 flex flex-wrap items-center gap-2">
-                <StatusBadge tone={answer.dataQuality === 'authoritative' ? 'success' : 'warning'}>
-                  {qualityLabel[answer.dataQuality]}
-                </StatusBadge>
+                {answer.dataQuality && (
+                  <StatusBadge tone={answer.dataQuality === 'authoritative' ? 'success' : 'warning'}>
+                    {qualityLabel[answer.dataQuality]}
+                  </StatusBadge>
+                )}
                 <StatusBadge tone={answer.engine === 'heuristic' ? 'warning' : 'success'}>
                   {answer.engine === 'llm' ? 'IA · Groq' : answer.engine === 'deterministic' ? 'Hecho canónico' : answer.engine === 'heuristic' ? 'Heurística · Groq no disponible' : 'Respuesta operativa'}
                 </StatusBadge>
-                <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#737970]">Confianza {answer.confidence}</span>
+                {answer.confidence && <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#737970]">Confianza {answer.confidence}</span>}
               </div>
               <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#283129]">{answer.answer}</p>
               {answer.warnings.length > 0 && (
@@ -155,7 +154,7 @@ export function OperationsAssistantPage() {
                       <Database className="mt-0.5 shrink-0 text-[#52705b]" size={12} />
                       <span>
                         <strong>
-                          {evidenceSourceLabel[item.source]}
+                          {evidenceLabel(item.source)}
                           {(item.recordLabel ?? item.recordId) ? ` · ${item.recordLabel ?? item.recordId}` : ''}
                         </strong>
                         {' · '}{item.description}
