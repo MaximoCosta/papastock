@@ -113,6 +113,30 @@ describe('cliente Groq Structured Output', () => {
     expect(JSON.stringify(caught)).not.toContain('sensitive-context-fixture');
   });
 
+  it('preserva code json_validate_failed, type y x-request-id de un 400 y omite el message', async () => {
+    const reflected = 'question-fixture context-fixture secret-fixture';
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: { code: 'json_validate_failed', type: 'invalid_request_error', message: reflected },
+    }), {
+      status: 400,
+      headers: { 'content-type': 'application/json', 'x-request-id': 'req_01m0wc309ye5g82dkddfhs57n7' },
+    })) as unknown as typeof fetch;
+    let caught: unknown;
+    try {
+      await requestStructuredOutput({ apiKey: 'secret-fixture', model: 'model-fixture', timeoutMs: 100, fetchImpl }, request);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({
+      status: 400,
+      responseError: { code: 'json_validate_failed', type: 'invalid_request_error' },
+      safeHeaders: { 'content-type': 'application/json', 'x-request-id': 'req_01m0wc309ye5g82dkddfhs57n7' },
+    });
+    expect((caught as GroqHttpError).responseError).not.toHaveProperty('message');
+    expect(JSON.stringify(caught)).not.toContain(reflected);
+    expect(JSON.stringify(caught)).not.toContain('secret-fixture');
+  });
+
   it('preserva code, type y x-request-id de un 400 y omite mensajes potencialmente reflejados', async () => {
     const reflected = 'question-fixture context-fixture secret-fixture';
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({

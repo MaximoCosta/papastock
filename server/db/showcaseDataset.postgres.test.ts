@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PapaStockRepository } from '../repositories/papaStockRepository';
 import { runMigrations } from './migrationRunner';
 import { applyShowcaseDataset, showcaseManifest } from './showcaseDataset';
+import { buildAiOperationsContext } from '../services/aiOperationsAssistant';
 
 const testDatabaseUrl = process.env.PAPASTOCK_TEST_DATABASE_URL;
 const describePostgres = testDatabaseUrl ? describe : describe.skip;
@@ -27,7 +28,7 @@ describePostgres.sequential('Showcase con PostgreSQL real', () => {
     const client = await pool.connect();
     try {
       const migrationsDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../migrations');
-      await runMigrations(client, migrationsDirectory);
+      await runMigrations(client, migrationsDirectory, { to: '007_opening_balance.sql' });
     } finally {
       client.release();
     }
@@ -76,6 +77,19 @@ describePostgres.sequential('Showcase con PostgreSQL real', () => {
     expect(snapshot.lots.filter((row) => row.code.startsWith('SHOW-')).map((row) => row.code)).toEqual(['SHOW-001', 'SHOW-002', 'SHOW-003']);
     expect(snapshot.movements.filter((row) => row.data?.source === showcaseManifest.source)).toHaveLength(7);
     expect(snapshot.stockRecords.filter((row) => row.lotId.startsWith('lot-showcase-'))).toHaveLength(5);
+
+    const aiContext = buildAiOperationsContext(snapshot, '2026-08-24T12:00:00.000Z');
+    expect(aiContext.stockRecords.find((row) => row.id === 'stock-showcase-001-oriente-kg')).toMatchObject({
+      declaredQuantity: 8000, verifiedQuantity: 7900, verificationPending: false,
+    });
+    expect(aiContext.movements.find((row) => row.id === 'movement-showcase-transfer-002')).toMatchObject({
+      receptionStatus: 'pending', status: 'pending',
+    });
+    expect(aiContext.stockRecords.find((row) => row.id === 'stock-showcase-003-oriente-kg')).toMatchObject({
+      verificationPending: true,
+    });
+    expect(aiContext.ledger.ledgerAuthority).toBe(false);
+    expect(aiContext.ledger.classifications.filter((row) => row.lotCode.startsWith('SHOW-')).every((row) => row.classification === 'MATCH')).toBe(true);
 
     await pool.query("update public.stock_records set declared_quantity = declared_quantity + 1 where id = 'stock-showcase-001-oriente-kg'");
     const driftClient = await pool.connect();
