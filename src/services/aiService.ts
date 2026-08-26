@@ -9,7 +9,7 @@ import type {
   TraceabilityIntent,
 } from '../types/export';
 import { hardcodedDiscrepancyAnalysis } from '../lib/demoDiscrepancyAnalysis';
-import { apiUrl, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
+import { apiFetch, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
 
 export interface AIService {
   analyzeDiscrepancy(
@@ -130,9 +130,9 @@ const httpAIService: AIService = {
       return demoAnalysis;
     }
 
-    const response = await fetch(apiUrl('/api/ai/discrepancy'), {
+    const response = await apiFetch('/api/ai/discrepancy', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         lot: { id: stock.lot.id, code: stock.lot.code },
         stock: {
@@ -167,9 +167,9 @@ const httpAIService: AIService = {
   async parseTraceabilityInput(input, lotId) {
     const text = input.trim();
     try {
-      const response = await fetch(apiUrl('/api/ai/traceability-intent'), {
+      const response = await apiFetch('/api/ai/traceability-intent', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text, lotId }),
       });
       const payload = await response.json().catch(() => ({})) as { data?: TraceabilityIntent };
@@ -192,9 +192,9 @@ const httpAIService: AIService = {
   },
 
   async analyzeExportRequirements(country, documentType, sourceText) {
-    const response = await fetch(apiUrl('/api/ai/export-requirements'), {
+    const response = await apiFetch('/api/ai/export-requirements', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ country, documentType, sourceText }),
     });
     const payload = await response.json().catch(() => ({})) as {

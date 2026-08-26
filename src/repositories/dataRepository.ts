@@ -7,7 +7,7 @@ import { shelves as mockShelves } from '../data/shelves';
 import { shelfUnits as mockShelfUnits } from '../data/shelfUnits';
 import { stockRecords as mockStockRecords } from '../data/stock';
 import { transporters as mockTransporters } from '../data/transporters';
-import { apiUrl, normalizeSnapshot, readApiData, traceabilityBody } from '../services/apiClient';
+import { apiFetch, apiRequest, normalizeSnapshot, traceabilityBody } from '../services/apiClient';
 import { presentStockForOralDemo } from '../lib/demoStockPresentation';
 import type { Discrepancy, Location, Lot, Movement, Shelf, ShelfUnit, StockCount, StockRecord, TraceabilityEvent, Transporter } from '../types/domain';
 
@@ -88,10 +88,7 @@ export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), 12_000);
   try {
-    const response = await fetch(apiUrl('/api/snapshot'), {
-      headers: { accept: 'application/json' },
-      signal: controller.signal,
-    });
+    const response = await apiFetch('/api/snapshot', { signal: controller.signal });
     if (!response.ok) throw new Error(`API HTTP ${response.status}`);
     const payload = await response.json() as { data?: unknown };
     if (!isSnapshot(payload.data) || !payload.data.locations.length || !payload.data.lots.length || !payload.data.stockRecords.length) {
@@ -114,10 +111,8 @@ export async function loadPapaStockSnapshot(): Promise<SnapshotResult> {
 }
 
 export async function insertTraceabilityEvent(event: TraceabilityEvent): Promise<TraceabilityEvent> {
-  const response = await fetch(apiUrl('/api/traceability'), {
+  return apiRequest<TraceabilityEvent>('/api/traceability', 'No se pudo guardar la trazabilidad.', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(traceabilityBody(event)),
+    body: traceabilityBody(event),
   });
-  return readApiData<TraceabilityEvent>(response, 'No se pudo guardar la trazabilidad.');
 }

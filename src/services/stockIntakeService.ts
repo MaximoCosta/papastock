@@ -1,26 +1,18 @@
 import type { PlanillaImportConfirmation, PlanillaImportPreview, StockIntakeInput } from '../types/domain';
-import { apiUrl } from './apiClient';
-
-async function readResponse<T>(response: Response, fallback: string): Promise<T> {
-  const payload = await response.json().catch(() => ({})) as { data?: T; error?: string };
-  if (!response.ok || !payload.data) throw new Error(payload.error ?? fallback);
-  return payload.data;
-}
+import { apiRequest } from './apiClient';
 
 export async function previewStockIntake(input: StockIntakeInput): Promise<PlanillaImportPreview> {
-  const response = await fetch(apiUrl('/api/stock/intake/preview'), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(input),
-  });
-  return readResponse(response, 'No se pudo validar la carga de stock.');
+  return apiRequest<PlanillaImportPreview>(
+    '/api/stock/intake/preview',
+    'No se pudo validar la carga de stock.',
+    { method: 'POST', body: input },
+  );
 }
 
 export async function confirmStockIntake(input: StockIntakeInput): Promise<PlanillaImportConfirmation> {
-  const response = await fetch(apiUrl('/api/stock/intake'), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(input),
-  });
-  return readResponse(response, 'No se pudo cargar el stock.');
+  return apiRequest<PlanillaImportConfirmation>(
+    '/api/stock/intake',
+    'No se pudo cargar el stock.',
+    { method: 'POST', body: input },
+  );
 }

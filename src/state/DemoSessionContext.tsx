@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { apiUrl } from '../services/apiClient';
+import { apiFetch } from '../services/apiClient';
 import { isDemoSession, type DemoSession } from './demoSession';
 
 interface DemoSessionContextValue {
@@ -17,7 +17,7 @@ export function DemoSessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    void fetch(apiUrl('/api/auth/session'), { credentials: 'include', headers: { accept: 'application/json' } })
+    void apiFetch('/api/auth/session')
       .then(async (response) => {
         const payload = await response.json().catch(() => ({})) as { data?: unknown };
         return response.ok && isDemoSession(payload.data) ? payload.data : undefined;
@@ -31,10 +31,9 @@ export function DemoSessionProvider({ children }: { children: ReactNode }) {
     session,
     isCheckingSession,
     signIn: async (username, password) => {
-      const response = await fetch(apiUrl('/api/auth/login'), {
+      const response = await apiFetch('/api/auth/login', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
       const payload = await response.json().catch(() => ({})) as { data?: unknown };
@@ -44,7 +43,7 @@ export function DemoSessionProvider({ children }: { children: ReactNode }) {
     },
     signOut: async () => {
       try {
-        await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include', headers: { accept: 'application/json' } });
+        await apiFetch('/api/auth/logout', { method: 'POST' });
       } finally {
         setSession(undefined);
       }
