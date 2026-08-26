@@ -29,6 +29,7 @@ const MATCH_AS_VERIFIED_CLAIMS = [
   /\bdeclarado y (?:el )?verificado coinciden\b/,
 ];
 const LOT_HISTORY_STOCK_GROUNDING = 'Nunca interpretes ledger MATCH como prueba de que el stock declarado y el verificado coinciden. Si declaredKg != verifiedKg, mencioná la discrepancia explícitamente. Los valores numéricos calculados por PapaStock son hechos autoritativos.';
+const EVIDENCE_RECORD_RULE = 'Cada evidencia debe citar únicamente identificadores presentes en el contexto proporcionado. Nunca inventes recordId. Si la fuente representa un hecho derivado que no tiene un único registro identificable, usa null únicamente cuando el contrato lo permita.';
 
 export const operationsAnswerSchema = z.object({
   answer: z.string().trim().min(1).max(4_000),
@@ -42,6 +43,7 @@ export const operationsAnswerSchema = z.object({
   warnings: z.array(z.string().trim().min(1).max(500)).max(20),
   evidence: z.array(z.object({
     source: z.enum(['stock_records', 'movements', 'ledger', 'traceability']),
+    recordId: z.string().trim().min(1).max(120).nullable(),
     description: z.string().trim().min(1).max(500),
   })).min(1).max(30),
 });
@@ -68,9 +70,10 @@ const jsonSchema = {
     evidence: {
       type: 'array', minItems: 1, maxItems: 30,
       items: {
-        type: 'object', additionalProperties: false, required: ['source', 'description'],
+        type: 'object', additionalProperties: false, required: ['source', 'recordId', 'description'],
         properties: {
           source: { type: 'string', enum: ['stock_records', 'movements', 'ledger', 'traceability'] },
+          recordId: { type: ['string', 'null'] },
           description: { type: 'string' },
         },
       },
@@ -89,6 +92,7 @@ const operationsSystemPrompt = [
   'Si ledgerAuthority es true y la evidencia responde completamente la pregunta, dataQuality puede ser authoritative.',
   'Las entidades deben usar IDs exactos del contexto.',
   'Los eventos de traceability deben citarse usando evidence.source="traceability".',
+  EVIDENCE_RECORD_RULE,
   'Respondé exclusivamente con el JSON Schema solicitado.',
 ];
 
@@ -100,7 +104,59 @@ function canonicalEntities(context: AiOperationsContext): Map<string, Operations
   return result;
 }
 
+export function validateEvidenceReferences(
+  answer: Pick<OperationsAssistantAnswer, 'evidence'>,
+  context: AiOperationsContext,
+): void {
+  for (const item of answer.evidence) {
+    if (item.source === 'ledger') {
+      if (item.recordId !== null) {
+        throw new Error('Evidencia ledger no corresponde a un registro persistido.');
+      }
+      continue;
+    }
+    if (item.source === 'movements') {
+      if (!item.recordId || !context.movements.some((movement) => movement.id === item.recordId)) {
+        throw new Error(`Evidencia movements cita un recordId fuera del contexto: ${item.recordId ?? 'null'}`);
+      }
+      continue;
+    }
+    if (item.source === 'traceability') {
+      if (!item.recordId || !context.traceability.some((event) => event.id === item.recordId)) {
+        throw new Error(`Evidencia traceability cita un recordId fuera del contexto: ${item.recordId ?? 'null'}`);
+      }
+      continue;
+    }
+    if (item.recordId !== null && !context.stockRecords.some((record) => record.id === item.recordId)) {
+      throw new Error(`Evidencia stock_records cita un recordId fuera del contexto: ${item.recordId}`);
+    }
+  }
+}
+
+function withEvidenceLabels(
+  answer: z.infer<typeof operationsAnswerSchema>,
+): OperationsAssistantAnswer {
+  return {
+    ...answer,
+    evidence: answer.evidence.map((item) => ({ ...item, recordLabel: null })),
+  };
+}
+
+function attachEvidenceLabels(
+  evidence: OperationsAssistantAnswer['evidence'],
+  context: AiOperationsContext,
+): OperationsAssistantAnswer['evidence'] {
+  return evidence.map((item) => {
+    if (item.source === 'movements' && item.recordId) {
+      const movement = context.movements.find((candidate) => candidate.id === item.recordId);
+      return { ...item, recordLabel: movement?.reference ?? null };
+    }
+    return { ...item, recordLabel: null };
+  });
+}
+
 function validateClosedWorld(answer: OperationsAssistantAnswer, context: AiOperationsContext): OperationsAssistantAnswer {
+  validateEvidenceReferences(answer, context);
   const allowed = canonicalEntities(context);
   const entities = answer.entities.map((entity) => {
     const canonical = allowed.get(`${entity.type}:${entity.id}`);
@@ -128,6 +184,7 @@ function validateClosedWorld(answer: OperationsAssistantAnswer, context: AiOpera
       ? 'operational_only'
       : answer.dataQuality,
     entities,
+    evidence: attachEvidenceLabels(answer.evidence, context),
     warnings: context.ledger.ledgerAuthority
       ? answer.warnings
       : [...new Set([CLOSED_WORLD_WARNING, ...answer.warnings])],
@@ -235,7 +292,7 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
         selectedCounts: contextMetrics.counts,
       });
       return validateClosedWorld(
-        operationsAnswerSchema.parse(buildCanonicalLotStockAnswer(context)),
+        withEvidenceLabels(operationsAnswerSchema.parse(buildCanonicalLotStockAnswer(context))),
         context,
       );
     }
@@ -263,7 +320,7 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
 
     try {
       const raw = await requestWithSingleRateLimitRetry(options, request);
-      return validateClosedWorld(operationsAnswerSchema.parse(raw), context);
+      return validateClosedWorld(withEvidenceLabels(operationsAnswerSchema.parse(raw)), context);
     } catch (error) {
       if (error instanceof GroqHttpError && error.status === 429) {
         throw controlledRateLimitError(error, contextMetrics);

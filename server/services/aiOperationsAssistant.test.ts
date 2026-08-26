@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PapaStockSnapshot } from '../../src/repositories/dataRepository';
-import { buildAiOperationsContext, createAiOperationsAssistant, measureAiOperationsContext } from './aiOperationsAssistant';
+import { buildAiOperationsContext, createAiOperationsAssistant, measureAiOperationsContext, validateEvidenceReferences } from './aiOperationsAssistant';
 
 const snapshot: PapaStockSnapshot = {
   locations: [{ id: 'loc-oriente', name: 'Campo Oriente', type: 'warehouse' }],
@@ -31,7 +31,7 @@ const validAnswer = (overrides: Record<string, unknown> = {}) => ({
   dataQuality: 'operational_only',
   entities: [{ type: 'lot', id: 'lot-show-001', label: 'SHOW-001' }],
   warnings: [],
-  evidence: [{ source: 'stock_records', description: 'Registro stock-show.' }],
+  evidence: [{ source: 'stock_records', recordId: 'stock-show', description: 'Registro stock-show.' }],
   ...overrides,
 });
 
@@ -71,6 +71,7 @@ describe('asistente operativo read-only', () => {
       { type: 'location', id: 'loc-oriente', label: 'Campo Oriente' },
       { type: 'location', id: 'loc-frig-a', label: 'Frigorífico A' },
     ]));
+    expect(answer.evidence.every((item) => item.source === 'stock_records' && item.recordId === null)).toBe(true);
   });
 
   it('comunica explícitamente una verificación pendiente en LOT_STOCK', async () => {
@@ -129,7 +130,7 @@ describe('asistente operativo read-only', () => {
     const fetchImpl = vi.fn(async () => envelope({
       answer: override.answer,
       confidence: 'high', dataQuality: override.dataQuality,
-      entities: override.entities, warnings: [], evidence: [{ source: 'ledger', description: 'Ledger.' }],
+      entities: override.entities, warnings: [], evidence: [{ source: 'ledger', recordId: null, description: 'Ledger.' }],
     })) as unknown as typeof fetch;
     await expect(createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
       'Resumen', buildAiOperationsContext(snapshot),
@@ -332,7 +333,10 @@ describe('asistente operativo read-only', () => {
         },
       ],
       movements: snapshot.movements,
-      traceabilityEvents: [], discrepancies: [], stockCounts: [],
+      traceabilityEvents: [
+        { id: 'trace-verification', lotId: 'lot-show-001', type: 'stock_verification', date: '2026-08-23', locationId: 'loc-oriente', data: { source: 'showcase', verifiedQuantity: 7_900, origin: 'operator_confirmation' } },
+      ],
+      discrepancies: [], stockCounts: [],
     };
     const question = '¿Qué pasó con SHOW-001?';
     const context = buildAiOperationsContext(question, historySnapshot, '2026-08-24T12:00:00.000Z');
@@ -349,7 +353,7 @@ describe('asistente operativo read-only', () => {
         dataQuality: 'authoritative',
         entities: [{ type: 'lot', id: 'lot-show-001', label: 'SHOW-001' }],
         warnings: [],
-        evidence: [{ source: 'ledger', description: 'MATCH en Campo Oriente.' }],
+        evidence: [{ source: 'ledger', recordId: null, description: 'MATCH en Campo Oriente.' }],
       });
     }) as unknown as typeof fetch;
     await expect(createAiOperationsAssistant({
@@ -358,6 +362,9 @@ describe('asistente operativo read-only', () => {
     const payload = JSON.parse(sentBody) as { messages: Array<{ content: string }> };
     expect(payload.messages[0].content).toContain(
       'Nunca interpretes ledger MATCH como prueba de que el stock declarado y el verificado coinciden.',
+    );
+    expect(payload.messages[0].content).toContain(
+      'Cada evidencia debe citar únicamente identificadores presentes en el contexto proporcionado.',
     );
     expect(JSON.parse(payload.messages[1].content).context.stockFacts[0].locations).toEqual(
       expect.arrayContaining([
@@ -371,7 +378,12 @@ describe('asistente operativo read-only', () => {
       dataQuality: 'authoritative',
       entities: [{ type: 'lot', id: 'lot-show-001', label: 'SHOW-001' }],
       warnings: [],
-      evidence: [{ source: 'stock_records', description: 'SHOW-001: 10.250 kg declarados, 10.150 kg verificados.' }],
+      evidence: [
+        { source: 'movements', recordId: 'movement-show-import', description: 'SHOWCASE-IMPORT-001 ingresó 10.000 kg.' },
+        { source: 'traceability', recordId: 'trace-verification', description: 'Verificación en Campo Oriente.' },
+        { source: 'stock_records', recordId: 'stock-show', description: 'SHOW-001: 10.250 kg declarados, 10.150 kg verificados.' },
+        { source: 'ledger', recordId: null, description: 'MATCH coincide con el stock declarado.' },
+      ],
     })) as unknown as typeof fetch;
     const answer = await createAiOperationsAssistant({
       apiKey: 'fixture', model: 'openai/gpt-oss-20b', timeoutMs: 100, fetchImpl: grounded,
@@ -380,6 +392,32 @@ describe('asistente operativo read-only', () => {
     expect(answer.answer).toContain('7.900 kg verificados');
     expect(answer.answer).toContain('-100 kg');
     expect(answer.answer).toContain('coincide con el stock declarado');
+    expect(answer.evidence).toEqual([
+      {
+        source: 'movements',
+        recordId: 'movement-show-import',
+        recordLabel: 'SHOWCASE-IMPORT-001',
+        description: 'SHOWCASE-IMPORT-001 ingresó 10.000 kg.',
+      },
+      {
+        source: 'traceability',
+        recordId: 'trace-verification',
+        recordLabel: null,
+        description: 'Verificación en Campo Oriente.',
+      },
+      {
+        source: 'stock_records',
+        recordId: 'stock-show',
+        recordLabel: null,
+        description: 'SHOW-001: 10.250 kg declarados, 10.150 kg verificados.',
+      },
+      {
+        source: 'ledger',
+        recordId: null,
+        recordLabel: null,
+        description: 'MATCH coincide con el stock declarado.',
+      },
+    ]);
   });
 
   it('trata 413 como no reintentable y preserva sólo diagnóstico seguro', async () => {
@@ -410,5 +448,68 @@ describe('asistente operativo read-only', () => {
     )).rejects.toMatchObject({ status: 413, details: { code: 'AI_REQUEST_BODY_BUDGET_EXCEEDED' } });
     expect(fetchImpl).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it('acepta evidence.movements con un recordId presente en el contexto', async () => {
+    const fetchImpl = vi.fn(async () => envelope({
+      ...validAnswer(),
+      evidence: [{ source: 'movements', recordId: 'movement-show-import', description: 'SHOWCASE-IMPORT-001.' }],
+    })) as unknown as typeof fetch;
+    const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
+      'Resumen', buildAiOperationsContext(snapshot),
+    );
+    expect(answer.evidence).toEqual([{
+      source: 'movements',
+      recordId: 'movement-show-import',
+      recordLabel: 'SHOWCASE-IMPORT-001',
+      description: 'SHOWCASE-IMPORT-001.',
+    }]);
+  });
+
+  it('rechaza evidence.movements con un recordId inventado', async () => {
+    const fetchImpl = vi.fn(async () => envelope({
+      ...validAnswer(),
+      evidence: [{ source: 'movements', recordId: 'movement-inventado', description: 'Inventado.' }],
+    })) as unknown as typeof fetch;
+    await expect(createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
+      'Resumen', buildAiOperationsContext(snapshot),
+    )).rejects.toMatchObject({ status: 502 });
+  });
+
+  it('acepta evidence.traceability con un ID real del contexto', async () => {
+    const traced = {
+      ...snapshot,
+      traceabilityEvents: [
+        { id: 'trace-verification', lotId: 'lot-show-001', type: 'stock_verification' as const, date: '2026-08-23', locationId: 'loc-oriente', data: { verifiedQuantity: 7_900 } },
+      ],
+    };
+    const fetchImpl = vi.fn(async () => envelope({
+      ...validAnswer(),
+      evidence: [{ source: 'traceability', recordId: 'trace-verification', description: 'Verificación física.' }],
+    })) as unknown as typeof fetch;
+    const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
+      'Resumen', buildAiOperationsContext(traced),
+    );
+    expect(answer.evidence[0]).toMatchObject({ source: 'traceability', recordId: 'trace-verification', recordLabel: null });
+  });
+
+  it('acepta stock_records con ID real y rechaza uno inventado', async () => {
+    const context = buildAiOperationsContext(snapshot);
+    expect(() => validateEvidenceReferences({
+      evidence: [{ source: 'stock_records', recordId: 'stock-show', recordLabel: null, description: 'Registro.' }],
+    }, context)).not.toThrow();
+    expect(() => validateEvidenceReferences({
+      evidence: [{ source: 'stock_records', recordId: 'stock-inventado', recordLabel: null, description: 'Inventado.' }],
+    }, context)).toThrow(/stock_records/);
+  });
+
+  it('permite ledger con recordId null y rechaza un ID inventado', async () => {
+    const context = buildAiOperationsContext(snapshot);
+    expect(() => validateEvidenceReferences({
+      evidence: [{ source: 'ledger', recordId: null, recordLabel: null, description: 'MATCH derivado.' }],
+    }, context)).not.toThrow();
+    expect(() => validateEvidenceReferences({
+      evidence: [{ source: 'ledger', recordId: 'ledger-inventado', recordLabel: null, description: 'Inventado.' }],
+    }, context)).toThrow(/ledger/);
   });
 });

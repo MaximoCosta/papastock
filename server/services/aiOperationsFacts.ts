@@ -141,7 +141,7 @@ export function buildCanonicalLotStockAnswer(context: AiOperationsContext): Oper
       dataQuality: 'incomplete',
       entities: lotEntities.slice(0, 30),
       warnings: ['Faltan registros de stock para responder con una cantidad.'],
-      evidence: [{ source: 'stock_records', description: 'La proyección no contiene coordenadas de stock para el lote consultado.' }],
+      evidence: [{ source: 'stock_records', recordId: null, recordLabel: null, description: 'La proyección no contiene coordenadas de stock para el lote consultado.' }],
     };
   }
 
@@ -155,7 +155,9 @@ export function buildCanonicalLotStockAnswer(context: AiOperationsContext): Oper
       ? []
       : [`Hay ${pendingCount} ${pendingCount === 1 ? 'ubicación con verificación pendiente' : 'ubicaciones con verificación pendiente'}; el valor verificado no se considera vigente allí.`],
     evidence: facts.slice(0, 30).map((fact) => ({
-      source: 'stock_records',
+      source: 'stock_records' as const,
+      recordId: null,
+      recordLabel: null,
       description: `${fact.lotCode}/${fact.unit}: ${formatQuantity(fact.totalDeclared, fact.unit)} declarados, ${formatQuantity(fact.totalVerified, fact.unit)} verificados.`,
     })),
   };

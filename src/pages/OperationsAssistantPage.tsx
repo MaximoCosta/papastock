@@ -19,6 +19,13 @@ const qualityLabel = {
   incomplete: 'Datos incompletos',
 } as const;
 
+const evidenceSourceLabel = {
+  stock_records: 'Stock',
+  movements: 'Movimiento',
+  ledger: 'Ledger',
+  traceability: 'Trazabilidad',
+} as const;
+
 export function OperationsAssistantPage() {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<OperationsAssistantAnswer>();
@@ -107,7 +114,13 @@ export function OperationsAssistantPage() {
                   {answer.evidence.map((item, index) => (
                     <li key={`${item.source}-${index}`} className="flex gap-2 text-[11px] leading-4 text-[#566058]">
                       <Database className="mt-0.5 shrink-0 text-[#52705b]" size={12} />
-                      <span><strong>{item.source}</strong> · {item.description}</span>
+                      <span>
+                        <strong>
+                          {evidenceSourceLabel[item.source]}
+                          {(item.recordLabel ?? item.recordId) ? ` · ${item.recordLabel ?? item.recordId}` : ''}
+                        </strong>
+                        {' · '}{item.description}
+                      </span>
                     </li>
                   ))}
                 </ul>

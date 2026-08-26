@@ -155,7 +155,7 @@ const validAnswer = {
   dataQuality: 'authoritative' as const,
   entities: [{ type: 'lot' as const, id: 'lot-showcase-001', label: 'SHOW-001' }],
   warnings: [] as string[],
-  evidence: [{ source: 'movements' as const, description: 'SHOWCASE-IMPORT-001.' }],
+  evidence: [{ source: 'movements' as const, recordId: 'movement-showcase-import-001', description: 'SHOWCASE-IMPORT-001.' }],
 };
 
 const envelope = (content: unknown) => new Response(JSON.stringify({
@@ -210,14 +210,18 @@ describe('diagnóstico LOT_HISTORY SHOW-001 (sin Groq)', () => {
     expect(schema.properties.entities.items.properties.type.enum).toEqual(['lot', 'location', 'movement']);
     expect(operationsAnswerSchema.safeParse({
       ...validAnswer,
-      evidence: [{ source: 'traceability', description: 'Se verificaron 7.900 kg en Campo Oriente.' }],
+      evidence: [{ source: 'traceability', recordId: 'trace-showcase-verification-001', description: 'Se verificaron 7.900 kg en Campo Oriente.' }],
     }).success).toBe(true);
   });
 
   it.each(['stock_records', 'movements', 'ledger'] as const)('sigue aceptando evidence.source=%s', (source) => {
     expect(operationsAnswerSchema.safeParse({
       ...validAnswer,
-      evidence: [{ source, description: 'Se verificaron 7.900 kg en Campo Oriente.' }],
+      evidence: [{
+        source,
+        recordId: source === 'ledger' ? null : 'stock-showcase-001-oriente-kg',
+        description: 'Se verificaron 7.900 kg en Campo Oriente.',
+      }],
     }).success).toBe(true);
   });
 
@@ -332,7 +336,7 @@ describe('diagnóstico LOT_HISTORY SHOW-001 (sin Groq)', () => {
       dataQuality: 'authoritative',
       entities: [{ type: 'lot', id: 'lot-showcase-001', label: 'etiqueta inventada' }],
       warnings: [],
-      evidence: [{ source: 'traceability', description: 'Se verificaron 7.900 kg en Campo Oriente.' }],
+      evidence: [{ source: 'traceability', recordId: 'trace-showcase-verification-001', description: 'Se verificaron 7.900 kg en Campo Oriente.' }],
     })) as unknown as typeof fetch;
     const question = LOT_HISTORY_QUESTION;
     const answer = await createAiOperationsAssistant({
@@ -340,7 +344,12 @@ describe('diagnóstico LOT_HISTORY SHOW-001 (sin Groq)', () => {
     })(question, buildAiOperationsContext(question, showcaseOperationsSnapshot(), '2026-08-24T12:00:00.000Z'));
     expect(fetchImpl).toHaveBeenCalledOnce();
     expect(answer.evidence).toEqual([
-      { source: 'traceability', description: 'Se verificaron 7.900 kg en Campo Oriente.' },
+      {
+        source: 'traceability',
+        recordId: 'trace-showcase-verification-001',
+        recordLabel: null,
+        description: 'Se verificaron 7.900 kg en Campo Oriente.',
+      },
     ]);
     expect(answer.entities).toEqual([{ type: 'lot', id: 'lot-showcase-001', label: 'SHOW-001' }]);
     expect(answer.entities.some((entity) => (entity as { type: string }).type === 'traceability')).toBe(false);
@@ -369,7 +378,7 @@ describe('diagnóstico LOT_HISTORY SHOW-001 (sin Groq)', () => {
       dataQuality: 'authoritative',
       entities: [{ type: 'lot', id: 'lot-inventado', label: 'X' }],
       warnings: [],
-      evidence: [{ source: 'traceability', description: 'Se verificaron 7.900 kg en Campo Oriente.' }],
+      evidence: [{ source: 'traceability', recordId: 'trace-showcase-verification-001', description: 'Se verificaron 7.900 kg en Campo Oriente.' }],
     })) as unknown as typeof fetch;
     const question = LOT_HISTORY_QUESTION;
     await expect(createAiOperationsAssistant({

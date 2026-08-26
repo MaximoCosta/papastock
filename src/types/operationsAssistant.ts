@@ -11,6 +11,8 @@ export interface OperationsAssistantEntity {
 
 export interface OperationsAssistantEvidence {
   source: OperationsEvidenceSource;
+  recordId: string | null;
+  recordLabel: string | null;
   description: string;
 }
 

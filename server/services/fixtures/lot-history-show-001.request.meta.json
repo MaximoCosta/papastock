@@ -7,11 +7,11 @@
   "questionBytes": 26,
   "localShowcase": {
     "contextBytes": 4265,
-    "systemPromptBytes": 1236,
-    "schemaBytes": 926,
-    "messagesBytes": 6166,
-    "requestBodyBytes": 7268,
-    "estimatedInputTokens": 1817
+    "systemPromptBytes": 1496,
+    "schemaBytes": 975,
+    "messagesBytes": 6426,
+    "requestBodyBytes": 7577,
+    "estimatedInputTokens": 1895
   },
   "production": {
     "contextBytes": 3916,
@@ -24,7 +24,7 @@
   "byteDelta": {
     "contextBytes": 115,
     "requestBodyBytes": 21,
-    "note": "Local request grew after adding LOT_HISTORY stockFacts and MATCH-vs-verified grounding prompt. Schema bytes unchanged. Still under the 20000-byte budget."
+    "note": "Local request grew after adding evidence.recordId to the strict schema and the no-invented-recordId prompt rule. Still under the 20000-byte budget."
   },
   "counts": {
     "lots": 1,

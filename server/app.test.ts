@@ -111,7 +111,7 @@ const answerOperationsQuestion = vi.fn(async () => ({
   dataQuality: 'operational_only' as const,
   entities: [{ type: 'lot' as const, id: 'lot', label: 'A-204' }],
   warnings: ['El ledger todavía no es autoritativo.'],
-  evidence: [{ source: 'stock_records' as const, description: 'Registro s.' }],
+  evidence: [{ source: 'stock_records' as const, recordId: null, recordLabel: null, description: 'Registro s.' }],
 }));
 const app = createApp({ repository, analyze, parseMovementIntent, parseTraceabilityIntent, parseExportRequirements, answerOperationsQuestion, auth });
 

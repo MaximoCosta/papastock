@@ -174,7 +174,7 @@ describePostgres.sequential('asistente operativo con PostgreSQL 18 real', () => 
           requestBodyBytes = Buffer.byteLength(String(init?.body ?? ''), 'utf8');
           return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
             answer: 'Respuesta canónica.', confidence: 'high', dataQuality: 'authoritative',
-            entities: [], warnings: [], evidence: [{ source: 'ledger', description: 'Resumen canónico.' }],
+            entities: [], warnings: [], evidence: [{ source: 'ledger', recordId: null, description: 'Resumen canónico.' }],
           }) } }] }), { status: 200 });
         }) as typeof fetch;
         const answer = await createAiOperationsAssistant({
