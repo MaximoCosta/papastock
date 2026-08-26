@@ -154,7 +154,7 @@ export async function captureLotHistoryStructuredRequest(
       fetchImpl,
     })(question, context);
   } catch {
-    // Expected: fixture 400 becomes a controlled 502.
+    // Expected: fixture 400 falls back to the deterministic heuristic.
   } finally {
     console.info = info;
     console.warn = warn;

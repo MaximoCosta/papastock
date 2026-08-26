@@ -116,3 +116,100 @@ on conflict (id) do update set
   event_date = excluded.event_date,
   location_id = excluded.location_id,
   data = excluded.data;
+
+do $$
+begin
+  if to_regclass('public.transporters') is null then
+    return;
+  end if;
+
+  insert into public.transporters (
+    id, company_name, trade_name, cuit, contact_name, phone, email, address, city, province,
+    license_plate, vehicle_type, capacity_kg, insurance_policy, notes, active
+  ) values
+    (
+      'tr-andina', 'Transportes Andina S.A.', 'Andina Logística', '30-71234567-8', 'Marcos Rivas',
+      '+54 2266 45-8901', 'despachos@andinalog.com.ar', 'Ruta 226 Km 48.2', 'Balcarce', 'Buenos Aires',
+      'AB 834 CD', 'Semirremolque refrigerado', 28000, 'La Caja · Póliza 884221',
+      'Preferido para exportaciones a Brasil. Habilitado SENASA.', true
+    ),
+    (
+      'tr-pampa', 'Pampa Frio SRL', 'Pampa Frío', '30-69881234-2', 'Lucía Méndez',
+      '+54 11 4876-2200', 'operaciones@pampafrio.com', 'Av. Circunvalación 1250', 'Mar del Plata', 'Buenos Aires',
+      'AC 102 EF', 'Camión 6×2 con equipo frío', 18000, 'Sancor · Póliza 551209',
+      'Movimientos internos entre frigoríficos.', true
+    ),
+    (
+      'tr-sur', 'Sur Cargo Express', null, '30-70551220-9', 'Diego Alcorta',
+      '+54 291 455-7788', 'flota@surcargo.com.ar', 'Parque Industrial Oeste Lote 14', 'Bahía Blanca', 'Buenos Aires',
+      'AD 441 GH', 'Bitren refrigerado', 32000, 'Federación Patronal · 220981',
+      null, true
+    )
+  on conflict (id) do update set
+    company_name = excluded.company_name,
+    trade_name = excluded.trade_name,
+    cuit = excluded.cuit,
+    contact_name = excluded.contact_name,
+    phone = excluded.phone,
+    email = excluded.email,
+    address = excluded.address,
+    city = excluded.city,
+    province = excluded.province,
+    license_plate = excluded.license_plate,
+    vehicle_type = excluded.vehicle_type,
+    capacity_kg = excluded.capacity_kg,
+    insurance_policy = excluded.insurance_policy,
+    notes = excluded.notes,
+    active = excluded.active;
+
+  insert into public.shelf_units (id, location_id, code, label, grid_row, grid_col) values
+    ('unit-n-a', 'loc-north', 'N-A', 'Pasillo A', 0, 0),
+    ('unit-n-b', 'loc-north', 'N-B', 'Pasillo B', 0, 2),
+    ('unit-s-a', 'loc-south', 'S-A', 'Cámara 1 · Rack A', 0, 0),
+    ('unit-s-b', 'loc-south', 'S-B', 'Cámara 1 · Rack B', 0, 1),
+    ('unit-s-c', 'loc-south', 'S-C', 'Cámara 2 · Rack A', 1, 0),
+    ('unit-c-a', 'loc-central', 'C-A', 'Zona fría · Bloque A', 0, 0),
+    ('unit-c-b', 'loc-central', 'C-B', 'Zona fría · Bloque B', 0, 1),
+    ('unit-c-c', 'loc-central', 'C-C', 'Zona fría · Bloque C', 1, 0),
+    ('unit-w-a', 'loc-warehouse', 'G-A', 'Galpón · Fila A', 0, 0),
+    ('unit-w-b', 'loc-warehouse', 'G-B', 'Galpón · Fila B', 0, 1),
+    ('unit-w-c', 'loc-warehouse', 'G-C', 'Galpón · Fila C', 0, 2)
+  on conflict (id) do update set
+    location_id = excluded.location_id,
+    code = excluded.code,
+    label = excluded.label,
+    grid_row = excluded.grid_row,
+    grid_col = excluded.grid_col;
+
+  insert into public.shelves (id, location_id, shelf_unit_id, code, label, level, capacity_kg) values
+    ('shelf-n-a1', 'loc-north', 'unit-n-a', 'N-A1', 'Pasillo A · Nivel 1', 1, 18000),
+    ('shelf-n-a2', 'loc-north', 'unit-n-a', 'N-A2', 'Pasillo A · Nivel 2', 2, 18000),
+    ('shelf-n-b1', 'loc-north', 'unit-n-b', 'N-B1', 'Pasillo B · Nivel 1', 1, 15000),
+    ('shelf-s-a1', 'loc-south', 'unit-s-a', 'S-A1', 'Cámara 1 · Rack A · N1', 1, 22000),
+    ('shelf-s-a2', 'loc-south', 'unit-s-b', 'S-A2', 'Cámara 1 · Rack B · N1', 1, 22000),
+    ('shelf-s-b1', 'loc-south', 'unit-s-c', 'S-B1', 'Cámara 2 · Rack A · N1', 1, 20000),
+    ('shelf-c-a1', 'loc-central', 'unit-c-a', 'C-A1', 'Bloque A · Nivel 1', 1, 25000),
+    ('shelf-c-a2', 'loc-central', 'unit-c-b', 'C-A2', 'Bloque B · Nivel 1', 1, 25000),
+    ('shelf-c-b1', 'loc-central', 'unit-c-c', 'C-B1', 'Bloque C · Nivel 1', 1, 20000),
+    ('shelf-w-a1', 'loc-warehouse', 'unit-w-a', 'G-A1', 'Fila A · Nivel 1', 1, 30000),
+    ('shelf-w-b1', 'loc-warehouse', 'unit-w-b', 'G-B1', 'Fila B · Nivel 1', 1, 28000),
+    ('shelf-w-c1', 'loc-warehouse', 'unit-w-c', 'G-C1', 'Fila C · Nivel 1', 1, 25000)
+  on conflict (id) do update set
+    location_id = excluded.location_id,
+    shelf_unit_id = excluded.shelf_unit_id,
+    code = excluded.code,
+    label = excluded.label,
+    level = excluded.level,
+    capacity_kg = excluded.capacity_kg;
+
+  update public.stock_records set shelf_id = 'shelf-s-a1' where id = 'stock-a204' and shelf_id is null;
+  update public.stock_records set shelf_id = 'shelf-c-a1' where id = 'stock-a310' and shelf_id is null;
+  update public.stock_records set shelf_id = 'shelf-n-a1' where id = 'stock-b118' and shelf_id is null;
+  update public.stock_records set shelf_id = 'shelf-w-a1' where id = 'stock-c102' and shelf_id is null;
+  update public.stock_records set shelf_id = 'shelf-s-a2' where id = 'stock-b221' and shelf_id is null;
+  update public.stock_records set shelf_id = 'shelf-c-a2' where id = 'stock-d405' and shelf_id is null;
+  update public.stock_records set shelf_id = 'shelf-n-a2' where id = 'stock-e090' and shelf_id is null;
+  update public.stock_records set shelf_id = 'shelf-w-b1' where id = 'stock-f301' and shelf_id is null;
+  update public.stock_records set shelf_id = 'shelf-s-b1' where id = 'stock-g512' and shelf_id is null;
+  update public.stock_records set shelf_id = 'shelf-c-b1' where id = 'stock-h118' and shelf_id is null;
+end $$;

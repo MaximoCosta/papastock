@@ -89,6 +89,13 @@ const repository = {
       date: input.date, locationId: 'l', data: { verifiedQuantity: input.countedQuantity },
     },
   })),
+  upsertTransporter: vi.fn(async (_id, input) => ({ id: 'tr-new', ...input })),
+  insertShelfUnit: vi.fn(async (input) => ({
+    unit: { id: 'unit-new', locationId: input.locationId, code: input.code, label: input.label, gridRow: input.gridRow, gridCol: input.gridCol },
+    shelves: [],
+  })),
+  deleteShelfUnit: vi.fn(async () => undefined),
+  assignStockToShelf: vi.fn(async () => undefined),
 };
 const analyze = vi.fn(async () => ({ engine: 'heuristic' as const, summary: 'x', confidence: 0.2, explainedQuantity: 0, unexplainedQuantity: 1, hypotheses: [], evidence: [], recommendedAction: 'Revisar.' }));
 const parseMovementIntent = vi.fn(async () => ({
@@ -164,6 +171,9 @@ describe('API PapaStock', () => {
       ['POST', '/api/stock/intake/preview'],
       ['POST', '/api/stock/intake'],
       ['POST', '/api/stock/verify'],
+      ['POST', '/api/transporters'],
+      ['POST', '/api/shelf-units'],
+      ['POST', '/api/stock/assign-shelf'],
     ] as const;
 
     for (const [method, path] of routes) {

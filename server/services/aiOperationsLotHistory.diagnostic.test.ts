@@ -304,28 +304,18 @@ describe('diagnóstico LOT_HISTORY SHOW-001 (sin Groq)', () => {
     })) as unknown as typeof fetch;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    let caught: unknown;
-    try {
-      await createAiOperationsAssistant({
-        apiKey: secret, model: OPERATIONS_MODEL, timeoutMs: 100, fetchImpl,
-      })(question, buildAiOperationsContext(question, showcaseOperationsSnapshot(), '2026-08-24T12:00:00.000Z'));
-    } catch (error) {
-      caught = error;
-    }
+    const answer = await createAiOperationsAssistant({
+      apiKey: secret, model: OPERATIONS_MODEL, timeoutMs: 100, fetchImpl,
+    })(question, buildAiOperationsContext(question, showcaseOperationsSnapshot(), '2026-08-24T12:00:00.000Z'));
 
     const logged = JSON.stringify(warn.mock.calls);
     expect(fetchImpl).toHaveBeenCalledOnce();
-    expect(caught).toMatchObject({
-      status: 502,
-      message: 'El asistente de inventario no está disponible en este momento.',
-    });
+    expect(answer.engine).toBe('heuristic');
     expect(logged).toContain('json_validate_failed');
     expect(logged).toContain('invalid_request_error');
     expect(logged).toContain('req_json_validate_fixture');
     expect(logged).not.toContain(secret);
     expect(logged).not.toContain(question);
-    expect(JSON.stringify(caught)).not.toContain(secret);
-    expect(JSON.stringify(caught)).not.toContain('req_json_validate_fixture');
     warn.mockRestore();
   });
 
@@ -365,10 +355,10 @@ describe('diagnóstico LOT_HISTORY SHOW-001 (sin Groq)', () => {
       evidence: [{ source: 'invalid_source', description: 'Se verificaron 7.900 kg en Campo Oriente.' }],
     })) as unknown as typeof fetch;
     const question = LOT_HISTORY_QUESTION;
-    await expect(createAiOperationsAssistant({
+    const invalidSource = await createAiOperationsAssistant({
       apiKey: 'fixture', model: OPERATIONS_MODEL, timeoutMs: 100, fetchImpl,
-    })(question, buildAiOperationsContext(question, showcaseOperationsSnapshot(), '2026-08-24T12:00:00.000Z')))
-      .rejects.toMatchObject({ status: 502 });
+    })(question, buildAiOperationsContext(question, showcaseOperationsSnapshot(), '2026-08-24T12:00:00.000Z'));
+    expect(invalidSource.engine).toBe('heuristic');
   });
 
   it('rechaza una entidad fuera de contexto aunque la evidencia sea traceability', async () => {
@@ -381,9 +371,9 @@ describe('diagnóstico LOT_HISTORY SHOW-001 (sin Groq)', () => {
       evidence: [{ source: 'traceability', recordId: 'trace-showcase-verification-001', description: 'Se verificaron 7.900 kg en Campo Oriente.' }],
     })) as unknown as typeof fetch;
     const question = LOT_HISTORY_QUESTION;
-    await expect(createAiOperationsAssistant({
+    const invalidEntity = await createAiOperationsAssistant({
       apiKey: 'fixture', model: OPERATIONS_MODEL, timeoutMs: 100, fetchImpl,
-    })(question, buildAiOperationsContext(question, showcaseOperationsSnapshot(), '2026-08-24T12:00:00.000Z')))
-      .rejects.toMatchObject({ status: 502 });
+    })(question, buildAiOperationsContext(question, showcaseOperationsSnapshot(), '2026-08-24T12:00:00.000Z'));
+    expect(invalidEntity.engine).toBe('heuristic');
   });
 });

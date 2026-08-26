@@ -53,12 +53,12 @@ export function TransportersPage() {
     setForm(rest);
   }
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     if (!form.companyName.trim() || !form.cuit.trim() || !form.licensePlate.trim()) return;
 
     if (creating) {
-      const created = addTransporter({
+      const created = await addTransporter({
         ...form,
         companyName: form.companyName.trim(),
         cuit: form.cuit.trim(),
@@ -67,7 +67,7 @@ export function TransportersPage() {
       setSelectedId(created.id);
       setCreating(false);
     } else if (editing && selected) {
-      updateTransporter(selected.id, {
+      await updateTransporter(selected.id, {
         ...form,
         companyName: form.companyName.trim(),
         cuit: form.cuit.trim(),
@@ -85,12 +85,12 @@ export function TransportersPage() {
         eyebrow="Logística"
         title="Transportistas"
         description="Perfiles con datos fiscales, contacto y flota para reutilizar en movimientos y exportaciones."
-        actions={<Button onClick={startCreate} disabled={dataSource !== 'mock'}><Plus size={14} /> Nuevo transportista</Button>}
+        actions={<Button onClick={startCreate} disabled={dataSource === 'unavailable'}><Plus size={14} /> Nuevo transportista</Button>}
       />
 
-      {dataSource !== 'mock' && (
+      {dataSource === 'unavailable' && (
         <div className="mb-4 border border-[#d8dad3] bg-white p-4 text-[11px] text-[#5f645d]">
-          Los transportistas permanecen vacíos en modo database hasta contar con persistencia PostgreSQL.
+          La fuente operativa no está disponible. No se pueden cargar ni editar transportistas.
         </div>
       )}
 

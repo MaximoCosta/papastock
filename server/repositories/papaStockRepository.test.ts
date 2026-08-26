@@ -13,6 +13,9 @@ describe('PapaStockRepository', () => {
       { rowCount: 0, rows: [] },
       { rowCount: 0, rows: [] },
       { rowCount: 0, rows: [] },
+      { rowCount: 0, rows: [] },
+      { rowCount: 0, rows: [] },
+      { rowCount: 0, rows: [] },
     ];
     let activeQueries = 0;
     let maxActiveQueries = 0;

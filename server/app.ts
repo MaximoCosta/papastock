@@ -157,6 +157,39 @@ const stockVerificationSchema = z.object({
   notes: optionalText(500),
 });
 
+const transporterSchema = z.object({
+  companyName: z.string().trim().min(1).max(120),
+  tradeName: optionalText(120),
+  cuit: z.string().trim().min(1).max(20),
+  contactName: z.string().trim().min(1).max(120),
+  phone: z.string().trim().min(1).max(40),
+  email: z.string().trim().min(1).max(120),
+  address: z.string().trim().min(1).max(200),
+  city: z.string().trim().min(1).max(80),
+  province: z.string().trim().min(1).max(80),
+  licensePlate: z.string().trim().min(1).max(20),
+  vehicleType: z.string().trim().min(1).max(80),
+  capacityKg: z.number().positive().max(1_000_000),
+  insurancePolicy: optionalText(120),
+  notes: optionalText(500),
+  active: z.boolean(),
+});
+
+const shelfUnitSchema = z.object({
+  locationId: identifier,
+  code: z.string().trim().min(1).max(40),
+  label: z.string().trim().max(120),
+  gridRow: z.number().int().nonnegative().max(50),
+  gridCol: z.number().int().nonnegative().max(50),
+  levelCount: z.number().int().min(1).max(6),
+  capacityKgPerLevel: z.number().positive().max(1_000_000).optional(),
+});
+
+const shelfAssignmentSchema = z.object({
+  stockRecordId: identifier,
+  shelfId: z.string().trim().min(1).max(80).optional(),
+});
+
 const stockIntakeSchema = z.object({
   lotCode: z.string().trim().min(1).max(40),
   variety: z.string().trim().min(1).max(80),
@@ -196,7 +229,7 @@ const operationsQuestionSchema = z.object({
 
 export interface AppDependencies {
   repository?: Pick<PapaStockRepository,
-    'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer' | 'executePlanillaImport' | 'executeStockVerification' | 'executeReception' | 'executeLotCorrection' | 'executeStockCount'>;
+    'loadSnapshot' | 'loadLot' | 'insertTraceabilityEvent' | 'previewStockTransfer' | 'executeStockTransfer' | 'executePlanillaImport' | 'executeStockVerification' | 'executeReception' | 'executeLotCorrection' | 'executeStockCount' | 'upsertTransporter' | 'insertShelfUnit' | 'deleteShelfUnit' | 'assignStockToShelf'>;
   analyze?: ReturnType<typeof createDiscrepancyAnalyzer>;
   parseMovementIntent?: ReturnType<typeof createMovementIntentParser>;
   parseTraceabilityIntent?: ReturnType<typeof createTraceabilityIntentParser>;
@@ -506,6 +539,45 @@ export function createApp(dependencies: AppDependencies = {}) {
         return;
       }
       response.status(201).json({ data: toStockVerificationConfirmation(preview, false) });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/transporters', canWriteStock, async (request, response, next) => {
+    try {
+      if (!repository?.upsertTransporter) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      response.status(201).json({ data: await repository.upsertTransporter(undefined, transporterSchema.parse(request.body)) });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/transporters/:id', canWriteStock, async (request, response, next) => {
+    try {
+      if (!repository?.upsertTransporter) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      response.json({ data: await repository.upsertTransporter(identifier.parse(request.params.id), transporterSchema.parse(request.body)) });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/shelf-units', canWriteStock, async (request, response, next) => {
+    try {
+      if (!repository?.insertShelfUnit) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      const created = await repository.insertShelfUnit(shelfUnitSchema.parse(request.body));
+      response.status(201).json({ data: created });
+    } catch (error) { next(error); }
+  });
+
+  app.delete('/api/shelf-units/:id', canWriteStock, async (request, response, next) => {
+    try {
+      if (!repository?.deleteShelfUnit) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      await repository.deleteShelfUnit(identifier.parse(request.params.id));
+      response.status(204).end();
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/stock/assign-shelf', canWriteStock, async (request, response, next) => {
+    try {
+      if (!repository?.assignStockToShelf) throw Object.assign(new Error('Base de datos no configurada.'), { status: 503 });
+      const input = shelfAssignmentSchema.parse(request.body);
+      await repository.assignStockToShelf(input.stockRecordId, input.shelfId);
+      response.status(204).end();
     } catch (error) { next(error); }
   });
 

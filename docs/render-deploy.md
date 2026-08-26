@@ -23,9 +23,8 @@ El seed no se ejecuta en cada deploy. `DATABASE_URL` se cablea desde el PostgreS
 - `PAPASTOCK_SESSION_SECRET` debe ser aleatorio, tener al menos 32 caracteres y
   existir sólo en Environment de Render y en el entorno local necesario.
 - Express entrega una sesión opaca mediante cookie `HttpOnly`, `SameSite=Strict`
-y `Secure` en producción. El SPA de Netlify (`https://papstock.netlify.app`)
-proxea `/api` hacia este servicio; `PAPASTOCK_ALLOWED_ORIGINS` admite ese
-origen por defecto. Reiniciar la única instancia invalida las sesiones.
+y `Secure` en producción. La demo se sirve en `https://papastock.onrender.com`.
+Reiniciar la única instancia invalida las sesiones.
 
 En PowerShell se puede evitar escribir la contraseña en el historial:
 

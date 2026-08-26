@@ -126,15 +126,17 @@ describe('asistente operativo read-only', () => {
     { entities: [], dataQuality: 'operational_only', answer: 'El ledger confirma todo el inventario.' },
     { entities: [], dataQuality: 'authoritative', answer: 'El ledger valida todos los saldos.' },
     { entities: [], dataQuality: 'operational_only', answer: 'El historial reconstruye completamente el inventario.' },
-  ])('rechaza alucinaciones o autoridad inexistente', async (override) => {
+  ])('cae a heurística si el modelo alucina o afirma autoridad inexistente', async (override) => {
     const fetchImpl = vi.fn(async () => envelope({
       answer: override.answer,
       confidence: 'high', dataQuality: override.dataQuality,
       entities: override.entities, warnings: [], evidence: [{ source: 'ledger', recordId: null, description: 'Ledger.' }],
     })) as unknown as typeof fetch;
-    await expect(createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
+    const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
       'Resumen', buildAiOperationsContext(snapshot),
-    )).rejects.toMatchObject({ status: 502 });
+    );
+    expect(answer.engine).toBe('heuristic');
+    expect(answer.answer.length).toBeGreaterThan(0);
   });
 
   it('respeta Retry-After y hace como máximo un retry que puede completar normalmente', async () => {
@@ -199,11 +201,13 @@ describe('asistente operativo read-only', () => {
     warn.mockRestore();
   });
 
-  it('devuelve error controlado cuando Groq falla, sin fallback inventado', async () => {
+  it('cae a heurística cuando Groq falla, sin inventar stock', async () => {
     const fetchImpl = vi.fn(async () => new Response('', { status: 503 })) as unknown as typeof fetch;
-    await expect(createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
+    const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
       'Resumen', buildAiOperationsContext(snapshot),
-    )).rejects.toMatchObject({ status: 502, message: 'El asistente de inventario no está disponible en este momento.' });
+    );
+    expect(answer.engine).toBe('heuristic');
+    expect(answer.answer.length).toBeGreaterThan(20);
   });
 
   it('diagnostica un 400 sin retry ni exposición de pregunta, contexto o secreto', async () => {
@@ -217,27 +221,18 @@ describe('asistente operativo read-only', () => {
       headers: { 'content-type': 'application/json', 'x-request-id': 'req-safe-400' },
     })) as unknown as typeof fetch;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    let caught: unknown;
-    try {
-      await createAiOperationsAssistant({ apiKey: secret, model: 'test', timeoutMs: 100, fetchImpl })(
-        question, buildAiOperationsContext(question, snapshot),
-      );
-    } catch (error) {
-      caught = error;
-    }
+    const answer = await createAiOperationsAssistant({ apiKey: secret, model: 'test', timeoutMs: 100, fetchImpl })(
+      question, buildAiOperationsContext(question, snapshot),
+    );
     const logged = JSON.stringify(warn.mock.calls);
     expect(fetchImpl).toHaveBeenCalledOnce();
-    expect(caught).toMatchObject({
-      status: 502,
-      message: 'El asistente de inventario no está disponible en este momento.',
-    });
+    expect(answer.engine).toBe('heuristic');
     expect(logged).toContain('invalid_request_error');
     expect(logged).toContain('invalid_request');
     expect(logged).toContain('req-safe-400');
     expect(logged).not.toContain(secret);
     expect(logged).not.toContain(question);
     expect(logged).not.toContain('stock-show');
-    expect(JSON.stringify(caught)).not.toContain('req-safe-400');
     warn.mockRestore();
   });
 
@@ -289,10 +284,11 @@ describe('asistente operativo read-only', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const question = '¿Qué pasó con SHOW-001?';
     const context = buildAiOperationsContext(question, historySnapshot, '2026-08-24T12:00:00.000Z');
-    await expect(createAiOperationsAssistant({
+    const answer = await createAiOperationsAssistant({
       apiKey: 'fixture', model: 'openai/gpt-oss-20b', timeoutMs: 100,
       maxRequestBodyBytes: 20_000, fetchImpl,
-    })(question, context)).rejects.toMatchObject({ status: 502 });
+    })(question, context);
+    expect(answer.engine).toBe('heuristic');
 
     const payload = JSON.parse(sentBody) as Record<string, any>;
     const user = JSON.parse(payload.messages[1].content);
@@ -356,9 +352,10 @@ describe('asistente operativo read-only', () => {
         evidence: [{ source: 'ledger', recordId: null, description: 'MATCH en Campo Oriente.' }],
       });
     }) as unknown as typeof fetch;
-    await expect(createAiOperationsAssistant({
+    const rejected = await createAiOperationsAssistant({
       apiKey: 'fixture', model: 'openai/gpt-oss-20b', timeoutMs: 100, fetchImpl: coincidente,
-    })(question, context)).rejects.toMatchObject({ status: 502 });
+    })(question, context);
+    expect(rejected.engine).toBe('heuristic');
     const payload = JSON.parse(sentBody) as { messages: Array<{ content: string }> };
     expect(payload.messages[0].content).toContain(
       'Nunca interpretes ledger MATCH como prueba de que el stock declarado y el verificado coinciden.',
@@ -474,9 +471,10 @@ describe('asistente operativo read-only', () => {
       ...validAnswer(),
       evidence: [{ source: 'movements', recordId: 'movement-inventado', description: 'Inventado.' }],
     })) as unknown as typeof fetch;
-    await expect(createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
+    const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
       'Resumen', buildAiOperationsContext(snapshot),
-    )).rejects.toMatchObject({ status: 502 });
+    );
+    expect(answer.engine).toBe('heuristic');
   });
 
   it('acepta evidence.traceability con un ID real del contexto', async () => {

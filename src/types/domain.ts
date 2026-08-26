@@ -277,6 +277,18 @@ export interface Transporter {
   active: boolean;
 }
 
+export type TransporterInput = Omit<Transporter, 'id'>;
+
+export interface ShelfUnitInput {
+  locationId: string;
+  code: string;
+  label: string;
+  gridRow: number;
+  gridCol: number;
+  levelCount: number;
+  capacityKgPerLevel?: number;
+}
+
 export type TraceabilityEventType =
   | 'planting'
   | 'harvest'

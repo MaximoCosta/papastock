@@ -100,6 +100,7 @@ export function OperationsAssistantPage() {
                 <StatusBadge tone={answer.dataQuality === 'authoritative' ? 'success' : 'warning'}>
                   {qualityLabel[answer.dataQuality]}
                 </StatusBadge>
+                {answer.engine === 'heuristic' && <StatusBadge tone="warning">Heurística</StatusBadge>}
                 <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#737970]">Confianza {answer.confidence}</span>
               </div>
               <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#283129]">{answer.answer}</p>

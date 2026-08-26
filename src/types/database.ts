@@ -39,6 +39,7 @@ export interface StockRecordRow {
   updated_at: string;
   unit?: QuantityUnit | null;
   version?: number | string;
+  shelf_id?: string | null;
 }
 
 export interface MovementRow {
@@ -115,5 +116,46 @@ export interface TraceabilityEventRow {
   event_date: string;
   location_id: string | null;
   data: Json;
+  created_at: string;
+}
+
+export interface TransporterRow {
+  id: string;
+  company_name: string;
+  trade_name: string | null;
+  cuit: string;
+  contact_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  province: string;
+  license_plate: string;
+  vehicle_type: string;
+  capacity_kg: number | string;
+  insurance_policy: string | null;
+  notes: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+export interface ShelfUnitRow {
+  id: string;
+  location_id: string;
+  code: string;
+  label: string;
+  grid_row: number;
+  grid_col: number;
+  created_at: string;
+}
+
+export interface ShelfRow {
+  id: string;
+  location_id: string;
+  shelf_unit_id: string;
+  code: string;
+  label: string;
+  level: number;
+  capacity_kg: number | string | null;
   created_at: string;
 }

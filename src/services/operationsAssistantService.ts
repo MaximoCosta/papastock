@@ -4,6 +4,7 @@ import { apiUrl, readApiData } from './apiClient';
 export async function askOperationsAssistant(question: string): Promise<OperationsAssistantAnswer> {
   const response = await fetch(apiUrl('/api/ai/operations'), {
     method: 'POST',
+    credentials: 'include',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify({ question }),
   });

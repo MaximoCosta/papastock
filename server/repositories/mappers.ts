@@ -6,9 +6,12 @@ import type {
   Lot,
   Movement,
   MovementItem,
+  Shelf,
+  ShelfUnit,
   StockCount,
   StockRecord,
   TraceabilityEvent,
+  Transporter,
 } from '../../src/types/domain';
 import type {
   DiscrepancyRow,
@@ -16,9 +19,12 @@ import type {
   LotRow,
   MovementItemRow,
   MovementRow,
+  ShelfRow,
+  ShelfUnitRow,
   StockCountRow,
   StockRecordRow,
   TraceabilityEventRow,
+  TransporterRow,
 } from '../../src/types/database';
 
 export const mapLocation = (row: LocationRow): Location => ({ id: row.id, name: row.name, type: row.type });
@@ -43,6 +49,7 @@ export const mapStockRecord = (row: StockRecordRow): StockRecord => ({
   updatedAt: row.updated_at,
   unit: stockUnit(row),
   version: Number(row.version ?? 0),
+  shelfId: row.shelf_id ?? undefined,
 });
 
 export const mapMovementItem = (row: MovementItemRow): MovementItem => ({
@@ -123,4 +130,42 @@ export const mapStockCount = (row: StockCountRow): StockCount => ({
   countedAt: row.counted_at,
   notes: row.notes ?? undefined,
   discrepancyId: row.discrepancy_id ?? undefined,
+});
+
+export const mapTransporter = (row: TransporterRow): Transporter => ({
+  id: row.id,
+  companyName: row.company_name,
+  tradeName: row.trade_name ?? undefined,
+  cuit: row.cuit,
+  contactName: row.contact_name,
+  phone: row.phone,
+  email: row.email,
+  address: row.address,
+  city: row.city,
+  province: row.province,
+  licensePlate: row.license_plate,
+  vehicleType: row.vehicle_type,
+  capacityKg: Number(row.capacity_kg),
+  insurancePolicy: row.insurance_policy ?? undefined,
+  notes: row.notes ?? undefined,
+  active: row.active,
+});
+
+export const mapShelfUnit = (row: ShelfUnitRow): ShelfUnit => ({
+  id: row.id,
+  locationId: row.location_id,
+  code: row.code,
+  label: row.label,
+  gridRow: row.grid_row,
+  gridCol: row.grid_col,
+});
+
+export const mapShelf = (row: ShelfRow): Shelf => ({
+  id: row.id,
+  locationId: row.location_id,
+  shelfUnitId: row.shelf_unit_id,
+  code: row.code,
+  label: row.label,
+  level: row.level,
+  capacityKg: row.capacity_kg == null ? undefined : Number(row.capacity_kg),
 });

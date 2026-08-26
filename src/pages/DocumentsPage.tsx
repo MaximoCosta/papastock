@@ -85,7 +85,7 @@ export function DocumentsPage() {
       {generatedDocuments.length === 0 ? (
         <EmptyState
           title="Todavía no hay documentos"
-          description="Generá el paquete de exportación o una planilla desde stock. Los documentos viven en esta sesión hasta que exista persistencia en base."
+          description="Generá el paquete de exportación o una planilla desde stock. Los documentos de esta sesión quedan en el navegador."
           action={<Link to="/exports/new"><Button>Preparar exportación</Button></Link>}
         />
       ) : (

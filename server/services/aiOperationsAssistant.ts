@@ -14,6 +14,7 @@ import {
   type StructuredRequest,
 } from './groqStructured';
 import { buildCanonicalLotStockAnswer } from './aiOperationsFacts';
+import { buildHeuristicOperationsAnswer } from './aiOperationsHeuristic';
 
 export { buildAiOperationsContext, measureAiOperationsContext } from './aiOperationsContext';
 export type { AiOperationsContext, AiOperationsIntent } from './aiOperationsContext';
@@ -322,7 +323,10 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
 
     try {
       const raw = await requestWithSingleRateLimitRetry(options, request);
-      return validateClosedWorld(withEvidenceLabels(operationsAnswerSchema.parse(raw)), context);
+      return {
+        ...validateClosedWorld(withEvidenceLabels(operationsAnswerSchema.parse(raw)), context),
+        engine: 'llm',
+      };
     } catch (error) {
       if (error instanceof GroqHttpError && error.status === 429) {
         throw controlledRateLimitError(error, contextMetrics);
@@ -332,8 +336,8 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
         throw controlledRequestTooLargeError(error, contextMetrics, requestMetrics);
       }
       if (error instanceof GroqHttpError) logControlledUpstreamError(error, contextMetrics);
-      console.warn('[ai] asistente operativo no disponible:', error instanceof Error ? error.message : 'respuesta inválida');
-      throw Object.assign(new Error('El asistente de inventario no está disponible en este momento.'), { status: 502 });
+      console.warn('[ai] asistente operativo en heurística:', error instanceof Error ? error.message : 'respuesta inválida');
+      return validateClosedWorld(buildHeuristicOperationsAnswer(context), context);
     }
   };
 }

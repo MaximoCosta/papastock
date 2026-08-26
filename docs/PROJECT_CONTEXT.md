@@ -319,12 +319,10 @@ pendiente (§20). Ver `docs/DEMO.md` para la alternativa no destructiva.
 de producción: `https://papastock.onrender.com`. No hay Supabase ni funciones
 serverless.
 
-Hay un SPA opcional en Netlify (`https://papstock.netlify.app`) que **no** es un
-segundo backend. `netlify.toml` hace rewrite same-origin de `/api/*` hacia
-`https://papastock.onrender.com/api/:splat`, para que el navegador conserve
-cookies first-party (`SameSite=Strict`). El CSRF de mutaciones acepta el origen
-de Netlify además del same-origin estricto; orígenes extra van en
-`PAPASTOCK_ALLOWED_ORIGINS`.
+Si alguien abre `https://papstock.netlify.app`, `netlify.toml` redirige a
+Render. No hay un front operativo separado: el CSRF same-origin cubre la demo
+en `papastock.onrender.com`; `PAPASTOCK_ALLOWED_ORIGINS` admite orígenes extra
+si hiciera falta.
 
 - En producción (`server/index.ts`): verifica la conexión a PostgreSQL, sirve
   `dist/` como estático y hace fallback SPA a `index.html` para GET que aceptan
@@ -332,10 +330,9 @@ de Netlify además del same-origin estricto; orígenes extra van en
 - En desarrollo: monta Vite en `middlewareMode` sobre el mismo Express, por lo
   que `npm run dev` levanta todo en `http://localhost:3000`.
 - El navegador nunca recibe `DATABASE_URL` ni `GROQ_API_KEY`.
-- En producción todo `/api` usa Express same-origin (o el rewrite de Netlify hacia
-  ese mismo Express). En desarrollo, `VITE_API_BASE_URL` permite optar
-  explícitamente por un backend alternativo; sin esa variable también se usa
-  Express.
+- En producción todo `/api` usa Express same-origin. En desarrollo,
+  `VITE_API_BASE_URL` permite optar explícitamente por un backend alternativo;
+  sin esa variable también se usa Express.
 
 ### Rutas de la SPA (`src/App.tsx`)
 
@@ -379,7 +376,12 @@ existen hoy.
 | POST | `/api/imports/planilla/preview` | migración | ninguno | Recibe el Excel (`.xls`/`.xlsx`, body binario ≤ 4 MB). Parser determinístico en `server/services/planillaImport.ts`. Devuelve conteos, lotes/ubicaciones a crear, sample y filas omitidas. **Nunca escribe.** |
 | POST | `/api/imports/planilla` | migración | **escribe** | Reparsea el mismo archivo, pide confirmación humana en la UI y persiste lotes, ubicaciones, movimientos y stock de esos lotes en una transacción. No toca A-204 / A-310 / C-102 / F-301. Idempotente por `movements.reference`. |
 | POST | `/api/stock/intake/preview` | operación | ninguno | Formulario de ingreso (lote, variedad, kilos, destino, remito, bolsas, calibre, DTV, etc.). Valida sin escribir. |
-| POST | `/api/stock/verify` | operación | **escribe** | Conteo físico: actualiza `verified_quantity`, limpia `verification_pending` y registra `stock_verification`. No toca A-204 / A-310 / C-102 / F-301. |
+| POST | `/api/stock/verify` | operación | **escribe** | Conteo físico: actualiza `verified_quantity`, limpia `verification_pending` y registra `stock_verification`. |
+| POST | `/api/transporters` | operación | **escribe** | Alta de perfil logístico. |
+| PATCH | `/api/transporters/:id` | operación | **escribe** | Edición de perfil logístico. |
+| POST | `/api/shelf-units` | operación | **escribe** | Alta de estantería y niveles. |
+| DELETE | `/api/shelf-units/:id` | operación | **escribe** | Baja de estantería. |
+| POST | `/api/stock/assign-shelf` | operación | **escribe** | Asigna un `stock_record` a un estante. |
 | * | `/api/*` (catch-all) | — | ninguno | 404 `{ error: 'Endpoint no encontrado.' }` |
 
 ### Convenciones transversales
@@ -790,6 +792,8 @@ Leyenda: ✅ implementado · 🟡 parcial · 🧪 demo/mock · 🔴 falta
 | N03 persistencia del tratamiento | ✅ | `POST /api/traceability` → `traceability_events` |
 | N03 proforma / factura / remito / lista de empaque | 🧪 | `mockDocumentService`; paquete documental no fiscal, con empaque y precios |
 | Documentos generados | 🟡 | Sólo `sessionStorage` (`papastock.documents.v1`); se pierden al cerrar la pestaña |
+| Transportistas | ✅ | Tabla `transporters` + snapshot + alta/edición |
+| Modelo de depósito | ✅ | `shelf_units` / `shelves` + `stock_records.shelf_id` |
 | `ExportOperation` | 🔴 | Se construye en memoria y nunca se guarda |
 | Snapshot mock explícito | ✅ | Aislado mediante `VITE_DATA_SOURCE=mock` e identificado en la UI |
 | Trazabilidad (lectura) | ✅ | Timeline en la ficha de lote desde PostgreSQL |
@@ -937,7 +941,7 @@ Orden sugerido. Reevaluar contra el código antes de empezar cualquiera.
    movimiento real vive en `/movements/new`. No conectar ese formulario al
    backend sin reutilizar `executeStockTransfer`.
 5. **Persistencia de `export_operation` y documentos generados** (§16). Sacar las
-   proformas de `sessionStorage`.
+   proformas de `sessionStorage`. Transportistas y estanterías ya persisten.
 6. **Voz para N01** (§3). Reutilizando `/api/ai/movement-intent` → preview →
    confirmación. No crear un camino de escritura paralelo.
 

@@ -11,9 +11,12 @@ import type {
   LotRow,
   MovementItemRow,
   MovementRow,
+  ShelfRow,
+  ShelfUnitRow,
   StockCountRow,
   StockRecordRow,
   TraceabilityEventRow,
+  TransporterRow,
 } from '../../src/types/database';
 import type {
   Discrepancy,
@@ -23,12 +26,17 @@ import type {
   MovementReceptionInput,
   PlanillaImportResult,
   QuantityUnit,
+  Shelf,
+  ShelfUnit,
+  ShelfUnitInput,
   StockCount,
   StockCountInput,
   StockTransferPreview,
   StockVerificationConfirmation,
   StockVerificationInput,
   TraceabilityEvent,
+  Transporter,
+  TransporterInput,
 } from '../../src/types/domain';
 import { buildLotCorrectionPlan } from '../services/lotCorrection';
 import { buildReceptionPlan, receptionPayloadFingerprint } from '../services/movementReception';
@@ -41,9 +49,12 @@ import {
   mapLot,
   mapMovement,
   mapMovementItem,
+  mapShelf,
+  mapShelfUnit,
   mapStockCount,
   mapStockRecord,
   mapTraceabilityEvent,
+  mapTransporter,
 } from './mappers';
 
 function attachMovements(rows: MovementRow[], itemRows: MovementItemRow[]): Movement[] {
@@ -74,6 +85,9 @@ export class PapaStockRepository {
       const traceability = await client.query<TraceabilityEventRow>('select * from public.traceability_events order by event_date, id');
       const discrepancies = await client.query<DiscrepancyRow>('select * from public.discrepancies order by created_at desc, id');
       const counts = await client.query<StockCountRow>('select * from public.stock_counts order by counted_at desc, id');
+      const transporters = await client.query<TransporterRow>('select * from public.transporters order by company_name, id');
+      const shelfUnits = await client.query<ShelfUnitRow>('select * from public.shelf_units order by location_id, code');
+      const shelves = await client.query<ShelfRow>('select * from public.shelves order by location_id, code');
 
       if (!locations.rowCount || !lots.rowCount || !stock.rowCount) {
         throw new Error('La base existe pero el seed operativo está incompleto.');
@@ -81,12 +95,12 @@ export class PapaStockRepository {
 
       const snapshot = {
         locations: locations.rows.map(mapLocation),
-        shelfUnits: [],
-        shelves: [],
+        shelfUnits: shelfUnits.rows.map(mapShelfUnit),
+        shelves: shelves.rows.map(mapShelf),
         lots: lots.rows.map(mapLot),
         stockRecords: stock.rows.map(mapStockRecord),
         movements: attachMovements(movements.rows, items.rows),
-        transporters: [],
+        transporters: transporters.rows.map(mapTransporter),
         traceabilityEvents: traceability.rows.map(mapTraceabilityEvent),
         discrepancies: discrepancies.rows.map(mapDiscrepancy),
         stockCounts: counts.rows.map(mapStockCount),
@@ -131,6 +145,125 @@ export class PapaStockRepository {
       [`trace-${randomUUID()}`, event.lotId, event.type, event.date, event.locationId ?? null, JSON.stringify(event.data)],
     );
     return mapTraceabilityEvent(result.rows[0]);
+  }
+
+  async upsertTransporter(id: string | undefined, input: TransporterInput): Promise<Transporter> {
+    const transporterId = id ?? `tr-${randomUUID()}`;
+    const result = await this.database.query<TransporterRow>(
+      `insert into public.transporters (
+         id, company_name, trade_name, cuit, contact_name, phone, email, address, city, province,
+         license_plate, vehicle_type, capacity_kg, insurance_policy, notes, active
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       on conflict (id) do update set
+         company_name = excluded.company_name,
+         trade_name = excluded.trade_name,
+         cuit = excluded.cuit,
+         contact_name = excluded.contact_name,
+         phone = excluded.phone,
+         email = excluded.email,
+         address = excluded.address,
+         city = excluded.city,
+         province = excluded.province,
+         license_plate = excluded.license_plate,
+         vehicle_type = excluded.vehicle_type,
+         capacity_kg = excluded.capacity_kg,
+         insurance_policy = excluded.insurance_policy,
+         notes = excluded.notes,
+         active = excluded.active
+       returning *`,
+      [
+        transporterId,
+        input.companyName,
+        input.tradeName || null,
+        input.cuit,
+        input.contactName,
+        input.phone,
+        input.email,
+        input.address,
+        input.city,
+        input.province,
+        input.licensePlate,
+        input.vehicleType,
+        input.capacityKg,
+        input.insurancePolicy || null,
+        input.notes || null,
+        input.active,
+      ],
+    );
+    return mapTransporter(result.rows[0]);
+  }
+
+  async insertShelfUnit(input: ShelfUnitInput): Promise<{ unit: ShelfUnit; shelves: Shelf[] }> {
+    const location = await this.database.query<LocationRow>('select * from public.locations where id = $1', [input.locationId]);
+    if (!location.rowCount) throw Object.assign(new Error('Ubicación no encontrada.'), { status: 404 });
+    const levels = Math.max(1, Math.min(6, Math.round(input.levelCount) || 1));
+    const unitId = `unit-${randomUUID()}`;
+    const code = input.code.trim().toUpperCase();
+    const label = input.label.trim() || `Estantería ${code}`;
+    const client = await this.database.connect();
+    try {
+      await client.query('begin');
+      const unitResult = await client.query<ShelfUnitRow>(
+        `insert into public.shelf_units (id, location_id, code, label, grid_row, grid_col)
+         values ($1,$2,$3,$4,$5,$6)
+         returning *`,
+        [unitId, input.locationId, code, label, input.gridRow, input.gridCol],
+      );
+      const shelves: Shelf[] = [];
+      const capacity = input.capacityKgPerLevel ?? 20000;
+      for (let level = 1; level <= levels; level += 1) {
+        const shelfResult = await client.query<ShelfRow>(
+          `insert into public.shelves (id, location_id, shelf_unit_id, code, label, level, capacity_kg)
+           values ($1,$2,$3,$4,$5,$6,$7)
+           returning *`,
+          [`${unitId}-L${level}`, input.locationId, unitId, `${code}${level}`, `${label} · Nivel ${level}`, level, capacity],
+        );
+        shelves.push(mapShelf(shelfResult.rows[0]));
+      }
+      await client.query('commit');
+      return { unit: mapShelfUnit(unitResult.rows[0]), shelves };
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async deleteShelfUnit(unitId: string): Promise<void> {
+    const result = await this.database.query('delete from public.shelf_units where id = $1', [unitId]);
+    if (!result.rowCount) throw Object.assign(new Error('Estantería no encontrada.'), { status: 404 });
+  }
+
+  async assignStockToShelf(stockRecordId: string, shelfId: string | undefined): Promise<void> {
+    const client = await this.database.connect();
+    try {
+      await client.query('begin');
+      const locked = await client.query<StockRecordRow>(
+        'select * from public.stock_records where id = $1 for update',
+        [stockRecordId],
+      );
+      const current = locked.rows[0];
+      if (!current) throw Object.assign(new Error('Registro de stock no encontrado.'), { status: 404 });
+      let locationId = current.location_id;
+      if (shelfId) {
+        const shelf = await client.query<ShelfRow>('select * from public.shelves where id = $1', [shelfId]);
+        if (!shelf.rowCount) throw Object.assign(new Error('Estante no encontrado.'), { status: 404 });
+        locationId = shelf.rows[0].location_id;
+      }
+      await client.query(
+        `update public.stock_records
+            set shelf_id = $1, location_id = $2, updated_at = now()
+          where id = $3`,
+        [shelfId ?? null, locationId, stockRecordId],
+      );
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async previewStockTransfer(intent: MovementIntent): Promise<StockTransferPreview> {
@@ -437,6 +570,9 @@ export class PapaStockRepository {
         `insert into public.traceability_events
           (id, lot_id, event_type, event_date, location_id, data)
          values ($1, $2, $3, $4, $5, $6::jsonb)
+         on conflict (lot_id, event_type, event_date) do update set
+           location_id = excluded.location_id,
+           data = excluded.data
          returning *`,
         [
           `trace-${randomUUID()}`,

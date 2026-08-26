@@ -25,9 +25,9 @@ export function WarehouseModelPanel({
   shelfUnits: ShelfUnit[];
   shelves: Shelf[];
   stockViews: StockView[];
-  onAddUnit: (input: AddShelfUnitInput) => void;
-  onRemoveUnit: (unitId: string) => void;
-  onAssignStock: (stockRecordId: string, shelfId: string | undefined) => void;
+  onAddUnit: (input: AddShelfUnitInput) => void | Promise<unknown>;
+  onRemoveUnit: (unitId: string) => void | Promise<unknown>;
+  onAssignStock: (stockRecordId: string, shelfId: string | undefined) => void | Promise<unknown>;
 }) {
   const [locationId, setLocationId] = useState(locations[0]?.id ?? '');
   const [selectedUnitId, setSelectedUnitId] = useState<string>();

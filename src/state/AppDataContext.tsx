@@ -1,5 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { insertTraceabilityEvent, loadPapaStockSnapshot, type DataSource } from '../repositories/dataRepository';
+import {
+  assignStockToShelfRemote,
+  createShelfUnit,
+  createTransporter,
+  deleteShelfUnitRemote,
+  updateTransporterRemote,
+} from '../services/catalogService';
 import { loadStoredDocuments, persistDocuments } from '../services/documentService';
 import { getStockViews } from '../services/stockService';
 import type {
@@ -8,27 +15,20 @@ import type {
   Movement,
   Shelf,
   ShelfUnit,
+  ShelfUnitInput,
   StockControlCorrection,
   StockRecord,
   StockView,
   TraceabilityEvent,
   Transporter,
+  TransporterInput,
 } from '../types/domain';
 import type { GeneratedDocument } from '../types/export';
 import { isExplicitMockMode } from '../config/dataMode';
 import { useDemoSession } from './DemoSessionContext';
 
-export interface AddShelfUnitInput {
-  locationId: string;
-  code: string;
-  label: string;
-  gridRow: number;
-  gridCol: number;
-  levelCount: number;
-  capacityKgPerLevel?: number;
-}
-
-export type TransporterInput = Omit<Transporter, 'id'>;
+export type { TransporterInput, ShelfUnitInput };
+export type AddShelfUnitInput = ShelfUnitInput;
 
 interface AppDataContextValue {
   locations: Location[];
@@ -51,11 +51,11 @@ interface AppDataContextValue {
   applyStockCorrections: (corrections: StockControlCorrection[]) => void;
   applyStockVerification: (correction: StockControlCorrection, event?: TraceabilityEvent) => void;
   addMovement: (movement: Movement) => void;
-  addShelfUnit: (input: AddShelfUnitInput) => ShelfUnit;
-  removeShelfUnit: (unitId: string) => void;
-  assignStockToShelf: (stockRecordId: string, shelfId: string | undefined) => void;
-  addTransporter: (input: TransporterInput) => Transporter;
-  updateTransporter: (id: string, input: TransporterInput) => void;
+  addShelfUnit: (input: AddShelfUnitInput) => Promise<ShelfUnit>;
+  removeShelfUnit: (unitId: string) => Promise<void>;
+  assignStockToShelf: (stockRecordId: string, shelfId: string | undefined) => Promise<void>;
+  addTransporter: (input: TransporterInput) => Promise<Transporter>;
+  updateTransporter: (id: string, input: TransporterInput) => Promise<void>;
   clearActionError: () => void;
   refreshData: () => Promise<void>;
   applyImportedSnapshot: (applied: {
@@ -212,9 +212,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     addMovement: (movement) => {
       setMovements((current) => [movement, ...current]);
     },
-    addShelfUnit: (input) => {
+    addShelfUnit: async (input) => {
+      setActionError(undefined);
+      if (dataSource === 'database') {
+        const created = await createShelfUnit(input);
+        setShelfUnits((current) => [...current, created.unit]);
+        setShelves((current) => [...current, ...created.shelves]);
+        return created.unit;
+      }
       if (dataSource !== 'mock') {
-        const message = 'Las estanterías sólo se editan en modo mock hasta contar con persistencia.';
+        const message = 'La fuente operativa no está disponible.';
         setActionError(message);
         throw new Error(message);
       }
@@ -245,9 +252,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setShelves((current) => [...current, ...newShelves]);
       return unit;
     },
-    removeShelfUnit: (unitId) => {
-      if (dataSource !== 'mock') {
-        setActionError('Las estanterías sólo se editan en modo mock hasta contar con persistencia.');
+    removeShelfUnit: async (unitId) => {
+      setActionError(undefined);
+      if (dataSource === 'database') {
+        await deleteShelfUnitRemote(unitId);
+      } else if (dataSource !== 'mock') {
+        setActionError('La fuente operativa no está disponible.');
         return;
       }
       setShelves((currentShelves) => {
@@ -261,9 +271,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       });
       setShelfUnits((current) => current.filter((unit) => unit.id !== unitId));
     },
-    assignStockToShelf: (stockRecordId, shelfId) => {
-      if (dataSource !== 'mock') {
-        setActionError('La asignación a estantes sólo está disponible en modo mock hasta contar con persistencia.');
+    assignStockToShelf: async (stockRecordId, shelfId) => {
+      setActionError(undefined);
+      if (dataSource === 'database') {
+        await assignStockToShelfRemote(stockRecordId, shelfId);
+      } else if (dataSource !== 'mock') {
+        setActionError('La fuente operativa no está disponible.');
         return;
       }
       setStockRecords((current) => {
@@ -281,9 +294,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         });
       });
     },
-    addTransporter: (input) => {
+    addTransporter: async (input) => {
+      setActionError(undefined);
+      if (dataSource === 'database') {
+        const created = await createTransporter(input);
+        setTransporters((current) => [created, ...current]);
+        return created;
+      }
       if (dataSource !== 'mock') {
-        const message = 'Los transportistas sólo se editan en modo mock hasta contar con persistencia.';
+        const message = 'La fuente operativa no está disponible.';
         setActionError(message);
         throw new Error(message);
       }
@@ -291,9 +310,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setTransporters((current) => [transporter, ...current]);
       return transporter;
     },
-    updateTransporter: (id, input) => {
+    updateTransporter: async (id, input) => {
+      setActionError(undefined);
+      if (dataSource === 'database') {
+        const updated = await updateTransporterRemote(id, input);
+        setTransporters((current) => current.map((item) => (item.id === id ? updated : item)));
+        return;
+      }
       if (dataSource !== 'mock') {
-        setActionError('Los transportistas sólo se editan en modo mock hasta contar con persistencia.');
+        setActionError('La fuente operativa no está disponible.');
         return;
       }
       setTransporters((current) => current.map((item) => (item.id === id ? { ...input, id } : item)));

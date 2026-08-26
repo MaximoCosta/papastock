@@ -5,15 +5,10 @@
 [build.environment]
   NODE_VERSION = "22"
 
-# Same-origin /api for the Netlify SPA. The browser talks to papstock.netlify.app;
-# Netlify rewrites to the Render API so cookies stay first-party and SameSite=Strict works.
-[[redirects]]
-  from = "/api/*"
-  to = "https://papastock.onrender.com/api/:splat"
-  status = 200
-  force = true
-
+# Canonical app is the Render Web Service (SPA + API same-origin).
+# Keep this redirect so papstock.netlify.app does not serve a broken split front.
 [[redirects]]
   from = "/*"
-  to = "/index.html"
-  status = 200
+  to = "https://papastock.onrender.com/:splat"
+  status = 301
+  force = true

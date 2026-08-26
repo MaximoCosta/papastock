@@ -21,10 +21,14 @@ export function WarehousePage() {
       <PageHeader
         eyebrow="Inventario"
         title="Modelo de depósito"
-        description="DEMO: el plano de estanterías vive en memoria de sesión. No modifica PostgreSQL."
+        description="Plano de estanterías persistido en PostgreSQL. Las asignaciones de stock actualizan el registro operativo."
         actions={<Link to="/locations"><Button variant="secondary">Vista lista</Button></Link>}
       />
-      {dataSource === 'mock' ? (
+      {dataSource === 'unavailable' ? (
+        <div className="border border-[#d8dad3] bg-white p-5 text-[12px] text-[#5f645d]">
+          La fuente operativa no está disponible. No se puede mostrar el modelo de depósito.
+        </div>
+      ) : (
         <WarehouseModelPanel
           locations={locations}
           shelfUnits={shelfUnits}
@@ -34,10 +38,6 @@ export function WarehousePage() {
           onRemoveUnit={removeShelfUnit}
           onAssignStock={assignStockToShelf}
         />
-      ) : (
-        <div className="border border-[#d8dad3] bg-white p-5 text-[12px] text-[#5f645d]">
-          Las estanterías permanecen vacías en modo database hasta contar con persistencia PostgreSQL.
-        </div>
       )}
     </>
   );
