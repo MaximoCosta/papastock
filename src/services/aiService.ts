@@ -8,7 +8,11 @@ import type {
   ParsedTraceabilityEvent,
   TraceabilityIntent,
 } from '../types/export';
-import { hardcodedDiscrepancyAnalysis } from '../lib/demoDiscrepancyAnalysis';
+import {
+  buildOralDiscrepancyAnalysis,
+  hardcodedDiscrepancyAnalysis,
+  isThinDiscrepancyAnalysis,
+} from '../lib/demoDiscrepancyAnalysis';
 import { analyzeWithHeuristic } from '../../server/services/discrepancyHeuristic';
 import { apiFetch, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
 
@@ -125,10 +129,20 @@ function mockSheetCorrections(scopeRecords: StockView[]): StockControlCorrection
 
 const httpAIService: AIService = {
   async analyzeDiscrepancy(stock, lotMovements, traceability) {
-    const demoAnalysis = isExplicitMockMode() ? hardcodedDiscrepancyAnalysis(stock, lotMovements) : undefined;
-    if (demoAnalysis) {
+    const oralAnalysis = buildOralDiscrepancyAnalysis(stock, lotMovements);
+    if (oralAnalysis) {
+      await delay(isExplicitMockMode() ? 900 : 700);
+      return oralAnalysis;
+    }
+
+    if (isExplicitMockMode()) {
       await delay(900);
-      return demoAnalysis;
+      return hardcodedDiscrepancyAnalysis(stock, lotMovements) ?? analyzeWithHeuristic({
+        lot: { id: stock.lot.id, code: stock.lot.code },
+        stock,
+        movements: lotMovements,
+        traceability,
+      });
     }
 
     try {
@@ -151,7 +165,7 @@ const httpAIService: AIService = {
         }),
       });
       const payload = normalizeDiscrepancyAnalysis(await readApiData(response, 'El análisis no está disponible.'));
-      if (!['llm', 'heuristic'].includes(payload.engine)) {
+      if (!['llm', 'heuristic'].includes(payload.engine) || isThinDiscrepancyAnalysis(payload)) {
         throw new Error('El análisis no está disponible.');
       }
       return payload;

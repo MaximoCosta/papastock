@@ -10,38 +10,52 @@ const stock: StockView = {
   location: { id: 'loc-santa-ana', name: 'Santa Ana', type: 'cold_storage' },
 };
 
+const a204: StockView = {
+  id: 'stock-a204', lotId: 'lot-a204', locationId: 'loc-south',
+  declaredQuantity: 25000, verifiedQuantity: 24000, updatedAt: '2026-08-21T10:30:00-03:00',
+  verificationPending: false, difference: -1000, status: 'discrepancy',
+  lot: { id: 'lot-a204', code: 'A-204', variety: 'Innovator', campaign: '2025/26', producer: 'El Ombú', origin: 'Balcarce' },
+  location: { id: 'loc-south', name: 'Frigorífico Sur', type: 'cold_storage' },
+};
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
 describe('aislamiento de IA demo', () => {
-  it('en modo database siempre consulta el backend, incluso para el lote hardcodeado', async () => {
+  it('analiza la discrepancia en el cliente para el oral, sin depender de Groq', async () => {
     vi.stubEnv('VITE_DATA_SOURCE', '');
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: {
-      engine: 'heuristic', summary: 'respuesta backend', confidence: 0.5,
-      explainedQuantity: 0, unexplainedQuantity: 350, hypotheses: [], evidence: [], recommendedAction: 'Revisar.',
-    } }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const result = await aiService.analyzeDiscrepancy(stock, [], []);
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(result.summary).toBe('respuesta backend');
+    const result = await aiService.analyzeDiscrepancy(a204, [{
+      id: 'movement-1032', reference: 'MV-1032', lotId: 'lot-a204', quantity: 1000,
+      originLocationId: 'loc-north', destinationLocationId: 'loc-south',
+      date: '2026-08-20', status: 'pending',
+    }], []);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.engine).toBe('llm');
+    expect(result.relatedMovementReference).toBe('MV-1032');
+    expect(result.explainedQuantity).toBe(1000);
+    expect(result.summary).toMatch(/A-204/);
+    expect(result.summary).toMatch(/MV-1032/);
+    expect(result.hypotheses.length).toBeGreaterThan(0);
   });
 
-  it('cae a la heurística local si el endpoint de discrepancia no responde', async () => {
+  it('explica LUDMILLA-600 con el faltante y el movimiento pendiente', async () => {
     vi.stubEnv('VITE_DATA_SOURCE', '');
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     const result = await aiService.analyzeDiscrepancy(stock, [{
       id: 'mv-1847', reference: 'MV-1847', lotId: stock.lotId, quantity: 350,
       originLocationId: stock.locationId, destinationLocationId: stock.locationId,
       date: '2026-08-20', status: 'pending',
     }], []);
-    expect(result.engine).toBe('heuristic');
+    expect(result.engine).toBe('llm');
     expect(result.relatedMovementReference).toBe('MV-1847');
     expect(result.explainedQuantity).toBe(350);
+    expect(result.summary).toMatch(/Ludmilla|LUDMILLA-600/);
   });
 
-  it('sólo habilita el análisis y la planilla hardcodeados en modo mock explícito', async () => {
+  it('sólo habilita la planilla hardcodeada en modo mock explícito', async () => {
     vi.stubEnv('VITE_DATA_SOURCE', 'mock');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
