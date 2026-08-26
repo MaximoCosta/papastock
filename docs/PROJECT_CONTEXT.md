@@ -644,17 +644,20 @@ las heurísticas del servidor.
 
 1. si `VITE_DATA_SOURCE=mock`, devuelve el mock con `source: 'mock'` y warning;
 2. si no, hace `GET /api/snapshot` same-origin en producción, valida y normaliza
-   el payload sin alterar cantidades;
+   el payload, y **proyecta las 6 discrepancias de demo oral** (A-204, B-221,
+   C-102, D-405, E-090, G-512) más los movimientos pendientes asociados. El resto
+   de lotes queda como vino de PostgreSQL. No se escriben esas cantidades.
 3. ante cualquier fallo, devuelve arrays vacíos con `source: 'unavailable'` y un
-   warning. Nunca sustituye PostgreSQL por datos demo.
+   warning. Nunca sustituye PostgreSQL por el dataset mock completo.
 
 El mock vive en `src/data/` (`locations.ts`, `lots.ts`, `stock.ts`,
 `movements.ts`, `traceability.ts`) y **replica el seed de PostgreSQL**.
 
 Reglas:
 
-- Los datos mock sólo existen con `VITE_DATA_SOURCE=mock`. Las respuestas de base
-  no pasan por `presentStockForOralDemo` ni se completan con catálogos mock.
+- Los datos mock sólo existen con `VITE_DATA_SOURCE=mock`. El snapshot de base
+  no se completa con catálogos mock (estantes, transportistas). Sí se proyectan
+  las 6 discrepancias de la demo oral sobre lotes existentes.
 - `dataSource` se expone en el contexto de la app y se muestra en la UI.
 - Las mutaciones se comportan según la fuente:
   `AppDataContext.addTraceabilityEvent` sólo llama a la API si
