@@ -244,12 +244,14 @@ export interface AppDependencies {
 
 export function createApp(dependencies: AppDependencies = {}) {
   const app = express();
-  const auth = dependencies.auth ?? new AuthService({
-    username: config.authUsername ?? '',
-    passwordHash: config.authPasswordHash ?? '',
-    sessionSecret: config.sessionSecret ?? '',
-    secureCookies: config.nodeEnv === 'production',
-  });
+  const auth = config.backendMode === 'java'
+    ? (undefined as unknown as AuthService)
+    : dependencies.auth ?? new AuthService({
+        username: config.authUsername ?? '',
+        passwordHash: config.authPasswordHash ?? '',
+        sessionSecret: config.sessionSecret ?? '',
+        secureCookies: config.nodeEnv === 'production',
+      });
   const repository = dependencies.repository ?? (pool ? new PapaStockRepository(pool) : undefined);
   const checkReadiness = dependencies.checkReadiness ?? verifyDatabaseReadiness;
   const planillaUploadsEnabled = dependencies.planillaUploadsEnabled ?? config.nodeEnv !== 'production';
