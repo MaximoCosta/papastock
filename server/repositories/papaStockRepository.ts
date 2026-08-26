@@ -57,15 +57,14 @@ import {
   mapTransporter,
 } from './mappers';
 
-const emptyQueryResult = { rows: [], rowCount: 0 };
-
-async function queryCatalogIfPresent<T>(
+async function queryCatalogIfPresent<T extends pg.QueryResultRow>(
   client: pg.PoolClient,
   present: string | null | undefined,
   sql: string,
-): Promise<{ rows: T[] }> {
-  if (!present) return emptyQueryResult;
-  return client.query<T>(sql);
+): Promise<T[]> {
+  if (!present) return [];
+  const result = await client.query<T>(sql);
+  return result.rows;
 }
 
 function attachMovements(rows: MovementRow[], itemRows: MovementItemRow[]): Movement[] {
@@ -125,12 +124,12 @@ export class PapaStockRepository {
 
       const snapshot = {
         locations: locations.rows.map(mapLocation),
-        shelfUnits: shelfUnits.rows.map(mapShelfUnit),
-        shelves: shelves.rows.map(mapShelf),
+        shelfUnits: shelfUnits.map(mapShelfUnit),
+        shelves: shelves.map(mapShelf),
         lots: lots.rows.map(mapLot),
         stockRecords: stock.rows.map(mapStockRecord),
         movements: attachMovements(movements.rows, items.rows),
-        transporters: transporters.rows.map(mapTransporter),
+        transporters: transporters.map(mapTransporter),
         traceabilityEvents: traceability.rows.map(mapTraceabilityEvent),
         discrepancies: discrepancies.rows.map(mapDiscrepancy),
         stockCounts: counts.rows.map(mapStockCount),
