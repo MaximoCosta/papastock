@@ -3,10 +3,14 @@ import type { Lot, StockRecord } from '../types/domain';
 const PRESERVED_DISCREPANCIES: Record<string, { declared: number; verified: number }> = {
   'A-204': { declared: 25000, verified: 24000 },
   'C-102': { declared: 18500, verified: 18000 },
+  'B-221': { declared: 16000, verified: 15200 },
+  'D-405': { declared: 19500, verified: 18700 },
+  'E-090': { declared: 12500, verified: 11300 },
+  'G-512': { declared: 21000, verified: 19800 },
 };
 
 const EXPORT_LOT = 'A-310';
-const TARGET_DISCREPANCIES = 5;
+const TARGET_DISCREPANCIES = 6;
 const GAPS = [1000, 500, 800, 350, 1200];
 
 function lotCodeById(lots: Lot[]): Map<string, string> {

@@ -43,7 +43,7 @@ describe('stock projections over repository data', () => {
     const a204 = views.find((record) => record.lot.code === 'A-204');
 
     expect(a204).toMatchObject({ declaredQuantity: 25000, verifiedQuantity: 24000, difference: -1000, status: 'discrepancy' });
-    expect(getOperationalMetrics(views)).toMatchObject({ activeLots: 12, discrepancies: 2, pendingExports: 1 });
+    expect(getOperationalMetrics(views)).toMatchObject({ activeLots: 12, discrepancies: 6, pendingExports: 1 });
   });
 
   it('keeps status logic deterministic', () => {

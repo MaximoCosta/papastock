@@ -6,7 +6,7 @@ import { getOperationalMetrics, getStockViews } from '../services/stockService';
 import { presentStockForOralDemo } from './demoStockPresentation';
 
 describe('presentStockForOralDemo', () => {
-  it('deja la mayoría verificada y exactamente 5 discrepancias, conservando A-204', () => {
+  it('deja la mayoría verificada y exactamente 6 discrepancias, conservando A-204', () => {
     const presented = presentStockForOralDemo(stockRecords, lots);
     const views = getStockViews(presented, lots, locations);
     const a204 = views.find((record) => record.lot.code === 'A-204');
@@ -15,8 +15,8 @@ describe('presentStockForOralDemo', () => {
 
     expect(a204).toMatchObject({ declaredQuantity: 25000, verifiedQuantity: 24000, status: 'discrepancy' });
     expect(pending).toHaveLength(0);
-    expect(discrepancies).toHaveLength(5);
-    expect(getOperationalMetrics(views).discrepancies).toBe(5);
+    expect(discrepancies).toHaveLength(6);
+    expect(getOperationalMetrics(views).discrepancies).toBe(6);
     expect(getOperationalMetrics(views).totalStock).toBeGreaterThan(0);
   });
 

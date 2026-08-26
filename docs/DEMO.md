@@ -115,10 +115,10 @@ Ruta: `/movements/new`
 ### Elegir un lote seguro
 
 **No uses A-204.** Está bloqueado por discrepancia: el preview lo va a rechazar
-con `UNRESOLVED_DISCREPANCY`. Tampoco **C-102** (discrepancia de −500 kg) ni
-**F-301** (verificación pendiente).
+con `UNRESOLVED_DISCREPANCY`. Tampoco **C-102, B-221, D-405, E-090 ni G-512**
+(discrepancias abiertas) ni **F-301** (verificación pendiente).
 
-Lotes seguros hoy: **B-118, B-221, D-405, E-090, G-512, H-118** y **A-310**.
+Lotes seguros hoy: **B-118, H-118** y **A-310**.
 
 El botón “Usar ejemplo seguro” de la página propone A-310 desde Frigorífico
 Central. Funciona, pero mueve stock del lote que usa la demo N03. Para mantener
@@ -202,6 +202,24 @@ Ruta: `/lots/A-204`
 > demo termina en el bloqueo. Es el cierre correcto del relato: el sistema
 > prioriza no despachar mal.
 
+### Otras discrepancias para el relato
+
+El dashboard tiene **6** discrepancias. A-204 es el caso estrella. Las otras
+cinco sirven para mostrar que la IA no inventa: explica con evidencia o dice
+que no alcanza.
+
+| Lote | Diferencia | Qué tiene que encontrar el análisis |
+| --- | --- | --- |
+| **A-204** | −1.000 kg | `MV-1032` pendiente, coincidencia exacta |
+| **B-221** | −800 kg | `MV-1051` pendiente, mismo patrón que A-204 |
+| **D-405** | −800 kg | `MV-1052` (500) + `MV-1053` (300) suman el desvío |
+| **E-090** | −1.200 kg | `MV-1054` pendiente de 350 kg: explicación **parcial** |
+| **C-102** | −500 kg | `MV-1037` está **cancelado**: no hay movimiento abierto |
+| **G-512** | −1.200 kg | Solo `MV-1044` completado: sin pendiente que explique |
+
+Orden sugerido: A-204 → B-221 → D-405 → E-090 → G-512 o C-102. En todos, el
+despacho sigue bloqueado. La IA no cierra el stock.
+
 ---
 
 ## Demo N03 — Exportación y compliance
@@ -219,7 +237,7 @@ Elegí uno de estos dos caminos **antes** de presentar.
 ### Opción A — Usar otro lote (recomendada, no destructiva)
 
 Cualquier lote sin evento de tratamiento arranca en 4/5 con “Tratamiento
-fitosanitario” faltante. Sirven **H-118, B-221, D-405, E-090, G-512** y **C-102**.
+fitosanitario” faltante. Sirven **H-118, B-118, F-301** y **C-102**.
 
 1. Lote **H-118**, destino **Brasil**, peso neto **13.000 kg**. Se pueden agregar
    más lotes con “Agregar lote”; cada uno lleva su propio peso.

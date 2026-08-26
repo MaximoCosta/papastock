@@ -88,7 +88,7 @@ describePostgres.sequential('ledger verifier con PostgreSQL real', () => {
       expect(coordinate('A-310', 'loc-warehouse', 'kg')).toMatchObject({
         persistedBalance: 0, ledgerBalance: -22000, classification: 'INVALID_NEGATIVE_BALANCE',
       });
-      expect(coordinate('B-221', 'loc-south', 'kg')).toMatchObject({ candidateOpeningBalance: 16000, classification: 'MISSING_LEDGER_BALANCE' });
+      expect(coordinate('B-221', 'loc-south', 'kg')).toMatchObject({ candidateOpeningBalance: 15200, classification: 'MISSING_LEDGER_BALANCE' });
       expect(coordinate('300', 'loc-oriente', 'bags')).toMatchObject({ candidateOpeningBalance: 500, classification: 'MISSING_LEDGER_BALANCE' });
       expect(coordinate('301', 'loc-oriente', 'bags')).toMatchObject({ candidateOpeningBalance: 300, classification: 'MISSING_LEDGER_BALANCE' });
       expect(result.blockingIssues).toEqual([]);
