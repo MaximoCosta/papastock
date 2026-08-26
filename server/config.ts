@@ -1,5 +1,32 @@
 const DEFAULT_AI_MODEL = 'openai/gpt-oss-20b';
 
+export const DEFAULT_ALLOWED_ORIGINS = [
+  'https://papastock.onrender.com',
+  'https://papstock.netlify.app',
+] as const;
+
+export function parseAllowedOrigins(
+  value: string | undefined,
+  defaults: readonly string[] = DEFAULT_ALLOWED_ORIGINS,
+): string[] {
+  const origins = new Set<string>();
+  for (const candidate of [...defaults, ...(value ?? '').split(',')]) {
+    const trimmed = candidate.trim();
+    if (!trimmed) continue;
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      throw new Error('PAPASTOCK_ALLOWED_ORIGINS debe ser una lista de orígenes absolutos separados por coma.');
+    }
+    if (parsed.username || parsed.password || parsed.origin === 'null') {
+      throw new Error('PAPASTOCK_ALLOWED_ORIGINS contiene un origen inválido.');
+    }
+    origins.add(parsed.origin);
+  }
+  return [...origins];
+}
+
 function normalizeDatabaseUrl(value: string | undefined): string | undefined {
   const candidate = value?.trim();
   if (!candidate) return undefined;
@@ -23,6 +50,7 @@ export const config = {
   authUsername: process.env.PAPASTOCK_AUTH_USERNAME?.trim(),
   authPasswordHash: process.env.PAPASTOCK_AUTH_PASSWORD_HASH?.trim(),
   sessionSecret: process.env.PAPASTOCK_SESSION_SECRET?.trim(),
+  allowedOrigins: parseAllowedOrigins(process.env.PAPASTOCK_ALLOWED_ORIGINS),
 };
 
 export type PapaStockConfig = typeof config;

@@ -198,6 +198,16 @@ describe('API PapaStock', () => {
     expect(Array.isArray(header) ? header[0] : header).toContain('Secure');
   });
 
+  it('acepta el login del SPA de Netlify contra el API de Render', async () => {
+    const response = await request(app).post('/api/auth/login')
+      .set('host', 'papastock.onrender.com')
+      .set('origin', 'https://papstock.netlify.app')
+      .set('x-forwarded-proto', 'https')
+      .send({ username: TEST_USERNAME, password: TEST_PASSWORD })
+      .expect(200);
+    expect(response.body.data.username).toBe(TEST_USERNAME);
+  });
+
   it('aplica autorización además de autenticar', async () => {
     const limited = auth.createSession({
       username: 'lector', name: 'Lector', role: 'operator', plant: 'Planta Balcarce', permissions: ['data:read'],

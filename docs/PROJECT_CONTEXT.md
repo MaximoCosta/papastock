@@ -315,8 +315,16 @@ pendiente (§20). Ver `docs/DEMO.md` para la alternativa no destructiva.
         └─────────────────────────────────────────┘
 ```
 
-**Un solo Web Service sirve la SPA y la API.** No hay servicios separados, no hay
-BFF adicional, no hay Supabase, no hay funciones serverless.
+**Un solo Web Service en Render sirve la SPA y la API.** Esa es la URL canónica
+de producción: `https://papastock.onrender.com`. No hay Supabase ni funciones
+serverless.
+
+Hay un SPA opcional en Netlify (`https://papstock.netlify.app`) que **no** es un
+segundo backend. `netlify.toml` hace rewrite same-origin de `/api/*` hacia
+`https://papastock.onrender.com/api/:splat`, para que el navegador conserve
+cookies first-party (`SameSite=Strict`). El CSRF de mutaciones acepta el origen
+de Netlify además del same-origin estricto; orígenes extra van en
+`PAPASTOCK_ALLOWED_ORIGINS`.
 
 - En producción (`server/index.ts`): verifica la conexión a PostgreSQL, sirve
   `dist/` como estático y hace fallback SPA a `index.html` para GET que aceptan
@@ -324,9 +332,10 @@ BFF adicional, no hay Supabase, no hay funciones serverless.
 - En desarrollo: monta Vite en `middlewareMode` sobre el mismo Express, por lo
   que `npm run dev` levanta todo en `http://localhost:3000`.
 - El navegador nunca recibe `DATABASE_URL` ni `GROQ_API_KEY`.
-- En producción todo `/api` usa Express same-origin. En desarrollo,
-  `VITE_API_BASE_URL` permite optar explícitamente por un backend alternativo;
-  sin esa variable también se usa Express.
+- En producción todo `/api` usa Express same-origin (o el rewrite de Netlify hacia
+  ese mismo Express). En desarrollo, `VITE_API_BASE_URL` permite optar
+  explícitamente por un backend alternativo; sin esa variable también se usa
+  Express.
 
 ### Rutas de la SPA (`src/App.tsx`)
 
@@ -384,7 +393,8 @@ existen hoy.
   código PostgreSQL `23505` → 409; `error.status` respetado; ≥500 se loguea con
   prefijo `[api]` y se responde con un mensaje genérico.
 - Toda la API de inventario requiere autenticación y permisos server-side.
-  Login/logout además validan same-origin en requests mutantes. Sigue pendiente
+- Login/logout además validan same-origin (o un origen de `PAPASTOCK_ALLOWED_ORIGINS`,
+  con Netlify y Render por defecto) en requests mutantes. Sigue pendiente
   rate limiting.
 
 ---
@@ -876,8 +886,8 @@ Vitest: usa `vite.config.ts`.
 
 | Archivo | Tests | Qué cubre |
 | --- | --- | --- |
-| `server/app.test.ts` | 18 | Contrato HTTP, autenticación, permisos, CSRF/origin, atributos de cookie, logout y flujos operativos existentes. |
-| `server/auth.test.ts` | 3 | Password scrypt, sesión opaca, revocación y expiración. |
+| `server/app.test.ts` | 19 | Contrato HTTP, autenticación, permisos, CSRF/origin (incluye Netlify→Render), atributos de cookie, logout y flujos operativos existentes. |
+| `server/auth.test.ts` | 5 | Password scrypt, sesión opaca, revocación, expiración y CSRF same-origin vs Netlify. |
 | `src/repositories/dataRepository.test.ts` | 3 | PostgreSQL sin overlays mock, API caída sin sustitución y mock sólo explícito. |
 | `src/services/aiService.test.ts` | 3 | IA hardcodeada y planilla simulada aisladas al modo mock. |
 | `src/services/apiClient.test.ts` | 5 | Adaptadores y garantía same-origin en producción con backend alternativo sólo en desarrollo. |

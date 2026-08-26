@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AuthService, hashPassword } from './auth';
+import { AuthService, hashPassword, isTrustedMutationOrigin } from './auth';
 
 const password = 'una-clave-segura-de-prueba';
 
@@ -34,5 +34,39 @@ describe('AuthService', () => {
     const session = auth.createSession(auth.authenticate('operador', password)!);
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect(auth.readSession(session.token)).toBeUndefined();
+  });
+});
+
+describe('origen de mutaciones', () => {
+  const allowedOrigins = ['https://papstock.netlify.app', 'https://papastock.onrender.com'];
+
+  it('acepta same-origin y el SPA de Netlify frente al API de Render', () => {
+    expect(isTrustedMutationOrigin({
+      origin: 'http://papastock.test',
+      host: 'papastock.test',
+      protocol: 'http',
+      allowedOrigins,
+    })).toBe(true);
+    expect(isTrustedMutationOrigin({
+      origin: 'https://papstock.netlify.app',
+      host: 'papastock.onrender.com',
+      protocol: 'https',
+      allowedOrigins,
+    })).toBe(true);
+  });
+
+  it('rechaza un origen no listado aunque haya sesión', () => {
+    expect(isTrustedMutationOrigin({
+      origin: 'https://attacker.example',
+      host: 'papastock.onrender.com',
+      protocol: 'https',
+      allowedOrigins,
+    })).toBe(false);
+    expect(isTrustedMutationOrigin({
+      origin: undefined,
+      host: 'papastock.onrender.com',
+      protocol: 'https',
+      allowedOrigins,
+    })).toBe(false);
   });
 });

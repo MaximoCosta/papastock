@@ -1,6 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { AuthService, requireAuthentication, requirePermission, requireSameOrigin } from './auth';
+import { AuthService, createSameOriginGuard, requireAuthentication, requirePermission } from './auth';
 import { config } from './config';
 import { pool, verifyDatabaseReadiness } from './db/pool';
 import { PapaStockRepository } from './repositories/papaStockRepository';
@@ -203,6 +203,7 @@ export interface AppDependencies {
   parseExportRequirements?: ReturnType<typeof createExportRequirementsParser>;
   answerOperationsQuestion?: ReturnType<typeof createAiOperationsAssistant>;
   auth?: AuthService;
+  allowedOrigins?: readonly string[];
   checkReadiness?: () => Promise<void>;
   planillaUploadsEnabled?: boolean;
 }
@@ -253,7 +254,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
   });
 
-  app.use('/api', requireSameOrigin);
+  app.use('/api', createSameOriginGuard(dependencies.allowedOrigins ?? config.allowedOrigins));
   app.post('/api/auth/login', (request, response, next) => {
     try {
       const credentials = loginSchema.parse(request.body);

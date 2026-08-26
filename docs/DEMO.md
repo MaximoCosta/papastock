@@ -3,7 +3,10 @@
 Guía operativa para presentar PapaStock. Contexto técnico completo en
 `docs/PROJECT_CONTEXT.md`.
 
-URL: `https://papastock.onrender.com`
+URL canónica: `https://papastock.onrender.com`
+
+SPA en Netlify: `https://papstock.netlify.app` (el `/api` se reescribe hacia Render;
+si el servicio está dormido, despertarlo **antes** de abrir Netlify).
 
 ---
 

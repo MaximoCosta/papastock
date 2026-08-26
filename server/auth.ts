@@ -167,19 +167,41 @@ export function requirePermission(permission: Permission): RequestHandler {
   };
 }
 
-export function requireSameOrigin(request: Request, response: Response, next: NextFunction) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return next();
-  const origin = request.header('origin');
-  const host = request.header('host');
-  const forwardedProtocol = request.header('x-forwarded-proto')?.split(',')[0]?.trim();
-  const expectedProtocol = forwardedProtocol || request.protocol;
+export function isTrustedMutationOrigin(options: {
+  origin: string | undefined;
+  host: string | undefined;
+  protocol: string;
+  allowedOrigins: readonly string[];
+}): boolean {
+  if (!options.origin) return false;
   try {
-    const parsed = origin ? new URL(origin) : undefined;
-    if (!parsed || !host || parsed.host !== host || parsed.protocol !== `${expectedProtocol}:`) {
+    const parsed = new URL(options.origin);
+    if (options.allowedOrigins.includes(parsed.origin)) return true;
+    return Boolean(
+      options.host
+      && parsed.host === options.host
+      && parsed.protocol === `${options.protocol}:`,
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function createSameOriginGuard(allowedOrigins: readonly string[] = []) {
+  return (request: Request, response: Response, next: NextFunction) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return next();
+    const forwardedProtocol = request.header('x-forwarded-proto')?.split(',')[0]?.trim();
+    const trusted = isTrustedMutationOrigin({
+      origin: request.header('origin'),
+      host: request.header('host'),
+      protocol: forwardedProtocol || request.protocol,
+      allowedOrigins,
+    });
+    if (!trusted) {
       return response.status(403).json({ error: 'Origen de solicitud no permitido.' });
     }
-  } catch {
-    return response.status(403).json({ error: 'Origen de solicitud no permitido.' });
-  }
-  next();
+    next();
+  };
 }
+
+export const requireSameOrigin = createSameOriginGuard();
