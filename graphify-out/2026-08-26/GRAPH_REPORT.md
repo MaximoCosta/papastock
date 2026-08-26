@@ -1,26 +1,26 @@
 # Graph Report - papastock  (2026-08-26)
 
 ## Corpus Check
-- 220 files · ~168,527 words
+- 220 files · ~169,885 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1480 nodes · 3613 edges · 107 communities (90 shown, 17 thin omitted)
+- 1486 nodes · 3650 edges · 98 communities (86 shown, 12 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 30 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `2a528096`
+- Built from commit: `b2a1968e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - papaStockRepository.ts
-- TraceabilityEvent
+- export.ts
 - Lot
 - planillaImport.ts
 - PapaStockRepository
-- apiClient.ts
+- StockIntakeForm.tsx
 - Structured Outputs
 - aiService.ts
 - compilerOptions
@@ -28,41 +28,41 @@
 - public.stock_records
 - LotDetailPage.tsx
 - devDependencies
-- config.ts
-- NewExportPage.tsx
-- dataRepository.ts
+- groqMovementIntent.ts
+- RequirementChecklist.tsx
+- AppDataContext.tsx
 - discrepancyHeuristic.ts
 - dependencies
 - render-deploys.md
 - derivedOperationalFacts.ts
 - app.ts
-- approvedOpeningBalances.postgres.test.ts
+- showcaseDataset.ts
 - Antes de presentar
-- export.ts
-- App.tsx
-- StockPage.tsx
-- createApp
-- domain.ts
+- formatKg
+- DemoSessionContext.tsx
+- LotsPage.tsx
+- auth.ts
+- formatters.ts
 - validateExport.ts
 - documentService.ts
-- @types/express
+- apiClient.ts
 - aiOperationsAssistant.ts
 - scripts
 - public.discrepancies
 - package.json
-- groqMovementIntent.ts
+- diagnose-lot-history-groq.ts
 - validate-render.mjs
 - 001_initial_schema.sql
 - vite-env.d.ts
-- ledgerVerifier.ts
+- apiRequest
 - NewExportPage
 - aiOperationsContext.ts
-- ExportForm.tsx
+- MovementsPanel.tsx
 - public.movements
 - public.traceability_events
-- DocumentsPage.tsx
+- PlanillaImportPanel.tsx
 - PapaStock — Project Context
-- aiOperationsFacts.ts
+- formatQuantity
 - public.movements
 - GPT OSS 20B
 - supabase-data-api-exposure.md
@@ -71,7 +71,7 @@
 - Installing Tailwind CSS as a Vite plugin
 - Despliegue en Render
 - PapaStock
-- useAppData
+- App.tsx
 - 14. Datos de demo
 - 5. N03 — Compliance y exportación
 - 11. Heurísticas y fallback
@@ -82,44 +82,35 @@
 - 4. N02 — Discrepancias de stock
 - 9. Infraestructura Render
 - exportService.ts
-- planillaImport.test.ts
-- vite
-- formatQuantity
+- dataRepository.ts
 - StockVerificationForm.tsx
+- StockControlWizard.tsx
+- domain.ts
 - 007_opening_balance.sql
-- movementReception.ts
+- Movement
 - app.test.ts
-- @types/react-dom
+- operationsAssistantService.ts
 - Dataset Showcase
 - groqStructured.ts
-- @types/react
-- migrationRunner.ts
-- AuthService
+- validatePlanillaUpload
+- tailwindcss
+- tsup
 - 008_approved_opening_balances.sql
-- legacyMovementItems.ts
-- migrationCommand.ts
+- QuantityUnit
+- vitest
 - public.movements
 - pool.ts
-- showcaseCommand.ts
-- showcaseDataset.ts
 - stockTransfer.ts
-- openingBalance.postgres.test.ts
-- documentPacking.ts
+- NewExportPage.tsx
 - MissingDataPanel.tsx
 - Sidebar.tsx
-- demoStockPresentation.ts
-- documentService.test.ts
-- migrationRunner.test.ts
-- WarehouseModelPanel
-- ExportForm
-- TransportersPage
 
 ## God Nodes (most connected - your core abstractions)
 1. `formatKg()` - 49 edges
 2. `Lot` - 35 edges
-3. `Movement` - 33 edges
-4. `useAppData()` - 31 edges
-5. `TraceabilityEvent` - 30 edges
+3. `Movement` - 35 edges
+4. `TraceabilityEvent` - 32 edges
+5. `useAppData()` - 31 edges
 6. `StockView` - 29 edges
 7. `buildAiOperationsContext()` - 28 edges
 8. `Button()` - 27 edges
@@ -127,8 +118,6 @@
 10. `PapaStockSnapshot` - 26 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `LegacyMovementMaterialization` --references--> `QuantityUnit`  [EXTRACTED]
-  server/db/legacyMovementItems.ts → src/types/domain.ts
 - `LotStockFact` --references--> `QuantityUnit`  [EXTRACTED]
   server/services/aiOperationsFacts.ts → src/types/domain.ts
 - `DerivedLotStockFact` --references--> `QuantityUnit`  [EXTRACTED]
@@ -137,127 +126,133 @@
   server/services/derivedOperationalFacts.ts → src/types/domain.ts
 - `DerivedTraceabilityFact` --references--> `QuantityUnit`  [EXTRACTED]
   server/services/derivedOperationalFacts.ts → src/types/domain.ts
+- `parsedIntentSchema` --calls--> `expandLegacyIntent()`  [EXTRACTED]
+  server/services/groqMovementIntent.ts → src/lib/movements.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (107 total, 17 thin omitted)
+## Communities (98 total, 12 thin omitted)
 
 ### Community 0 - "papaStockRepository.ts"
-Cohesion: 0.20
-Nodes (22): mapTraceabilityEvent(), getStockStatus(), getStockViews(), DiscrepancyRow, Json, LocationRow, LotRow, MovementItemRow (+14 more)
+Cohesion: 0.12
+Nodes (33): mapDiscrepancy(), mapLocation(), mapLot(), mapMovement(), mapMovementItem(), mapShelf(), mapShelfUnit(), mapStockCount() (+25 more)
 
-### Community 1 - "TraceabilityEvent"
-Cohesion: 0.16
-Nodes (9): initialTraceabilityEvents, lot, ExportDocumentContext, DocumentSnapshotInput, ExportReadinessInput, TraceabilityEvent, ExportOperation, ExportValidationInput (+1 more)
+### Community 1 - "export.ts"
+Cohesion: 0.10
+Nodes (23): DocumentService, CreateGeneratedDocumentRequest, DocumentCommercialFields, DocumentSnapshotRequirement, DocumentSnapshotTraceability, DocumentType, ExportLotLine, ExportOperationResponse (+15 more)
 
 ### Community 2 - "Lot"
-Cohesion: 0.32
-Nodes (9): MovementContext, StockCountPlan, snapshot, PapaStockSnapshot, NormalizedSnapshot, Location, Lot, StockCount (+1 more)
+Cohesion: 0.21
+Nodes (17): DiscrepancyInput, MovementContext, LotCorrectionPlan, StockCountPlan, PapaStockSnapshot, NormalizedSnapshot, AppDataContextValue, Location (+9 more)
 
 ### Community 3 - "planillaImport.ts"
-Cohesion: 0.09
-Nodes (50): readWorkbookUpload(), buildPlanillaImportFromFile(), buildPlanillaImportPlan(), buildStockIntakePlan(), cellAt(), cellText(), columnIndex(), defaultDestination() (+42 more)
+Cohesion: 0.11
+Nodes (41): buildPlanillaImportPlan(), buildStockIntakePlan(), cellAt(), cellText(), columnIndex(), defaultDestination(), defaultOrigin(), excelSerialToDate() (+33 more)
 
 ### Community 4 - "PapaStockRepository"
-Cohesion: 0.13
-Nodes (14): mapDiscrepancy(), mapLocation(), mapLot(), mapMovement(), mapMovementItem(), mapShelf(), mapShelfUnit(), mapStockCount() (+6 more)
+Cohesion: 0.22
+Nodes (3): PapaStockRepository, PlanillaImportResult, TransporterInput
 
-### Community 5 - "apiClient.ts"
-Cohesion: 0.05
-Nodes (64): PlanillaImportPanel(), confirm(), onFile(), CALIBERS, CATEGORIES, emptyForm, optionalNumber(), PLANILLA_DESTINATIONS (+56 more)
+### Community 5 - "StockIntakeForm.tsx"
+Cohesion: 0.15
+Nodes (14): CALIBERS, CATEGORIES, emptyForm, optionalNumber(), PLANILLA_DESTINATIONS, PLANILLA_ORIGINS, StockIntakeForm(), confirm() (+6 more)
 
 ### Community 6 - "Structured Outputs"
 Cohesion: 0.06
 Nodes (31): [API Integration](https://console.groq.com/docs/structured-outputs\#api-integration), [API Response Validation](https://console.groq.com/docs/structured-outputs\#api-response-validation), [Best-effort Mode (`strict: false`)](https://console.groq.com/docs/structured-outputs\#besteffort-mode-strict-false), [Best Practices](https://console.groq.com/docs/structured-outputs\#best-practices), [Choosing Between Strict and Best-effort Mode](https://console.groq.com/docs/structured-outputs\#choosing-between-strict-and-besteffort-mode), [Email Classification](https://console.groq.com/docs/structured-outputs\#email-classification), [Error Handling](https://console.groq.com/docs/structured-outputs\#error-handling), [Examples](https://console.groq.com/docs/structured-outputs\#examples) (+23 more)
 
 ### Community 7 - "aiService.ts"
-Cohesion: 0.13
-Nodes (12): DiscrepancyInput, hardcodedDiscrepancyAnalysis(), kg(), aiService, httpAIService, localTraceabilityFallback(), monthNumbers, parseDate() (+4 more)
+Cohesion: 0.12
+Nodes (14): hardcodedDiscrepancyAnalysis(), kg(), aiService, httpAIService, localTraceabilityFallback(), monthNumbers, parseDate(), parseProduct() (+6 more)
 
 ### Community 8 - "compilerOptions"
 Cohesion: 0.07
 Nodes (27): DOM, DOM.Iterable, ES2022, node, server, src, vite/client, vite.config.ts (+19 more)
 
 ### Community 11 - "LotDetailPage.tsx"
-Cohesion: 0.10
-Nodes (26): MovementList(), eventLabels, getDetail(), TraceabilityTimeline(), MovementReceptionForm(), submit(), formatCompactDate(), buildLotHistory() (+18 more)
+Cohesion: 0.13
+Nodes (16): eventLabels, getDetail(), TraceabilityTimeline(), DiscrepancyPanel(), formatCompactDate(), buildLotHistory(), locationName(), DispatchValidationInput (+8 more)
 
 ### Community 12 - "devDependencies"
-Cohesion: 0.10
-Nodes (21): devDependencies, supertest, tailwindcss, @tailwindcss/vite, tsup, @types/pg, @types/supertest, typescript (+13 more)
+Cohesion: 0.09
+Nodes (23): devDependencies, supertest, @tailwindcss/vite, @types/express, @types/pg, @types/react, @types/react-dom, @types/supertest (+15 more)
 
-### Community 13 - "config.ts"
-Cohesion: 0.19
-Nodes (10): assertProductionServerConfig(), config, DEFAULT_ALLOWED_ORIGINS, groqRuntimeStatus(), PapaStockConfig, parseAllowedOrigins(), pool, app (+2 more)
-
-### Community 14 - "NewExportPage.tsx"
-Cohesion: 0.20
-Nodes (10): MissingDataPanel(), groupByLot(), originLabel(), RequirementChecklist(), DEFAULT_COMMERCIAL, DEFAULT_PACKING, DESTINATION_DEFAULTS, DestinationCommercialDefaults (+2 more)
-
-### Community 15 - "dataRepository.ts"
+### Community 13 - "groqMovementIntent.ts"
 Cohesion: 0.18
-Nodes (12): isExplicitMockMode(), shelfUnits, shelves, transporters, emptySnapshot(), errorMessage(), isSnapshot(), loadPapaStockSnapshot() (+4 more)
+Nodes (15): collectItems(), jsonSchema, locationIndex(), matchLocations(), movementItemSchema, normalize(), parsedIntentSchema, ParserOptions (+7 more)
+
+### Community 14 - "RequirementChecklist.tsx"
+Cohesion: 0.38
+Nodes (5): groupByLot(), originLabel(), RequirementChecklist(), AnalysisEngine, RequirementResult
+
+### Community 15 - "AppDataContext.tsx"
+Cohesion: 0.28
+Nodes (12): isExplicitMockMode(), insertTraceabilityEvent(), apiRequestVoid(), assignStockToShelfRemote(), createShelfUnit(), createTransporter(), deleteShelfUnitRemote(), updateTransporterRemote() (+4 more)
 
 ### Community 16 - "discrepancyHeuristic.ts"
-Cohesion: 0.16
-Nodes (15): AppDependencies, analyzeWithHeuristic(), byRecent(), hypothesis(), movementEvidence(), analysisSchema, AnalyzerOptions, createDiscrepancyAnalyzer() (+7 more)
+Cohesion: 0.18
+Nodes (14): analyzeWithHeuristic(), byRecent(), hypothesis(), movementEvidence(), analysisSchema, AnalyzerOptions, createDiscrepancyAnalyzer(), jsonSchema (+6 more)
 
 ### Community 17 - "dependencies"
-Cohesion: 0.11
-Nodes (19): express, lucide-react, dependencies, express, lucide-react, pg, react, react-dom (+11 more)
+Cohesion: 0.10
+Nodes (21): express, http-proxy-middleware, lucide-react, dependencies, express, http-proxy-middleware, lucide-react, pg (+13 more)
 
 ### Community 18 - "render-deploys.md"
 Cohesion: 0.07
 Nodes (27): Automatic deploys, Build command, Canceling a deploy, Configuring auto-deploys, Deploy steps, Deploying a specific commit, [Deploying on Render](https://render.com/docs/deploys), Deployment concepts (+19 more)
 
 ### Community 19 - "derivedOperationalFacts.ts"
-Cohesion: 0.08
-Nodes (29): buildDerivedOperationalFacts(), buildLedgerFacts(), buildMovementFacts(), buildStockFacts(), buildTemporalFacts(), buildTraceabilityFacts(), DerivedFactsMovementInput, DerivedFactsMovementItemInput (+21 more)
+Cohesion: 0.05
+Nodes (44): CanonicalLotStockSource, LotStockFactSource, buildDerivedOperationalFacts(), buildLedgerFacts(), buildMovementFacts(), buildStockFacts(), buildTemporalFacts(), buildTraceabilityFacts() (+36 more)
 
 ### Community 20 - "app.ts"
-Cohesion: 0.09
-Nodes (20): correctionSchema, discrepancyInputSchema, exportRequirementsInputSchema, idempotencyKeySchema, identifier, loginSchema, movementIntentSchema, movementItemInputSchema (+12 more)
+Cohesion: 0.08
+Nodes (23): correctionSchema, createApp(), discrepancyInputSchema, exportRequirementsInputSchema, idempotencyKeySchema, identifier, loginSchema, movementIntentSchema (+15 more)
 
-### Community 21 - "approvedOpeningBalances.postgres.test.ts"
-Cohesion: 0.19
-Nodes (9): loadLedgerVerifierInput(), QueryClient, verifyLedgerReadOnly(), verifyLedgerWithClient(), audit(), manifestPath, migrationsDirectory, root (+1 more)
+### Community 21 - "showcaseDataset.ts"
+Cohesion: 0.05
+Nodes (41): loadLedgerVerifierInput(), QueryClient, verifyLedgerReadOnly(), verifyLedgerWithClient(), repositoryRoot, loadConfiguredDatabase(), MigrationCommandOptions, MigrationDatabase (+33 more)
 
 ### Community 22 - "Antes de presentar"
-Cohesion: 0.08
-Nodes (25): 1. Despertar el servicio, 2. Comprobar `/health`, 3. Comprobar la base de datos, 4. Comprobar que la UI no está en mock, 5. Comprobar Groq, 6. Comprobar los datos de A-204, 7. Comprobar el estado de A-310, Antes de presentar (+17 more)
+Cohesion: 0.07
+Nodes (26): 1. Despertar el servicio, 2. Comprobar `/health`, 3. Comprobar la base de datos, 4. Comprobar que la UI no está en mock, 5. Comprobar Groq, 6. Comprobar los datos de A-204, 7. Comprobar el estado de A-310, Antes de presentar (+18 more)
 
-### Community 23 - "export.ts"
-Cohesion: 0.06
-Nodes (58): StatCard(), useCountUp(), tick(), DocumentArticle(), DocumentFooter(), DocumentLetterhead(), DocumentProvenance(), CommercialTerms() (+50 more)
-
-### Community 24 - "App.tsx"
-Cohesion: 0.20
-Nodes (11): App(), AppLayout(), sectionTitles, Topbar(), LoginPage(), DemoSession, isDemoSession(), DemoSessionContext (+3 more)
-
-### Community 25 - "StockPage.tsx"
+### Community 23 - "formatKg"
 Cohesion: 0.17
-Nodes (12): PaginationBar(), LotHeader(), labels, StockStatusBadge(), LIST_PAGE_SIZE, PageWindow, paginate(), visiblePages() (+4 more)
+Nodes (28): DocumentArticle(), DocumentFooter(), DocumentLetterhead(), DocumentProvenance(), CommercialTerms(), DocumentItemsTable(), DocumentNotice(), fallbackItems() (+20 more)
 
-### Community 26 - "createApp"
-Cohesion: 0.16
-Nodes (13): createApp(), AuthIdentity, AuthOptions, cookieValue(), createSameOriginGuard(), hashPassword(), isTrustedMutationOrigin(), Permission (+5 more)
-
-### Community 27 - "domain.ts"
+### Community 24 - "DemoSessionContext.tsx"
 Cohesion: 0.20
-Nodes (16): ShelfGrid(), WizardStep, DataSource, stock, AddShelfUnitInput, AppDataContext, AppDataContextValue, PlanillaSheetSummary (+8 more)
+Nodes (10): App(), sectionTitles, Topbar(), LoginPage(), DemoSession, isDemoSession(), DemoSessionContext, DemoSessionContextValue (+2 more)
+
+### Community 25 - "LotsPage.tsx"
+Cohesion: 0.35
+Nodes (6): PaginationBar(), LIST_PAGE_SIZE, PageWindow, paginate(), visiblePages(), LotsPage()
+
+### Community 26 - "auth.ts"
+Cohesion: 0.12
+Nodes (15): AuthIdentity, AuthOptions, AuthService, cookieValue(), createSameOriginGuard(), hashPassword(), isTrustedMutationOrigin(), passwordParts() (+7 more)
+
+### Community 27 - "formatters.ts"
+Cohesion: 0.19
+Nodes (11): StatCard(), useCountUp(), tick(), LocationsPanel(), ShelfGrid(), compactDateFormatter, currencyFormatter, formatNumber() (+3 more)
 
 ### Community 28 - "validateExport.ts"
-Cohesion: 0.33
-Nodes (14): eventData(), eventLotId(), eventType(), formatEventDate(), getFieldSource(), getFieldValue(), latestTreatment(), readTreatmentProduct() (+6 more)
+Cohesion: 0.37
+Nodes (13): eventData(), eventLotId(), eventType(), formatEventDate(), getFieldSource(), getFieldValue(), latestTreatment(), readTreatmentProduct() (+5 more)
 
 ### Community 29 - "documentService.ts"
 Cohesion: 0.18
-Nodes (14): PAPASUD_EXPORTER, generateRemito(), buildExportDocumentItems(), buildExportItems(), commercialFrom(), latestEvent(), loadStoredDocuments(), lotById() (+6 more)
+Nodes (16): addUtcDays(), buildExportDocumentItems(), buildExportItems(), commercialFrom(), ExportDocumentContext, latestEvent(), lotById(), qualityLabel() (+8 more)
+
+### Community 30 - "apiClient.ts"
+Cohesion: 0.21
+Nodes (15): apiFetch(), ApiRequestOptions, apiUrl(), asId(), asNumber(), asRecord(), asText(), normalizeDiscrepancyAnalysis() (+7 more)
 
 ### Community 31 - "aiOperationsAssistant.ts"
-Cohesion: 0.10
-Nodes (25): AiOperationsOptions, attachEvidenceLabels(), canonicalEntities(), controlledRateLimitError(), controlledRequestTooLargeError(), createAiOperationsAssistant(), GLOBAL_AUTHORITY_CLAIMS, heuristicFallbackReason() (+17 more)
+Cohesion: 0.11
+Nodes (24): AiOperationsOptions, attachEvidenceLabels(), canonicalEntities(), controlledRateLimitError(), controlledRequestTooLargeError(), createAiOperationsAssistant(), GLOBAL_AUTHORITY_CLAIMS, heuristicFallbackReason() (+16 more)
 
 ### Community 32 - "scripts"
 Cohesion: 0.18
@@ -271,9 +266,9 @@ Nodes (7): public.discrepancies, public.movement_items, public.stock_counts, pub
 Cohesion: 0.25
 Nodes (7): name, overrides, tsup, private, esbuild, type, version
 
-### Community 35 - "groqMovementIntent.ts"
-Cohesion: 0.07
-Nodes (49): apiKey(), captureN01Schema(), clonePayload(), main(), minimalStrictSchema(), postGroq(), SafeGroqResult, syntheticLotHistoryUser() (+41 more)
+### Community 35 - "diagnose-lot-history-groq.ts"
+Cohesion: 0.11
+Nodes (33): apiKey(), captureN01Schema(), clonePayload(), main(), minimalStrictSchema(), postGroq(), SafeGroqResult, syntheticLotHistoryUser() (+25 more)
 
 ### Community 36 - "validate-render.mjs"
 Cohesion: 0.40
@@ -283,33 +278,33 @@ Nodes (3): blueprint, database, web
 Cohesion: 0.50
 Nodes (3): public.locations, public.lots, public
 
-### Community 39 - "ledgerVerifier.ts"
-Cohesion: 0.13
-Nodes (15): coordinateKey(), LedgerBlockingCode, LedgerBlockingIssue, LedgerMovementInput, LedgerMovementItemInput, LedgerRecommendedAction, LedgerStockInput, LedgerUnit (+7 more)
+### Community 39 - "apiRequest"
+Cohesion: 0.22
+Nodes (14): submit(), NewMovementPage(), analyzeOrder(), persistMovement(), apiRequest(), asValidationErrors(), movementIntentBody(), normalizeTransferPreview() (+6 more)
 
 ### Community 40 - "NewExportPage"
 Cohesion: 0.31
 Nodes (10): NewExportPage(), analyze(), applyDestination(), buildContext(), confirmTraceability(), emit(), evaluate(), logistics() (+2 more)
 
 ### Community 41 - "aiOperationsContext.ts"
-Cohesion: 0.13
-Nodes (21): showcaseManifest, operationsAnswerSchema, AiOperationsIntent, assertWithinLimit(), buildAiOperationsContext(), byId(), classifyIntent(), containsEntity() (+13 more)
+Cohesion: 0.19
+Nodes (15): AiOperationsContext, AiOperationsIntent, assertWithinLimit(), buildAiOperationsContext(), byId(), classifyIntent(), containsEntity(), CONTEXT_LIMITS (+7 more)
 
-### Community 42 - "ExportForm.tsx"
-Cohesion: 0.17
-Nodes (11): LoadingLabel(), icons, StatusBadge(), StatusTone, toneClasses, ExportCommercialValues, DiscrepancyPanel(), MovementsPanel() (+3 more)
+### Community 42 - "MovementsPanel.tsx"
+Cohesion: 0.18
+Nodes (9): icons, StatusBadge(), StatusTone, toneClasses, MovementsPanel(), statusMeta(), TransporterProfileCard(), emptyForm (+1 more)
 
-### Community 48 - "DocumentsPage.tsx"
-Cohesion: 0.31
-Nodes (6): EmptyState(), DocumentsPage(), filters, summarize(), typeMeta, NotFoundPage()
+### Community 48 - "PlanillaImportPanel.tsx"
+Cohesion: 0.33
+Nodes (8): PlanillaImportPanel(), confirm(), onFile(), confirmPlanillaImport(), previewPlanillaImport(), uploadHeaders(), PlanillaImportConfirmation, PlanillaImportPreview
 
 ### Community 49 - "PapaStock — Project Context"
 Cohesion: 0.12
 Nodes (16): 10. Groq, 12. Fuente de datos, 15. Funcionalidades actuales, 17. Seguridad, 18. UI, 19. Testing, 1. Hackathon, 20. Pendientes (+8 more)
 
-### Community 51 - "aiOperationsFacts.ts"
-Cohesion: 0.17
-Nodes (14): AiOperationsContext, buildCanonicalLotStockAnswer(), buildLotStockFacts(), CanonicalLotStockSource, factSentence(), LotStockFact, LotStockFactSource, LotStockLocationFact (+6 more)
+### Community 51 - "formatQuantity"
+Cohesion: 0.11
+Nodes (23): buildCanonicalLotStockAnswer(), buildLotStockFacts(), factSentence(), LotStockFact, LotStockLocationFact, snapshot, buildHeuristicOperationsAnswer(), entitiesFrom() (+15 more)
 
 ### Community 54 - "GPT OSS 20B"
 Cohesion: 0.17
@@ -339,9 +334,9 @@ Nodes (7): Acceso operativo, Alta, Despliegue en Render, Limitaciones deliberada
 Cohesion: 0.25
 Nodes (7): Arquitectura, Comandos, Desarrollo, Estructura, Movimiento por texto (N01), PapaStock, Persistencia actual
 
-### Community 61 - "useAppData"
-Cohesion: 0.20
-Nodes (14): Button(), ButtonVariant, variants, PageHeader(), DashboardPage(), QuickAccessItem, LocationsPage(), MovementsPage() (+6 more)
+### Community 61 - "App.tsx"
+Cohesion: 0.11
+Nodes (26): Button(), ButtonVariant, variants, EmptyState(), PageHeader(), AppLayout(), Sidebar(), occupiedKg() (+18 more)
 
 ### Community 62 - "14. Datos de demo"
 Cohesion: 0.33
@@ -376,32 +371,40 @@ Cohesion: 0.50
 Nodes (4): 9. Infraestructura Render, Configuración del Blueprint (`render.yaml`), ⚠️ Discrepancia de planes — pendiente, no aplicar el Blueprint a ciegas, Recursos
 
 ### Community 71 - "exportService.ts"
-Cohesion: 0.15
-Nodes (12): baseFields, exportRequirements, analyzeExportReadiness(), ExportLogistics, toExportRequirements(), VALIDATABLE_FIELDS, AiExportRequirement, CreateExportOperationRequest (+4 more)
+Cohesion: 0.16
+Nodes (12): baseFields, exportRequirements, analyzeExportReadiness(), ExportLogistics, ExportReadinessInput, summarizeEvent(), toExportRequirements(), VALIDATABLE_FIELDS (+4 more)
 
-### Community 72 - "planillaImport.test.ts"
-Cohesion: 0.27
-Nodes (5): locations, lots, movements, stockRecords, records
+### Community 72 - "dataRepository.ts"
+Cohesion: 0.08
+Nodes (35): locations, lots, movements, shelfUnits, shelves, stockRecords, initialTraceabilityEvents, transporters (+27 more)
 
-### Community 74 - "formatQuantity"
-Cohesion: 0.25
-Nodes (12): StockTable(), VarietyStockPanel(), formatQuantity(), QUANTITY_UNITS, stockUnit(), unitLabel(), aggregateStockByVarietyLocationUnit(), VarietyLocationTotal (+4 more)
+### Community 73 - "StockVerificationForm.tsx"
+Cohesion: 0.28
+Nodes (4): StockVerificationForm(), confirm(), todayIso(), confirmStockVerification()
 
-### Community 78 - "StockVerificationForm.tsx"
-Cohesion: 0.19
-Nodes (10): StockVerificationForm(), confirm(), todayIso(), buildStockVerificationPreview(), issue(), toStockVerificationConfirmation(), confirmStockVerification(), StockVerificationConfirmation (+2 more)
+### Community 74 - "StockControlWizard.tsx"
+Cohesion: 0.14
+Nodes (11): LotHeader(), StockControlWizard(), WizardStep, labels, StockStatusBadge(), StockTable(), formatSignedKg(), getStockAlert() (+3 more)
+
+### Community 78 - "domain.ts"
+Cohesion: 0.23
+Nodes (11): buildStockVerificationPreview(), issue(), toStockVerificationConfirmation(), PlanillaSheetSummary, ShelfUnitInput, StockTransferLinePreview, StockTransferPreview, StockVerificationConfirmation (+3 more)
 
 ### Community 79 - "007_opening_balance.sql"
 Cohesion: 0.25
 Nodes (8): movement_items_keep_opening_balance_nonempty, movements_opening_balance_has_items, public.assert_opening_balance_has_items(), public.assert_opening_balance_movement_has_items(), public.movements, public.assert_opening_balance_has_items, public.assert_opening_balance_movement_has_items, public.movement_items
 
-### Community 80 - "movementReception.ts"
-Cohesion: 0.25
-Nodes (11): buildLotCorrectionPlan(), LotCorrectionPlan, buildReceptionPlan(), receptionPayloadFingerprint(), ReceptionPlan, movement, Discrepancy, LotReallocationInput (+3 more)
+### Community 80 - "Movement"
+Cohesion: 0.15
+Nodes (18): buildLotCorrectionPlan(), buildReceptionPlan(), receptionPayloadFingerprint(), ReceptionPlan, movement, fixtureAudit(), MovementList(), MovementReceptionForm() (+10 more)
 
 ### Community 81 - "app.test.ts"
-Cohesion: 0.17
-Nodes (9): analyze, answerOperationsQuestion, app, auth, parseExportRequirements, parseMovementIntent, parseTraceabilityIntent, repository (+1 more)
+Cohesion: 0.12
+Nodes (15): analyze, answerOperationsQuestion, app, auth, parseExportRequirements, parseMovementIntent, parseTraceabilityIntent, repository (+7 more)
+
+### Community 82 - "operationsAssistantService.ts"
+Cohesion: 0.53
+Nodes (4): OperationsAssistantPage(), submit(), askOperationsAssistant(), loadOperationsAssistantStatus()
 
 ### Community 83 - "Dataset Showcase"
 Cohesion: 0.33
@@ -409,83 +412,55 @@ Nodes (5): Balance final reconstruible, Dataset Showcase, Ejecución segura, Sec
 
 ### Community 84 - "groqStructured.ts"
 Cohesion: 0.06
-Nodes (41): requestWithSingleRateLimitRetry(), canonicalLabels, createExportRequirementsParser(), ExportRequirementsInput, jsonSchema, keywords, parseRequirementsWithHeuristic(), requirementsSchema (+33 more)
+Nodes (42): AppDependencies, requestWithSingleRateLimitRetry(), canonicalLabels, createExportRequirementsParser(), ExportRequirementsInput, jsonSchema, keywords, parseRequirementsWithHeuristic() (+34 more)
 
-### Community 87 - "AuthService"
-Cohesion: 0.24
-Nodes (4): AuthService, passwordParts(), tokenFingerprint(), verifyPassword()
+### Community 85 - "validatePlanillaUpload"
+Cohesion: 0.50
+Nodes (4): readWorkbookUpload(), fileExtension(), hasPrefix(), validatePlanillaUpload()
 
-### Community 89 - "legacyMovementItems.ts"
-Cohesion: 0.24
-Nodes (8): inferUnit(), jsonObject(), LegacyMovementMaterialization, LegacyMovementPlan, materializeLegacyMovementItemsInTestDatabase(), planLegacyMovementItems(), UnsupportedLegacyMovement, validUnit()
-
-### Community 90 - "migrationCommand.ts"
-Cohesion: 0.27
-Nodes (8): repositoryRoot, MigrationCommandOptions, MigrationDatabase, ParsedMigrationCommand, parseMigrationCommandArgs(), runMigrationCommand(), MigrationSelection, parseMigrationArgs()
+### Community 89 - "QuantityUnit"
+Cohesion: 0.18
+Nodes (13): inferUnit(), jsonObject(), LegacyMovementMaterialization, LegacyMovementPlan, materializeLegacyMovementItemsInTestDatabase(), planLegacyMovementItems(), UnsupportedLegacyMovement, validUnit() (+5 more)
 
 ### Community 93 - "pool.ts"
-Cohesion: 0.31
-Nodes (7): loadConfiguredDatabase(), checkDatabaseReadiness(), requirePool(), verifyDatabaseConnection(), verifyDatabaseReadiness(), database, repositoryRoot
-
-### Community 94 - "showcaseCommand.ts"
-Cohesion: 0.31
-Nodes (6): loadConfiguredDatabase(), parseShowcaseCommandArgs(), runShowcaseCommand(), ShowcaseCommandOptions, ShowcaseDatabase, ShowcaseDatasetResult
-
-### Community 95 - "showcaseDataset.ts"
-Cohesion: 0.36
-Nodes (9): applyShowcaseDataset(), assertDomainPlans(), assertExact(), assertLocations(), canonical(), insertManifest(), QueryClient, readCurrent() (+1 more)
+Cohesion: 0.14
+Nodes (10): checkDatabaseReadiness(), pool, requirePool(), verifyDatabaseConnection(), verifyDatabaseReadiness(), database, repositoryRoot, app (+2 more)
 
 ### Community 96 - "stockTransfer.ts"
-Cohesion: 0.39
-Nodes (8): buildStockCountPlan(), buildStockTransferPreview(), cloneStock(), emptyStock(), normalize(), recordMatchesUnit(), stockKey(), StockTransferLinePreview
+Cohesion: 0.23
+Nodes (12): buildStockCountPlan(), buildStockTransferPreview(), cloneStock(), emptyStock(), normalize(), snapshot, expandLegacyIntent(), recordMatchesUnit() (+4 more)
 
-### Community 97 - "openingBalance.postgres.test.ts"
-Cohesion: 0.32
-Nodes (5): insertOpeningHeader(), insertOpeningItem(), insertValidOpeningBalance(), migrationsDirectory, OpeningHeaderOptions
-
-### Community 98 - "documentPacking.ts"
-Cohesion: 0.39
-Nodes (6): addUtcDays(), DerivedPacking, derivePacking(), shippingMarks(), buildDocumentSnapshot(), summarizeEvent()
+### Community 98 - "NewExportPage.tsx"
+Cohesion: 0.19
+Nodes (13): ExportCommercialValues, ExportForm(), changeLot(), updateLine(), DEFAULT_COMMERCIAL, DEFAULT_PACKING, DESTINATION_DEFAULTS, DestinationCommercialDefaults (+5 more)
 
 ### Community 99 - "MissingDataPanel.tsx"
-Cohesion: 0.48
-Nodes (4): ConfirmDialog(), engineLabel(), ConfirmedTraceabilityEvent, ParsedTraceabilityEvent
+Cohesion: 0.31
+Nodes (6): ConfirmDialog(), engineLabel(), LoadingLabel(), MissingDataPanel(), ConfirmedTraceabilityEvent, ParsedTraceabilityEvent
 
 ### Community 100 - "Sidebar.tsx"
-Cohesion: 0.29
-Nodes (5): inventory, NavItem, operations, overview, Sidebar()
-
-### Community 101 - "demoStockPresentation.ts"
-Cohesion: 0.47
-Nodes (5): GAPS, isDiscrepancy(), lotCodeById(), presentStockForOralDemo(), PRESERVED_DISCREPANCIES
-
-### Community 102 - "documentService.test.ts"
-Cohesion: 0.40
-Nodes (5): mockDocumentService, a310, h118, operationFor(), buildExportOperation()
-
-### Community 105 - "ExportForm"
-Cohesion: 0.67
-Nodes (3): ExportForm(), changeLot(), updateLine()
+Cohesion: 0.33
+Nodes (4): inventory, NavItem, operations, overview
 
 ## Knowledge Gaps
-- **427 isolated node(s):** `public.locations`, `h4b_expected_movements`, `h4b_expected_items`, `name`, `private` (+422 more)
+- **429 isolated node(s):** `public.locations`, `h4b_expected_movements`, `h4b_expected_items`, `name`, `private` (+424 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **17 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **12 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Lot` connect `Lot` to `papaStockRepository.ts`, `TraceabilityEvent`, `planillaImport.ts`, `apiClient.ts`, `LotDetailPage.tsx`, `NewExportPage.tsx`, `dataRepository.ts`, `export.ts`, `StockPage.tsx`, `domain.ts`, `validateExport.ts`, `documentService.ts`, `groqMovementIntent.ts`, `ExportForm.tsx`, `exportService.ts`, `planillaImport.test.ts`, `movementReception.ts`, `showcaseDataset.ts`, `demoStockPresentation.ts`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
-- **Why does `buildAiOperationsContext()` connect `aiOperationsContext.ts` to `TraceabilityEvent`, `groqMovementIntent.ts`, `ledgerVerifier.ts`, `formatQuantity`, `derivedOperationalFacts.ts`, `app.ts`, `aiOperationsFacts.ts`, `migrationRunner.ts`, `createApp`, `aiOperationsAssistant.ts`?**
-  _High betweenness centrality (0.019) - this node is a cross-community bridge._
-- **Why does `formatKg()` connect `export.ts` to `apiClient.ts`, `WarehouseModelPanel`, `ExportForm`, `ExportForm.tsx`, `LotDetailPage.tsx`, `TransportersPage`, `StockVerificationForm.tsx`, `DocumentsPage.tsx`, `domain.ts`, `validateExport.ts`, `useAppData`?**
-  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+- **Why does `Lot` connect `Lot` to `papaStockRepository.ts`, `export.ts`, `NewExportPage.tsx`, `planillaImport.ts`, `exportService.ts`, `dataRepository.ts`, `StockControlWizard.tsx`, `MovementsPanel.tsx`, `groqMovementIntent.ts`, `RequirementChecklist.tsx`, `AppDataContext.tsx`, `Movement`, `domain.ts`, `showcaseDataset.ts`, `formatKg`, `validateExport.ts`, `documentService.ts`, `apiClient.ts`?**
+  _High betweenness centrality (0.017) - this node is a cross-community bridge._
+- **Why does `runMigrations()` connect `showcaseDataset.ts` to `pool.ts`?**
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
+- **Why does `buildAiOperationsContext()` connect `aiOperationsContext.ts` to `stockTransfer.ts`, `diagnose-lot-history-groq.ts`, `Movement`, `derivedOperationalFacts.ts`, `app.ts`, `showcaseDataset.ts`, `formatQuantity`, `aiOperationsAssistant.ts`?**
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **What connects `public.locations`, `h4b_expected_movements`, `h4b_expected_items` to the rest of the system?**
-  _427 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _429 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `papaStockRepository.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.11738648947951273 - nodes in this community are weakly interconnected._
+- **Should `export.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.10344827586206896 - nodes in this community are weakly interconnected._
 - **Should `planillaImport.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.0889894419306184 - nodes in this community are weakly interconnected._
-- **Should `PapaStockRepository` be split into smaller, more focused modules?**
-  _Cohesion score 0.13230769230769232 - nodes in this community are weakly interconnected._
-- **Should `apiClient.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.052160493827160495 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.11149825783972125 - nodes in this community are weakly interconnected._
