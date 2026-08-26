@@ -180,9 +180,36 @@ export async function requestStructuredOutput(
     const envelope = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = envelope.choices?.[0]?.message?.content;
     if (!content) throw new Error('Groq no devolvió contenido.');
-    return JSON.parse(content);
+    return parseStructuredContent(content);
+  } catch (error) {
+    if (
+      !(error instanceof GroqHttpError)
+      && !(error instanceof GroqRequestBodyLimitError)
+      && (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError'))
+    ) {
+      throw new Error(`Groq superó el timeout de ${options.timeoutMs} ms.`);
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/** Parsea el JSON del modelo; acepta fences markdown si el schema estricto no se respetó. */
+export function parseStructuredContent(content: string): unknown {
+  const trimmed = content.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced?.[1]) {
+      try {
+        return JSON.parse(fenced[1].trim());
+      } catch {
+        throw new Error('Groq no devolvió JSON válido.');
+      }
+    }
+    throw new Error('Groq no devolvió JSON válido.');
   }
 }
 

@@ -55,6 +55,8 @@ Luego verificar en UI:
   `--only <archivo>` sólo acepta la próxima migración pendiente y nunca salta dependencias.
 - Seed/reseed: `npm run db:seed`, manual e idempotente.
 - Secretos: rotar las claves desde Environment; no usar variables `VITE_*` para secretos.
+  `GROQ_API_KEY` tiene que estar en el Web Service `papastock`, no en el frontend ni en Netlify.
+  `GET /api/ai/status` confirma si Express la tiene (`groqConfigured`) sin devolver la clave.
 - Rollback de aplicación: desplegar un commit anterior. No revertir esquema automáticamente; crear una nueva migración correctiva.
 - Logs: buscar prefijos `[database]`, `[api]` y `[ai]`. Los fallos Groq producen análisis heurístico, no caída de la ruta.
 - Base: `ipAllowList: []` evita acceso externo; usar Render Shell para tareas administrativas.

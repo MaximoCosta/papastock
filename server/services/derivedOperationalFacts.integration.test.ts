@@ -108,12 +108,12 @@ describe('derived facts en el contexto LOT_HISTORY · SHOW-001', () => {
     '¿Qué pasó con SHOW-001?', showcaseOperationsSnapshot(), '2026-08-24T12:00:00.000Z',
   );
 
-  it('adjunta hechos derivados sólo en LOT_HISTORY', () => {
+  it('adjunta hechos derivados en LOT_HISTORY y LOT_STOCK', () => {
     expect(context.intent).toBe('LOT_HISTORY');
     expect(context.derivedFacts).not.toBeNull();
     const stock = buildAiOperationsContext('¿Cuánto stock tiene SHOW-001?', showcaseOperationsSnapshot());
     expect(stock.intent).toBe('LOT_STOCK');
-    expect(stock.derivedFacts).toBeNull();
+    expect(stock.derivedFacts?.stock[0]).toMatchObject({ lotCode: 'SHOW-001', declared: 10_250 });
   });
 
   it('reporta el stock canónico -100 kg', () => {

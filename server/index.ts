@@ -31,6 +31,10 @@ if (config.nodeEnv === 'production') {
 
 const server = app.listen(config.port, '0.0.0.0', () => {
   console.log(`PapaStock escuchando en http://0.0.0.0:${config.port}`);
+  console.log(`[ai] Groq ${config.groqApiKey ? 'configurado en Express' : 'ausente (GROQ_API_KEY no está en el proceso; se usará heurística)'}`);
+  if (process.env.VITE_GROQ_API_KEY?.trim()) {
+    console.warn('[ai] VITE_GROQ_API_KEY está definida; Express no la usa y Vite puede haberla metido en el bundle. Usá GROQ_API_KEY en el Web Service de Render y rotá la clave.');
+  }
 });
 
 async function shutdown(signal: string) {

@@ -25,3 +25,8 @@ export interface OperationsAssistantAnswer {
   evidence: OperationsAssistantEvidence[];
   engine?: 'llm' | 'heuristic' | 'deterministic';
 }
+
+export interface OperationsAssistantStatus {
+  groqConfigured: boolean;
+  frontendKeyIgnored: boolean;
+}

@@ -2,6 +2,7 @@ import request from 'supertest';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Express } from 'express';
 import { createApp } from './app';
+import { groqRuntimeStatus } from './config';
 import { AuthService, hashPassword } from './auth';
 
 const TEST_USERNAME = 'operador-test';
@@ -163,6 +164,7 @@ describe('API PapaStock', () => {
     const routes = [
       ['GET', '/api/snapshot'],
       ['GET', '/api/lots/lot'],
+      ['GET', '/api/ai/status'],
       ['POST', '/api/traceability'],
       ['POST', '/api/ai/discrepancy'],
       ['POST', '/api/ai/movement-intent'],
@@ -496,6 +498,12 @@ describe('API PapaStock', () => {
     expect(JSON.stringify(response.body)).not.toContain('Groq');
     expect(JSON.stringify(response.body)).not.toContain('x-request-id');
     expect(JSON.stringify(response.body)).not.toContain('SHOW-001');
+  });
+
+  it('reporta si Groq está en el proceso de Express sin exponer la clave', async () => {
+    const body = (await protectedGet(app, '/api/ai/status').expect(200)).body;
+    expect(body.data).toEqual(groqRuntimeStatus());
+    expect(JSON.stringify(body)).not.toMatch(/gsk_|sk-/);
   });
 
   it('rechaza mutaciones cross-site incluso con sesión y el logout invalida la sesión', async () => {

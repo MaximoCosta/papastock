@@ -13,11 +13,14 @@ import {
   type GroqOptions,
   type StructuredRequest,
 } from './groqStructured';
-import { buildCanonicalLotStockAnswer } from './aiOperationsFacts';
+import { buildLotStockFacts } from './aiOperationsFacts';
+import { formatQuantity } from '../../src/lib/quantity';
 import { buildHeuristicOperationsAnswer, HEURISTIC_WARNING } from './aiOperationsHeuristic';
 
 export { buildAiOperationsContext, measureAiOperationsContext } from './aiOperationsContext';
 export type { AiOperationsContext, AiOperationsIntent } from './aiOperationsContext';
+
+export const MISSING_GROQ_KEY_WARNING = 'Respuesta heurística: GROQ_API_KEY no está en el proceso de Express. Una variable del frontend (VITE_* o Netlify) no llega al servidor. Cargala en Render → papastock → Environment y redesplegá. Los datos salen del snapshot PostgreSQL; no es un dataset mock.';
 
 const CLOSED_WORLD_WARNING = 'El stock operativo persistido es la referencia actual; el historial de movimientos todavía no reconstruye todos los saldos.';
 const GLOBAL_AUTHORITY_CLAIMS = [
@@ -30,6 +33,7 @@ const MATCH_AS_VERIFIED_CLAIMS = [
   /\bdeclarado y (?:el )?verificado coinciden\b/,
 ];
 const LOT_HISTORY_STOCK_GROUNDING = 'Nunca interpretes ledger MATCH como prueba de que el stock declarado y el verificado coinciden. Si declared != verified, mencioná la discrepancia explícitamente. Los valores numéricos calculados por PapaStock son hechos autoritativos.';
+const LOT_STOCK_GROUNDING = 'El stock declarado es la suma canónica de declaredQuantity por lote y unidad (derivedFacts.stock.declared). Nunca presentés el verificado como si fuera el total declarado. Informá ambos cuando difieran. Si hay verificationPending, decilo explícitamente.';
 const DERIVED_FACTS_GROUNDING = 'context.derivedFacts fue calculado determinísticamente por PapaStock y es autoritativo: no lo recalcules ni lo contradigas. Usá los registros crudos sólo para explicar y dar contexto. Un valor null significa desconocido, nunca cero. Diferenciá hechos de inferencias y no afirmes causalidad.';
 const EVIDENCE_RECORD_RULE = 'Cada evidencia debe citar únicamente identificadores presentes en el contexto proporcionado. Nunca inventes recordId. Si la fuente representa un hecho derivado que no tiene un único registro identificable, usa null únicamente cuando el contrato lo permita.';
 
@@ -170,6 +174,16 @@ function validateClosedWorld(answer: OperationsAssistantAnswer, context: AiOpera
   if (!context.ledger.ledgerAuthority && GLOBAL_AUTHORITY_CLAIMS.some((pattern) => pattern.test(normalized))) {
     throw new Error('El modelo afirmó autoridad global inexistente del ledger.');
   }
+  if (context.intent === 'LOT_STOCK') {
+    const facts = buildLotStockFacts(context);
+    for (const fact of facts) {
+      const declared = formatQuantity(fact.totalDeclared, fact.unit)
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      if (!normalized.includes(declared)) {
+        throw new Error('El modelo no respetó el stock declarado canónico.');
+      }
+    }
+  }
   if (context.intent === 'LOT_HISTORY') {
     // Se evalúa sobre los mismos hechos derivados que vio el modelo, sin recalcular.
     const hasDeclaredVerifiedGap = (context.derivedFacts?.stock ?? []).some((fact) => (
@@ -286,34 +300,14 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
     context: AiOperationsContext,
   ): Promise<OperationsAssistantAnswer> {
     const contextMetrics = measureAiOperationsContext(context);
-    if (context.intent === 'LOT_STOCK') {
-      console.info('[ai] métricas de contexto proyectado:', {
-        intent: context.intent,
-        mode: 'deterministic',
-        questionBytes: Buffer.byteLength(question, 'utf8'),
-        contextBytes: contextMetrics.contextBytes,
-        selectedCounts: contextMetrics.counts,
-      });
-      const canonical = validateClosedWorld(
-        withEvidenceLabels(operationsAnswerSchema.parse(buildCanonicalLotStockAnswer(context))),
-        context,
-      );
-      return {
-        ...canonical,
-        engine: 'deterministic',
-        warnings: [
-          'Hecho canónico calculado por PapaStock desde PostgreSQL. No pasó por Groq ni usa datos mock.',
-          ...canonical.warnings,
-        ],
-      };
-    }
-
     const request: StructuredRequest = {
       schemaName: 'papastock_operations_answer',
       jsonSchema,
       system: context.intent === 'LOT_HISTORY'
         ? [...operationsSystemPrompt, LOT_HISTORY_STOCK_GROUNDING, DERIVED_FACTS_GROUNDING]
-        : operationsSystemPrompt,
+        : context.intent === 'LOT_STOCK'
+          ? [...operationsSystemPrompt, LOT_STOCK_GROUNDING, DERIVED_FACTS_GROUNDING]
+          : operationsSystemPrompt,
       user: { question, context },
     };
     const requestMetrics = serializeStructuredRequest(options.model, request).metrics;
@@ -346,16 +340,27 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
       if (error instanceof GroqHttpError) logControlledUpstreamError(error, contextMetrics);
       console.warn('[ai] asistente operativo en heurística:', error instanceof Error ? error.message : 'respuesta inválida');
       const fallback = validateClosedWorld(buildHeuristicOperationsAnswer(context), context);
-      if (error instanceof Error && error.message === 'GROQ_API_KEY ausente.') {
-        return {
-          ...fallback,
-          warnings: [
-            'Respuesta heurística: GROQ_API_KEY no está configurada en el servidor. Los datos salen del snapshot PostgreSQL; no es un dataset mock.',
-            ...fallback.warnings.filter((warning) => warning !== HEURISTIC_WARNING),
-          ],
-        };
-      }
-      return fallback;
+      const reason = heuristicFallbackReason(error);
+      if (!reason) return fallback;
+      return {
+        ...fallback,
+        warnings: [reason, ...fallback.warnings.filter((warning) => warning !== HEURISTIC_WARNING)],
+      };
     }
   };
+}
+
+function heuristicFallbackReason(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  if (error.message === 'GROQ_API_KEY ausente.') return MISSING_GROQ_KEY_WARNING;
+  if (error.message.startsWith('Groq superó el timeout')) {
+    return 'Respuesta heurística: Groq no respondió a tiempo. Los datos salen del snapshot PostgreSQL; no es un dataset mock.';
+  }
+  if (error instanceof GroqHttpError) {
+    return `Respuesta heurística: Groq respondió HTTP ${error.status}. Los datos salen del snapshot PostgreSQL; no es un dataset mock.`;
+  }
+  if (error.message === 'Groq no devolvió JSON válido.' || error.message === 'Groq no devolvió contenido.') {
+    return 'Respuesta heurística: Groq devolvió una respuesta que no se pudo validar. Los datos salen del snapshot PostgreSQL; no es un dataset mock.';
+  }
+  return undefined;
 }

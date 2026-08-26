@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { AuthService, createSameOriginGuard, requireAuthentication, requirePermission } from './auth';
-import { config } from './config';
+import { config, groqRuntimeStatus } from './config';
 import { pool, verifyDatabaseReadiness } from './db/pool';
 import { PapaStockRepository } from './repositories/papaStockRepository';
 import { createDiscrepancyAnalyzer } from './services/groqDiscrepancy';
@@ -334,6 +334,10 @@ export function createApp(dependencies: AppDependencies = {}) {
       const event = traceabilityInputSchema.parse(request.body);
       response.status(201).json({ data: await repository.insertTraceabilityEvent(event) });
     } catch (error) { next(error); }
+  });
+
+  app.get('/api/ai/status', canUseAi, (_request, response) => {
+    response.json({ data: groqRuntimeStatus() });
   });
 
   app.post('/api/ai/discrepancy', canUseAi, async (request, response, next) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertProductionServerConfig, config, parseAllowedOrigins } from './config';
+import { assertProductionServerConfig, config, groqRuntimeStatus, parseAllowedOrigins } from './config';
 
 describe('configuración del servidor productivo', () => {
   it('sigue exigiendo base y credenciales de autenticación al arrancar el web server', () => {
@@ -31,5 +31,18 @@ describe('configuración del servidor productivo', () => {
     ]);
     expect(parseAllowedOrigins('https://preview.example')).toContain('https://preview.example');
     expect(() => parseAllowedOrigins('not-a-url')).toThrow('orígenes absolutos');
+  });
+
+  it('sólo considera GROQ_API_KEY del proceso; VITE_GROQ_API_KEY no configura Groq', () => {
+    expect(groqRuntimeStatus({})).toEqual({ groqConfigured: false, frontendKeyIgnored: false });
+    expect(groqRuntimeStatus({ GROQ_API_KEY: 'gsk_fixture' })).toEqual({
+      groqConfigured: true,
+      frontendKeyIgnored: false,
+    });
+    expect(groqRuntimeStatus({ VITE_GROQ_API_KEY: 'gsk_frontend_fixture' })).toEqual({
+      groqConfigured: false,
+      frontendKeyIgnored: true,
+    });
+    expect(JSON.stringify(groqRuntimeStatus({ VITE_GROQ_API_KEY: 'gsk_frontend_fixture' }))).not.toContain('gsk_');
   });
 });

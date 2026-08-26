@@ -369,7 +369,7 @@ export function buildAiOperationsContext(
       blockingIssues: ledger.blockingIssues.length,
       classificationCounts: ledger.classificationCounts,
     },
-    derivedFacts: intent === 'LOT_HISTORY'
+    derivedFacts: intent === 'LOT_HISTORY' || intent === 'LOT_STOCK'
       ? buildDerivedOperationalFacts({
         lots,
         locations,

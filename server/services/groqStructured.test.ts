@@ -160,4 +160,24 @@ describe('cliente Groq Structured Output', () => {
     expect(JSON.stringify(caught)).not.toContain(reflected);
     expect(JSON.stringify(caught)).not.toContain('secret-fixture');
   });
+
+  it('acepta JSON envuelto en fences markdown', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: '```json\n{"ok":true}\n```' } }],
+    }), { status: 200 })) as unknown as typeof fetch;
+    await expect(requestStructuredOutput({ apiKey: 'fixture', model: 'fixture', timeoutMs: 100, fetchImpl }, request))
+      .resolves.toEqual({ ok: true });
+  });
+
+  it('traduce el abort del timeout a un error explícito', async () => {
+    const fetchImpl = vi.fn(async (_url, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      });
+    })) as unknown as typeof fetch;
+    await expect(requestStructuredOutput({ apiKey: 'fixture', model: 'fixture', timeoutMs: 20, fetchImpl }, request))
+      .rejects.toThrow(/timeout de 20 ms/);
+  });
 });

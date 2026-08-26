@@ -284,8 +284,9 @@ pendiente (§20). Ver `docs/DEMO.md` para la alternativa no destructiva.
   representan asesoramiento regulatorio.
 - `aiService.parseTraceabilityInput` y `aiService.analyzeRequirements` son
   **parsers/resúmenes locales con `setTimeout` artificial**, no llaman a Groq.
-  Groq también presenta respuestas del asistente operativo, salvo los intents
-  determinísticos como `LOT_STOCK`, cuyos hechos resuelve el backend.
+  Groq presenta las respuestas del asistente operativo; los totales de stock
+  los calcula el backend y anclan al modelo. Si Groq contradice esos hechos,
+  se usa el fallback heurístico.
 - `POST /api/traceability` acepta **únicamente** `type: 'treatment'`
   (`z.literal('treatment')`). Cualquier otro tipo devuelve 400.
 - La proforma, factura, lista de empaque y remito viven en `sessionStorage`, no
@@ -365,9 +366,10 @@ existen hoy.
 | GET | `/api/snapshot` | — | lectura | Snapshot completo: locations, lots, stockRecords, movements, traceabilityEvents. Responde `{ data, source: 'database' }`. 503 si no hay `DATABASE_URL`. |
 | GET | `/api/lots/:id` | — | lectura | Acepta id o code (case-insensitive). Filtra el snapshot al lote. 404 si no existe. |
 | POST | `/api/traceability` | N03 | **escribe** | Sólo `type: 'treatment'`. Inserta en `traceability_events`. 201. Violación de unicidad → 409. |
+| GET | `/api/ai/status` | operaciones | ninguno | `{ groqConfigured, frontendKeyIgnored }`. Dice si Express tiene `GROQ_API_KEY`. Una `VITE_GROQ_API_KEY` no configura Groq y se reporta como ignorada. Nunca devuelve la clave. |
 | POST | `/api/ai/discrepancy` | N02 | ninguno | Groq con Structured Outputs, fallback heurístico. Devuelve `{ data: { engine, … } }`. No requiere base. |
 | POST | `/api/ai/movement-intent` | N01 | ninguno | Texto (8–500 chars) → intención estructurada + `engine`. Carga el snapshot para dar contexto de lotes/ubicaciones al modelo. |
-| POST | `/api/ai/operations` | operaciones | ninguno | Asistente autenticado y read-only sobre PostgreSQL. `LOT_STOCK` usa hechos canónicos server-side; los demás intents usan contexto proyectado y Structured Outputs. |
+| POST | `/api/ai/operations` | operaciones | ninguno | Asistente autenticado y read-only sobre PostgreSQL. Groq interpreta todos los intents; `LOT_STOCK` ancla los totales canónicos y cae a heurística si el modelo los contradice. |
 | POST | `/api/movements/preview` | N01 | ninguno | Valida la intención multi-lote. Devuelve `lines[]` con stock antes/después. **Nunca escribe.** |
 | POST | `/api/movements` | N01 | **escribe** | Revalida con filas bloqueadas y ejecuta el viaje completo en una transacción. 201 o 409. |
 | POST | `/api/movements/:id/reception` | N01 | **escribe** | Registra recibido vs despachado. Crea discrepancia si difieren. |
@@ -547,8 +549,8 @@ Tres schemas registrados:
 
 ### Semántica de cantidades del asistente operativo
 
-PostgreSQL aporta los registros; el backend determina los hechos y Groq sólo
-interpreta o presenta los intents no determinísticos. Para una consulta genérica
+PostgreSQL aporta los registros; el backend determina los hechos y Groq los
+interpreta. Para una consulta genérica
 como “¿Cuánto stock hay de X?”, el contrato específico del asistente es:
 
 | Concepto | Semántica |
@@ -562,8 +564,9 @@ como “¿Cuánto stock hay de X?”, el contrato específico del asistente es:
 
 `server/services/aiOperationsFacts.ts` agrupa por `lot + unit`; nunca convierte ni
 suma `kg` con `bags`. Si hay verificación pendiente, la respuesta y sus warnings
-lo indican explícitamente. `LOT_STOCK` no llama a Groq, por lo que una salida del
-modelo no puede reemplazar estos totales.
+lo indican explícitamente. `LOT_STOCK` llama a Groq con esos totales en
+`derivedFacts`; si el modelo omite o contradice el stock declarado canónico,
+la respuesta cae a la heurística con los hechos del backend.
 
 Los errores HTTP de Groq distintos de 413/429 conservan sólo diagnóstico
 server-side permitido: status, `error.code`, `error.type`, `x-request-id` y los
@@ -577,8 +580,11 @@ autorizar operaciones o escribir. Si falta `GROQ_API_KEY`, **no se hace ninguna
 llamada de red**: se usa directamente el fallback local.
 
 `GROQ_API_KEY` no está en este repositorio y no debe escribirse en ningún
-archivo versionado. Se configura en Render (`sync: false`) y localmente en `.env`
-(ignorado por Git).
+archivo versionado. Se configura en el **Web Service de Render** (Environment,
+nombre exacto `GROQ_API_KEY`, `sync: false`) y localmente en `.env` (ignorado
+por Git). Una variable del frontend (`VITE_GROQ_API_KEY`, Netlify o el bundle
+de Vite) **no llega a Express**. `GET /api/ai/status` reporta si el proceso
+tiene la clave, sin devolverla.
 
 ---
 

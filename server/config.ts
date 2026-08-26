@@ -38,6 +38,17 @@ function normalizeDatabaseUrl(value: string | undefined): string | undefined {
   return candidate;
 }
 
+/** Groq vive en Express (`GROQ_API_KEY`). Una `VITE_*` no configura el modelo y puede filtrarse al bundle. */
+export function groqRuntimeStatus(
+  env: { GROQ_API_KEY?: string; VITE_GROQ_API_KEY?: string } = process.env,
+) {
+  const groqConfigured = Boolean(env.GROQ_API_KEY?.trim());
+  return {
+    groqConfigured,
+    frontendKeyIgnored: Boolean(env.VITE_GROQ_API_KEY?.trim()) && !groqConfigured,
+  };
+}
+
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 3000),

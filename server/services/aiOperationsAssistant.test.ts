@@ -56,14 +56,13 @@ describe('asistente operativo read-only', () => {
       answer: 'SHOW-001 tiene 10.150 kg de stock declarado.',
     }))) as unknown as typeof fetch;
 
-    const answer = await createAiOperationsAssistant({ model: 'test', timeoutMs: 100, fetchImpl })(
+    const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
       '¿Cuánto stock hay de SHOW-001?',
       buildAiOperationsContext('¿Cuánto stock hay de SHOW-001?', canonicalSnapshot),
     );
 
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect(answer.engine).toBe('deterministic');
-    expect(answer.warnings[0]).toContain('Hecho canónico');
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(answer.engine).toBe('heuristic');
     expect(answer.answer).toContain('10.250 kg de stock declarado');
     expect(answer.answer).toContain('10.150 kg');
     expect(answer.answer).toContain('-100 kg');
@@ -76,16 +75,32 @@ describe('asistente operativo read-only', () => {
     expect(answer.evidence.every((item) => item.source === 'stock_records' && item.recordId === null)).toBe(true);
   });
 
+  it('usa Groq en LOT_STOCK cuando respeta el total declarado canónico', async () => {
+    const fetchImpl = vi.fn(async () => envelope(validAnswer({
+      answer: 'SHOW-001 tiene 8.000 kg de stock declarado. El stock verificado es de 7.900 kg, con una diferencia de -100 kg. Por ubicación: Campo Oriente: 8.000 kg declarados / 7.900 kg verificados.',
+    }))) as unknown as typeof fetch;
+    const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
+      '¿Cuánto stock hay de SHOW-001?',
+      buildAiOperationsContext('¿Cuánto stock hay de SHOW-001?', snapshot),
+    );
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(answer.engine).toBe('llm');
+    expect(answer.answer).toContain('8.000 kg de stock declarado');
+  });
+
   it('comunica explícitamente una verificación pendiente en LOT_STOCK', async () => {
     const pendingSnapshot: PapaStockSnapshot = {
       ...snapshot,
       stockRecords: [{ ...snapshot.stockRecords[0], verifiedQuantity: 0, verificationPending: true }],
     };
-    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => envelope(validAnswer({
+      answer: 'SHOW-001 tiene 8.000 kg de stock declarado. Hay 1 ubicación con verificación pendiente.',
+    }))) as unknown as typeof fetch;
     const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
       'Stock de SHOW-001', buildAiOperationsContext('Stock de SHOW-001', pendingSnapshot),
     );
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(answer.engine).toBe('llm');
     expect(`${answer.answer} ${answer.warnings.join(' ')}`).toContain('verificación pendiente');
   });
 
@@ -96,7 +111,23 @@ describe('asistente operativo read-only', () => {
       buildAiOperationsContext('Dame un resumen operativo', snapshot),
     );
     expect(answer.engine).toBe('heuristic');
-    expect(answer.warnings.some((item) => item.includes('GROQ_API_KEY no está configurada'))).toBe(true);
+    expect(answer.warnings.some((item) => item.includes('no llega al servidor'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('cae a heurística y avisa si Groq no responde a tiempo', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const fetchImpl = vi.fn(async () => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      throw error;
+    }) as unknown as typeof fetch;
+    const answer = await createAiOperationsAssistant({ apiKey: 'test', model: 'test', timeoutMs: 100, fetchImpl })(
+      'Dame un resumen operativo',
+      buildAiOperationsContext('Dame un resumen operativo', snapshot),
+    );
+    expect(answer.engine).toBe('heuristic');
+    expect(answer.warnings.some((item) => item.includes('no respondió a tiempo'))).toBe(true);
     warn.mockRestore();
   });
 

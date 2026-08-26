@@ -1,10 +1,10 @@
 import { AlertTriangle, Bot, Database, Send, ShieldCheck } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { Button } from '../components/common/Button';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatusBadge } from '../components/common/StatusBadge';
-import { askOperationsAssistant } from '../services/operationsAssistantService';
-import type { OperationsAssistantAnswer } from '../types/operationsAssistant';
+import { askOperationsAssistant, loadOperationsAssistantStatus } from '../services/operationsAssistantService';
+import type { OperationsAssistantAnswer, OperationsAssistantStatus } from '../types/operationsAssistant';
 
 const examples = [
   '¿Cuánto stock hay de SHOW-001?',
@@ -31,6 +31,15 @@ export function OperationsAssistantPage() {
   const [answer, setAnswer] = useState<OperationsAssistantAnswer>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [groqStatus, setGroqStatus] = useState<OperationsAssistantStatus>();
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadOperationsAssistantStatus()
+      .then((status) => { if (!cancelled) setGroqStatus(status); })
+      .catch(() => { if (!cancelled) setGroqStatus(undefined); });
+    return () => { cancelled = true; };
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -53,7 +62,7 @@ export function OperationsAssistantPage() {
       <PageHeader
         eyebrow="Consulta read-only"
         title="Asistente de inventario"
-        description="Consulta el snapshot operativo de PostgreSQL. Preguntas de stock de un lote se resuelven con hechos canónicos; el resto las interpreta Groq. El asistente nunca modifica stock."
+        description="Consulta el snapshot operativo de PostgreSQL. Groq interpreta la pregunta; los totales de stock los fija el backend. El asistente nunca modifica stock."
       />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
@@ -66,8 +75,35 @@ export function OperationsAssistantPage() {
                 <p className="mt-0.5 text-[10px] text-[#6d736b]">PostgreSQL → Express → Groq</p>
               </div>
             </div>
-            <StatusBadge tone="success">Sólo lectura</StatusBadge>
+            <div className="flex items-center gap-2">
+              {groqStatus && (
+                <StatusBadge tone={groqStatus.groqConfigured ? 'success' : 'warning'}>
+                  {groqStatus.groqConfigured ? 'Groq en el servidor' : 'Groq no configurado'}
+                </StatusBadge>
+              )}
+              <StatusBadge tone="success">Sólo lectura</StatusBadge>
+            </div>
           </div>
+
+          {groqStatus && !groqStatus.groqConfigured && (
+            <div className="mx-5 mt-5 flex gap-3 border border-[#e2c48a] bg-[#fbf6ea] p-4 text-[12px] leading-5 text-[#755516]" role="status">
+              <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+              <div>
+                <p className="font-bold text-[#5f4512]">GROQ_API_KEY no está en Express</p>
+                <p className="mt-1">
+                  Ponerla en el frontend (variables <code>VITE_*</code>, Netlify o el bundle de Vite) no configura Groq.
+                  Tiene que estar en Render → Web Service <strong>papastock</strong> → Environment, con el nombre exacto
+                  {' '}<code>GROQ_API_KEY</code>, y hay que redesplegar.
+                </p>
+                {groqStatus.frontendKeyIgnored && (
+                  <p className="mt-1">
+                    El servidor ve una <code>VITE_GROQ_API_KEY</code> y la ignora. Rotá esa clave: Vite puede haberla
+                    incluido en el JavaScript del navegador.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           <form onSubmit={submit} className="p-5">
             <label className="label" htmlFor="operations-question">Pregunta operativa</label>
