@@ -50,9 +50,13 @@ export function projectOralDemoStock(stockRecords: StockRecord[], lots: Lot[]): 
 export function projectOralDemoSnapshot<T extends {
   lots: Lot[];
   stockRecords: StockRecord[];
+  movements: readonly Movement[];
+  traceabilityEvents: readonly TraceabilityEvent[];
+}>(snapshot: T): Omit<T, 'stockRecords' | 'movements' | 'traceabilityEvents'> & {
+  stockRecords: StockRecord[];
   movements: Movement[];
   traceabilityEvents: TraceabilityEvent[];
-}>(snapshot: T): T {
+} {
   const lotIds = new Set(snapshot.lots.map((lot) => lot.id));
   const references = new Set(snapshot.movements.map((movement) => movement.reference));
   const traceIds = new Set(snapshot.traceabilityEvents.map((event) => event.id));
@@ -72,9 +76,9 @@ export function projectOralDemoSnapshot<T extends {
 
   return {
     ...snapshot,
-    stockRecords: projectOralDemoStock(snapshot.stockRecords, snapshot.lots),
-    movements: extraMovements.length ? [...snapshot.movements, ...extraMovements] : snapshot.movements,
-    traceabilityEvents: extraTrace.length ? [...snapshot.traceabilityEvents, ...extraTrace] : snapshot.traceabilityEvents,
+    stockRecords: projectOralDemoStock([...snapshot.stockRecords], snapshot.lots),
+    movements: [...snapshot.movements, ...extraMovements],
+    traceabilityEvents: [...snapshot.traceabilityEvents, ...extraTrace],
   };
 }
 

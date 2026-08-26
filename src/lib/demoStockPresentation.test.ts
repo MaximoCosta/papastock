@@ -3,6 +3,7 @@ import { locations } from '../data/locations';
 import { lots } from '../data/lots';
 import { stockRecords } from '../data/stock';
 import { getOperationalMetrics, getStockViews } from '../services/stockService';
+import type { Movement, TraceabilityEvent } from '../types/domain';
 import { presentStockForOralDemo, projectOralDemoSnapshot } from './demoStockPresentation';
 
 describe('presentStockForOralDemo', () => {
@@ -40,8 +41,8 @@ describe('projectOralDemoSnapshot', () => {
     const projected = projectOralDemoSnapshot({
       lots,
       stockRecords: stockRecords.map((record) => ({ ...record })),
-      movements: [],
-      traceabilityEvents: [],
+      movements: [] as Movement[],
+      traceabilityEvents: [] as TraceabilityEvent[],
     });
     const views = getStockViews(projected.stockRecords, lots, locations);
     expect(views.filter((record) => record.status === 'discrepancy')).toHaveLength(6);
