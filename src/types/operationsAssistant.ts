@@ -1,7 +1,7 @@
 export type OperationsDataQuality = 'authoritative' | 'operational_only' | 'incomplete';
 export type OperationsConfidence = 'high' | 'medium' | 'low';
-export type OperationsEntityType = 'lot' | 'location' | 'movement';
-export type OperationsEvidenceSource = 'stock_records' | 'movements' | 'ledger' | 'traceability';
+export type OperationsEntityType = 'lot' | 'location' | 'movement' | string;
+export type OperationsEvidenceSource = string;
 
 export interface OperationsAssistantEntity {
   type: OperationsEntityType;
@@ -18,8 +18,8 @@ export interface OperationsAssistantEvidence {
 
 export interface OperationsAssistantAnswer {
   answer: string;
-  confidence: OperationsConfidence;
-  dataQuality: OperationsDataQuality;
+  confidence?: OperationsConfidence;
+  dataQuality?: OperationsDataQuality;
   entities: OperationsAssistantEntity[];
   warnings: string[];
   evidence: OperationsAssistantEvidence[];
@@ -28,5 +28,4 @@ export interface OperationsAssistantAnswer {
 
 export interface OperationsAssistantStatus {
   groqConfigured: boolean;
-  frontendKeyIgnored: boolean;
 }

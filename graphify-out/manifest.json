@@ -1176,27 +1176,27 @@
     "semantic_hash": ""
   },
   "src/pages/OperationsAssistantPage.tsx": {
-    "mtime": 1787757069.3723302,
-    "seen": 1787757362.276604,
-    "ast_hash": "0f552d9085b9eb5338c8e3a9d0921d7a",
+    "mtime": 1787763623.7780092,
+    "seen": 1787764055.8972714,
+    "ast_hash": "9fb6c312dc47bd7e68cb46c761a939e6",
     "semantic_hash": ""
   },
   "src/services/operationsAssistantService.test.ts": {
-    "mtime": 1787757208.016018,
-    "seen": 1787757362.276636,
-    "ast_hash": "03718a3e604831ba801db3b0fed7a27b",
+    "mtime": 1787763642.2451153,
+    "seen": 1787764055.8973246,
+    "ast_hash": "c0fa49879ea8439b282ee7a68e86413d",
     "semantic_hash": ""
   },
   "src/services/operationsAssistantService.ts": {
-    "mtime": 1787757208.0139241,
-    "seen": 1787757362.2766376,
-    "ast_hash": "74001a11be7a016945342ecf58e9f02a",
+    "mtime": 1787763623.77401,
+    "seen": 1787764055.8973272,
+    "ast_hash": "005fd7a6a0ed3bbe8e1b7858df326a40",
     "semantic_hash": ""
   },
   "src/types/operationsAssistant.ts": {
-    "mtime": 1787757069.4037116,
-    "seen": 1787757362.2766604,
-    "ast_hash": "73202856abc87d85e88cb5ae45194d07",
+    "mtime": 1787763601.4773285,
+    "seen": 1787764055.8973649,
+    "ast_hash": "55e49a64e3d46ab9d64e57b6d6932086",
     "semantic_hash": ""
   },
   "server/services/aiOperationsAssistant.postgres.test.ts": {
