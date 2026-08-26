@@ -28,7 +28,7 @@ const remoteSnapshot = {
 };
 
 describe('loadPapaStockSnapshot', () => {
-  it('preserva el stock PostgreSQL de lotes fuera de la demo oral y no inyecta catálogos mock', async () => {
+  it('concilia lotes fuera de la demo oral y no inyecta catálogos mock', async () => {
     vi.stubEnv('VITE_DATA_SOURCE', '');
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: remoteSnapshot }), {
       status: 200, headers: { 'content-type': 'application/json' },
@@ -38,7 +38,7 @@ describe('loadPapaStockSnapshot', () => {
     const result = await loadPapaStockSnapshot();
     expect(result.source).toBe('database');
     expect(result.data.stockRecords.find((record) => record.lotId === 'lot-h118')).toMatchObject({
-      declaredQuantity: 111, verifiedQuantity: 109,
+      declaredQuantity: 111, verifiedQuantity: 111, verificationPending: false,
     });
     expect(result.data.shelves).toEqual([]);
     expect(result.data.shelfUnits).toEqual([]);

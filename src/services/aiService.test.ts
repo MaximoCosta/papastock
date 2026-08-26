@@ -28,6 +28,19 @@ describe('aislamiento de IA demo', () => {
     expect(result.summary).toBe('respuesta backend');
   });
 
+  it('cae a la heurística local si el endpoint de discrepancia no responde', async () => {
+    vi.stubEnv('VITE_DATA_SOURCE', '');
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    const result = await aiService.analyzeDiscrepancy(stock, [{
+      id: 'mv-1847', reference: 'MV-1847', lotId: stock.lotId, quantity: 350,
+      originLocationId: stock.locationId, destinationLocationId: stock.locationId,
+      date: '2026-08-20', status: 'pending',
+    }], []);
+    expect(result.engine).toBe('heuristic');
+    expect(result.relatedMovementReference).toBe('MV-1847');
+    expect(result.explainedQuantity).toBe(350);
+  });
+
   it('sólo habilita el análisis y la planilla hardcodeados en modo mock explícito', async () => {
     vi.stubEnv('VITE_DATA_SOURCE', 'mock');
     const fetchMock = vi.fn();

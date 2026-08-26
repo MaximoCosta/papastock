@@ -9,7 +9,12 @@ import type {
   TraceabilityIntent,
 } from '../types/export';
 import { hardcodedDiscrepancyAnalysis } from '../lib/demoDiscrepancyAnalysis';
+<<<<<<< Updated upstream
 import { apiFetch, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
+=======
+import { analyzeWithHeuristic } from '../../server/services/discrepancyHeuristic';
+import { apiUrl, normalizeDiscrepancyAnalysis, readApiData } from './apiClient';
+>>>>>>> Stashed changes
 
 export interface AIService {
   analyzeDiscrepancy(
@@ -130,29 +135,45 @@ const httpAIService: AIService = {
       return demoAnalysis;
     }
 
+<<<<<<< Updated upstream
     const response = await apiFetch('/api/ai/discrepancy', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+=======
+    try {
+      const response = await fetch(apiUrl('/api/ai/discrepancy'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          lot: { id: stock.lot.id, code: stock.lot.code },
+          stock: {
+            id: stock.id,
+            lotId: stock.lotId,
+            locationId: stock.locationId,
+            declaredQuantity: stock.declaredQuantity,
+            verifiedQuantity: stock.verifiedQuantity,
+            updatedAt: stock.updatedAt,
+            verificationPending: stock.verificationPending,
+          },
+          movements: lotMovements,
+          traceability,
+        }),
+      });
+      const payload = normalizeDiscrepancyAnalysis(await readApiData(response, 'El análisis no está disponible.'));
+      if (!['llm', 'heuristic'].includes(payload.engine)) {
+        throw new Error('El análisis no está disponible.');
+      }
+      return payload;
+    } catch {
+      return analyzeWithHeuristic({
+>>>>>>> Stashed changes
         lot: { id: stock.lot.id, code: stock.lot.code },
-        stock: {
-          id: stock.id,
-          lotId: stock.lotId,
-          locationId: stock.locationId,
-          declaredQuantity: stock.declaredQuantity,
-          verifiedQuantity: stock.verifiedQuantity,
-          updatedAt: stock.updatedAt,
-          verificationPending: stock.verificationPending,
-        },
+        stock,
         movements: lotMovements,
         traceability,
-      }),
-    });
-    const payload = normalizeDiscrepancyAnalysis(await readApiData(response, 'El análisis no está disponible.'));
-    if (!['llm', 'heuristic'].includes(payload.engine)) {
-      throw new Error('El análisis no está disponible.');
+      });
     }
-    return payload;
   },
 
   async analyzeRequirements(validation) {

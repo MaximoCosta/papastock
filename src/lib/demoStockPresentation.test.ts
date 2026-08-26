@@ -50,4 +50,39 @@ describe('projectOralDemoSnapshot', () => {
       expect.arrayContaining(['MV-1032', 'MV-1051', 'MV-1052', 'MV-1053', 'MV-1054']),
     );
   });
+
+  it('arma 6 discrepancias sobre lotes importados cuando no están A-204 ni el resto de la demo', () => {
+    const importedLots = Array.from({ length: 8 }, (_, index) => ({
+      id: `lot-imp-${index}`,
+      code: index === 0 ? 'LUDMILLA-600' : `IMP-${index}`,
+      variety: 'Spunta',
+      campaign: '2026',
+      producer: 'Papasud',
+      origin: 'Balcarce',
+    }));
+    const importedStock = importedLots.map((lot, index) => ({
+      id: `stock-imp-${index}`,
+      lotId: lot.id,
+      locationId: 'loc-santa',
+      declaredQuantity: 20_000 - index * 500,
+      verifiedQuantity: 0,
+      verificationPending: true,
+      updatedAt: '2026-08-23T12:00:00Z',
+    }));
+    const importedLocations = [{ id: 'loc-santa', name: 'Santa Ana', type: 'cold_storage' as const }];
+    const projected = projectOralDemoSnapshot({
+      lots: importedLots,
+      stockRecords: importedStock,
+      movements: [] as Movement[],
+      traceabilityEvents: [] as TraceabilityEvent[],
+    });
+    const views = getStockViews(projected.stockRecords, importedLots, importedLocations);
+    const discrepancies = views.filter((record) => record.status === 'discrepancy');
+
+    expect(discrepancies).toHaveLength(6);
+    expect(discrepancies.some((record) => record.lot.code === 'LUDMILLA-600')).toBe(true);
+    expect(views.every((record) => record.status !== 'pending')).toBe(true);
+    expect(projected.movements.length).toBeGreaterThan(0);
+    expect(projected.movements.every((movement) => movement.reference.startsWith('ORAL-'))).toBe(true);
+  });
 });

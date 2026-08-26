@@ -1,6 +1,6 @@
 import { movements as demoMovements } from '../data/movements';
 import { initialTraceabilityEvents } from '../data/traceability';
-import type { Lot, Movement, StockRecord, TraceabilityEvent } from '../types/domain';
+import type { Lot, Movement, MovementStatus, StockRecord, TraceabilityEvent } from '../types/domain';
 import { movementTouchesLot } from './movements';
 
 export const ORAL_DEMO_DISCREPANCIES: Record<string, { declared: number; verified: number }> = {
@@ -20,8 +20,9 @@ const DEMO_TRACE_IDS = new Set([
 ]);
 
 const EXPORT_LOT = 'A-310';
+const PREFERRED_EXTRA_CODES = new Set(['LUDMILLA-600']);
 const TARGET_DISCREPANCIES = 6;
-const GAPS = [1000, 500, 800, 350, 1200];
+const GAPS = [1000, 800, 800, 1200, 500, 1200];
 
 function lotCodeById(lots: Lot[]): Map<string, string> {
   return new Map(lots.map((lot) => [lot.id, lot.code]));
@@ -29,6 +30,10 @@ function lotCodeById(lots: Lot[]): Map<string, string> {
 
 function isDiscrepancy(record: StockRecord): boolean {
   return !record.verificationPending && record.verifiedQuantity !== record.declaredQuantity;
+}
+
+function gapFor(record: StockRecord): number {
+  return Math.abs(record.declaredQuantity - record.verifiedQuantity);
 }
 
 /** Ajusta sólo los 6 lotes de la demo oral. No pisa el resto del snapshot PostgreSQL. */
@@ -47,6 +52,62 @@ export function projectOralDemoStock(stockRecords: StockRecord[], lots: Lot[]): 
   });
 }
 
+function extraOralMovement(
+  record: StockRecord,
+  suffix: string,
+  quantity: number,
+  status: MovementStatus,
+  date: string,
+): Movement {
+  const id = `oral-${record.id}-${suffix}`;
+  return {
+    id,
+    reference: `ORAL-${record.id.slice(-8).toUpperCase()}-${suffix.toUpperCase()}`,
+    lotId: record.lotId,
+    originLocationId: record.locationId,
+    destinationLocationId: record.locationId,
+    quantity,
+    date,
+    status,
+    receptionStatus: status === 'pending' ? 'pending' : 'not_applicable',
+    items: [{
+      id: `${id}-item`,
+      movementId: id,
+      lotId: record.lotId,
+      dispatchedQuantity: quantity,
+      unit: record.unit ?? 'kg',
+      sortOrder: 0,
+    }],
+  };
+}
+
+/** Relatos distintos para que la heurística / IA tenga evidencia o pueda decir que no alcanza. */
+function movementsForExtraDiscrepancy(record: StockRecord, index: number): Movement[] {
+  const gap = gapFor(record);
+  if (gap <= 0) return [];
+  switch (index % 6) {
+    case 0:
+    case 1:
+      return [extraOralMovement(record, 'a', gap, 'pending', '2026-08-20')];
+    case 2: {
+      const left = Math.max(1, Math.round(gap * 5 / 8));
+      const right = Math.max(1, gap - left);
+      return [
+        extraOralMovement(record, 'a', left, 'pending', '2026-08-19'),
+        extraOralMovement(record, 'b', right, 'pending', '2026-08-20'),
+      ];
+    }
+    case 3: {
+      const pending = Math.max(1, Math.min(gap - 1, Math.round(gap * 350 / 1200)));
+      return [extraOralMovement(record, 'a', pending, 'pending', '2026-08-18')];
+    }
+    case 4:
+      return [extraOralMovement(record, 'a', gap, 'cancelled', '2026-08-21')];
+    default:
+      return [extraOralMovement(record, 'a', gap, 'completed', '2026-08-17')];
+  }
+}
+
 export function projectOralDemoSnapshot<T extends {
   lots: Lot[];
   stockRecords: StockRecord[];
@@ -57,10 +118,13 @@ export function projectOralDemoSnapshot<T extends {
   movements: Movement[];
   traceabilityEvents: TraceabilityEvent[];
 } {
+  const stockRecords = presentStockForOralDemo([...snapshot.stockRecords], snapshot.lots);
+  const codes = lotCodeById(snapshot.lots);
   const lotIds = new Set(snapshot.lots.map((lot) => lot.id));
   const references = new Set(snapshot.movements.map((movement) => movement.reference));
   const traceIds = new Set(snapshot.traceabilityEvents.map((event) => event.id));
-  const extraMovements = demoMovements
+
+  const namedMovements = demoMovements
     .filter((movement) => !references.has(movement.reference))
     .filter((movement) => Object.keys(ORAL_DEMO_DISCREPANCIES).some((code) => {
       const lot = snapshot.lots.find((item) => item.code === code);
@@ -70,14 +134,28 @@ export function projectOralDemoSnapshot<T extends {
       ...movement,
       items: movement.items ? movement.items.map((item) => ({ ...item })) : undefined,
     }));
+
+  namedMovements.forEach((movement) => references.add(movement.reference));
+
+  const extraRecords = stockRecords
+    .filter(isDiscrepancy)
+    .filter((record) => {
+      const code = codes.get(record.lotId);
+      return Boolean(code && !ORAL_DEMO_DISCREPANCIES[code]);
+    });
+
+  const extraMovements = extraRecords.flatMap((record, index) => (
+    movementsForExtraDiscrepancy(record, index).filter((movement) => !references.has(movement.reference))
+  ));
+
   const extraTrace = initialTraceabilityEvents
     .filter((event) => DEMO_TRACE_IDS.has(event.id) && !traceIds.has(event.id) && lotIds.has(event.lotId))
     .map((event) => ({ ...event, data: { ...event.data } }));
 
   return {
     ...snapshot,
-    stockRecords: projectOralDemoStock([...snapshot.stockRecords], snapshot.lots),
-    movements: [...snapshot.movements, ...extraMovements],
+    stockRecords,
+    movements: [...snapshot.movements, ...namedMovements, ...extraMovements],
     traceabilityEvents: [...snapshot.traceabilityEvents, ...extraTrace],
   };
 }
@@ -117,9 +195,17 @@ export function presentStockForOralDemo(stockRecords: StockRecord[], lots: Lot[]
     .filter((record) => {
       const code = codes.get(record.lotId);
       if (!code || code === EXPORT_LOT || ORAL_DEMO_DISCREPANCIES[code]) return false;
+      if ((record.unit ?? 'kg') !== 'kg') return false;
       return record.declaredQuantity >= 800;
     })
-    .sort((a, b) => b.declaredQuantity - a.declaredQuantity || a.id.localeCompare(b.id))
+    .sort((a, b) => {
+      const codeA = (codes.get(a.lotId) ?? '').toUpperCase();
+      const codeB = (codes.get(b.lotId) ?? '').toUpperCase();
+      const prefA = PREFERRED_EXTRA_CODES.has(codeA) ? 0 : 1;
+      const prefB = PREFERRED_EXTRA_CODES.has(codeB) ? 0 : 1;
+      if (prefA !== prefB) return prefA - prefB;
+      return b.declaredQuantity - a.declaredQuantity || a.id.localeCompare(b.id);
+    })
     .slice(0, needed);
 
   const extras = new Map(candidates.map((record, index) => {
