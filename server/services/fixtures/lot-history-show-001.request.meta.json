@@ -6,12 +6,12 @@
   "strict": true,
   "questionBytes": 26,
   "localShowcase": {
-    "contextBytes": 4265,
-    "systemPromptBytes": 1496,
+    "contextBytes": 6232,
+    "systemPromptBytes": 1787,
     "schemaBytes": 975,
-    "messagesBytes": 6426,
-    "requestBodyBytes": 7577,
-    "estimatedInputTokens": 1895
+    "messagesBytes": 8934,
+    "requestBodyBytes": 10085,
+    "estimatedInputTokens": 2522
   },
   "production": {
     "contextBytes": 3916,
@@ -22,9 +22,16 @@
     "estimatedInputTokens": 1633
   },
   "byteDelta": {
-    "contextBytes": 115,
-    "requestBodyBytes": 21,
-    "note": "Local request grew after adding evidence.recordId to the strict schema and the no-invented-recordId prompt rule. Still under the 20000-byte budget."
+    "contextBytes": 1967,
+    "requestBodyBytes": 2508,
+    "systemPromptBytes": 291,
+    "previousLocalShowcase": {
+      "contextBytes": 4265,
+      "requestBodyBytes": 7577,
+      "systemPromptBytes": 1496
+    },
+    "note": "Derived Operational Facts: context.stockFacts fue reemplazado por context.derivedFacts (stock con semántica de nulos, movimientos con lotCount/multipleLots, ledger con reconciles vs verifiedDifference, trazabilidad normalizada y relaciones temporales). El prompt suma una regla de autoridad de hechos derivados. Los hechos derivados NO repiten reference/kind/status/ubicaciones de context.movements ni provenance redundante con la clave del hecho. Sigue bajo el presupuesto de 20000 bytes.",
+    "knownRedundancy": "context.ledger.classifications y derivedFacts.ledger describen la misma coordenada con distinto vocabulario (~680 bytes). Se conservan ambos para no romper el contrato vigente; candidato a recortar en una fase posterior."
   },
   "counts": {
     "lots": 1,

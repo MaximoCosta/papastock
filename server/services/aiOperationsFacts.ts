@@ -1,7 +1,6 @@
 import { formatQuantity } from '../../src/lib/quantity';
 import type { QuantityUnit } from '../../src/types/domain';
 import type { OperationsAssistantAnswer, OperationsAssistantEntity } from '../../src/types/operationsAssistant';
-import type { AiOperationsContext } from './aiOperationsContext';
 
 export interface LotStockLocationFact {
   locationId: string;
@@ -33,35 +32,6 @@ export interface LotStockFactSource {
     verificationPending: boolean;
     unit: QuantityUnit;
   }>;
-}
-
-export interface LotHistoryStockLocationFact extends LotStockLocationFact {
-  difference: number;
-}
-
-export interface LotHistoryStockFact {
-  lotId: string;
-  lotCode: string;
-  unit: QuantityUnit;
-  declaredQuantity: number;
-  verifiedQuantity: number;
-  difference: number;
-  locations: LotHistoryStockLocationFact[];
-}
-
-export function toLotHistoryStockFacts(facts: LotStockFact[]): LotHistoryStockFact[] {
-  return facts.map((fact) => ({
-    lotId: fact.lotId,
-    lotCode: fact.lotCode,
-    unit: fact.unit,
-    declaredQuantity: fact.totalDeclared,
-    verifiedQuantity: fact.totalVerified,
-    difference: fact.difference,
-    locations: fact.locations.map((location) => ({
-      ...location,
-      difference: location.verifiedQuantity - location.declaredQuantity,
-    })),
-  }));
 }
 
 export function buildLotStockFacts(context: LotStockFactSource): LotStockFact[] {
@@ -125,7 +95,18 @@ function factSentence(fact: LotStockFact): string {
   return `${stock} ${verification}${pending} Por ubicación: ${locations}.`;
 }
 
-export function buildCanonicalLotStockAnswer(context: AiOperationsContext): OperationsAssistantAnswer {
+/**
+ * Entrada estructural de la respuesta canónica.
+ *
+ * Se declara acá, y no como `AiOperationsContext`, para que este módulo no dependa del
+ * proyector de contexto: esa dependencia de tipo era el único ciclo del repositorio.
+ * `AiOperationsContext` la satisface estructuralmente, así que los call sites no cambian.
+ */
+export interface CanonicalLotStockSource extends LotStockFactSource {
+  ledger: { ledgerAuthority: boolean };
+}
+
+export function buildCanonicalLotStockAnswer(context: CanonicalLotStockSource): OperationsAssistantAnswer {
   const facts = buildLotStockFacts(context);
   const lotEntities: OperationsAssistantEntity[] = context.lots.map((lot) => ({
     type: 'lot', id: lot.id, label: lot.code,

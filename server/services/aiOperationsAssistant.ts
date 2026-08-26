@@ -13,7 +13,7 @@ import {
   type GroqOptions,
   type StructuredRequest,
 } from './groqStructured';
-import { buildCanonicalLotStockAnswer, buildLotStockFacts } from './aiOperationsFacts';
+import { buildCanonicalLotStockAnswer } from './aiOperationsFacts';
 
 export { buildAiOperationsContext, measureAiOperationsContext } from './aiOperationsContext';
 export type { AiOperationsContext, AiOperationsIntent } from './aiOperationsContext';
@@ -28,7 +28,8 @@ const MATCH_AS_VERIFIED_CLAIMS = [
   /\bbalances coinciden\b/,
   /\bdeclarado y (?:el )?verificado coinciden\b/,
 ];
-const LOT_HISTORY_STOCK_GROUNDING = 'Nunca interpretes ledger MATCH como prueba de que el stock declarado y el verificado coinciden. Si declaredKg != verifiedKg, mencioná la discrepancia explícitamente. Los valores numéricos calculados por PapaStock son hechos autoritativos.';
+const LOT_HISTORY_STOCK_GROUNDING = 'Nunca interpretes ledger MATCH como prueba de que el stock declarado y el verificado coinciden. Si declared != verified, mencioná la discrepancia explícitamente. Los valores numéricos calculados por PapaStock son hechos autoritativos.';
+const DERIVED_FACTS_GROUNDING = 'context.derivedFacts fue calculado determinísticamente por PapaStock y es autoritativo: no lo recalcules ni lo contradigas. Usá los registros crudos sólo para explicar y dar contexto. Un valor null significa desconocido, nunca cero. Diferenciá hechos de inferencias y no afirmes causalidad.';
 const EVIDENCE_RECORD_RULE = 'Cada evidencia debe citar únicamente identificadores presentes en el contexto proporcionado. Nunca inventes recordId. Si la fuente representa un hecho derivado que no tiene un único registro identificable, usa null únicamente cuando el contrato lo permita.';
 
 export const operationsAnswerSchema = z.object({
@@ -169,9 +170,10 @@ function validateClosedWorld(answer: OperationsAssistantAnswer, context: AiOpera
     throw new Error('El modelo afirmó autoridad global inexistente del ledger.');
   }
   if (context.intent === 'LOT_HISTORY') {
-    const hasDeclaredVerifiedGap = buildLotStockFacts(context).some((fact) => (
-      fact.difference !== 0
-      || fact.locations.some((location) => location.declaredQuantity !== location.verifiedQuantity)
+    // Se evalúa sobre los mismos hechos derivados que vio el modelo, sin recalcular.
+    const hasDeclaredVerifiedGap = (context.derivedFacts?.stock ?? []).some((fact) => (
+      fact.hasDiscrepancy === true
+      || fact.locations.some((location) => location.hasDiscrepancy === true)
     ));
     if (hasDeclaredVerifiedGap && MATCH_AS_VERIFIED_CLAIMS.some((pattern) => pattern.test(normalized))) {
       throw new Error('El modelo interpretó ledger MATCH como igualdad entre stock declarado y verificado.');
@@ -301,7 +303,7 @@ export function createAiOperationsAssistant(options: AiOperationsOptions) {
       schemaName: 'papastock_operations_answer',
       jsonSchema,
       system: context.intent === 'LOT_HISTORY'
-        ? [...operationsSystemPrompt, LOT_HISTORY_STOCK_GROUNDING]
+        ? [...operationsSystemPrompt, LOT_HISTORY_STOCK_GROUNDING, DERIVED_FACTS_GROUNDING]
         : operationsSystemPrompt,
       user: { question, context },
     };

@@ -340,8 +340,8 @@ describe('asistente operativo read-only', () => {
     };
     const question = '¿Qué pasó con SHOW-001?';
     const context = buildAiOperationsContext(question, historySnapshot, '2026-08-24T12:00:00.000Z');
-    expect(context.stockFacts[0]).toMatchObject({
-      declaredQuantity: 10_250, verifiedQuantity: 10_150, difference: -100,
+    expect(context.derivedFacts?.stock[0]).toMatchObject({
+      declared: 10_250, verified: 10_150, difference: -100, hasDiscrepancy: true,
     });
 
     let sentBody = '';
@@ -366,9 +366,12 @@ describe('asistente operativo read-only', () => {
     expect(payload.messages[0].content).toContain(
       'Cada evidencia debe citar únicamente identificadores presentes en el contexto proporcionado.',
     );
-    expect(JSON.parse(payload.messages[1].content).context.stockFacts[0].locations).toEqual(
+    expect(payload.messages[0].content).toContain(
+      'context.derivedFacts fue calculado determinísticamente por PapaStock y es autoritativo',
+    );
+    expect(JSON.parse(payload.messages[1].content).context.derivedFacts.stock[0].locations).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ locationName: 'Campo Oriente', declaredQuantity: 8_000, verifiedQuantity: 7_900, difference: -100 }),
+        expect.objectContaining({ locationLabel: 'Campo Oriente', declared: 8_000, verified: 7_900, difference: -100, hasDiscrepancy: true }),
       ]),
     );
 

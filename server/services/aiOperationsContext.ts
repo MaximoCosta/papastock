@@ -1,6 +1,6 @@
 import { stockUnit } from '../../src/lib/quantity';
 import type { PapaStockSnapshot } from '../../src/repositories/dataRepository';
-import { buildLotStockFacts, toLotHistoryStockFacts } from './aiOperationsFacts';
+import { buildDerivedOperationalFacts, type DerivedOperationalFacts } from './derivedOperationalFacts';
 import { verifyLedgerAuthority } from './ledgerVerifier';
 
 export type AiOperationsIntent =
@@ -369,9 +369,41 @@ export function buildAiOperationsContext(
       blockingIssues: ledger.blockingIssues.length,
       classificationCounts: ledger.classificationCounts,
     },
-    stockFacts: intent === 'LOT_HISTORY'
-      ? toLotHistoryStockFacts(buildLotStockFacts({ lots, locations, stockRecords }))
-      : [],
+    derivedFacts: intent === 'LOT_HISTORY'
+      ? buildDerivedOperationalFacts({
+        lots,
+        locations,
+        stockRecords,
+        movements: movements.map((movement) => ({
+          id: movement.id,
+          reference: movement.reference ?? null,
+          kind: movement.kind,
+          status: movement.status,
+          date: movement.date ?? null,
+          originLocationId: movement.originLocationId ?? null,
+          destinationLocationId: movement.destinationLocationId ?? null,
+        })),
+        // Padrón COMPLETO de líneas de los movimientos seleccionados, sin recortar por lote:
+        // `movementItems` sí está recortado, y contarlo daría lotCount=1 en movimientos multi-lote.
+        movementItems: allMovementItems
+          .filter((item) => selectedMovementIds.has(item.movementId))
+          .map((item) => ({
+            movementId: item.movementId,
+            lotId: item.lotId,
+            quantity: item.quantity ?? null,
+            unit: item.unit,
+          })),
+        traceability: traceability.map((event) => ({
+          id: event.id,
+          lotId: event.lotId,
+          type: event.type,
+          date: event.date ?? null,
+          locationId: event.locationId ?? null,
+          data: event.data,
+        })),
+        ledgerCoordinates: ledgerClassifications,
+      })
+      : null,
   };
 }
 
